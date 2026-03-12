@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>CoverCraft – Settings</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    body{background:#07070d;color:#e2e8f0;font-family:'Syne',sans-serif;min-height:100vh}
+    .page{max-width:660px;margin:0 auto;padding:44px 24px}
+    .logo{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+    .logo-mark{font-size:26px;color:#818cf8}
+    h1{font-size:26px;font-weight:800;background:linear-gradient(135deg,#fff,#818cf8);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;letter-spacing:-0.5px}
+    .subtitle{color:rgba(255,255,255,0.35);font-size:13px;margin-top:5px;margin-bottom:36px}
+    .card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:22px;margin-bottom:18px}
+    .card-title{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#818cf8;margin-bottom:16px}
+    .field{margin-bottom:16px}
+    .field:last-child{margin-bottom:0}
+    label{display:block;font-size:12.5px;color:rgba(255,255,255,0.65);margin-bottom:6px;font-weight:600}
+    input[type="text"],input[type="password"],select,textarea{width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#e2e8f0;padding:10px 13px;font-size:13px;font-family:'Syne',sans-serif;outline:none;transition:border-color .15s}
+    input[type="text"]:focus,input[type="password"]:focus,select:focus,textarea:focus{border-color:rgba(99,102,241,0.5)}
+    input[type="password"],input.mono{font-family:'DM Mono',monospace;letter-spacing:1.5px;font-size:12px}
+    select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%236366f1' stroke-width='2.5'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:34px;cursor:pointer}
+    select option{background:#0a0a0f}
+    .hint{font-size:11px;color:rgba(255,255,255,0.28);margin-top:6px;line-height:1.55}
+    .hint a{color:#818cf8;text-decoration:none}
+    .hint a:hover{text-decoration:underline}
+    .key-row{display:flex;gap:8px;align-items:center}
+    .key-row input{flex:1}
+    .btn-test{background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.3);color:#818cf8;border-radius:7px;padding:9px 16px;font-size:12px;font-weight:700;font-family:'Syne',sans-serif;cursor:pointer;white-space:nowrap;transition:all .15s}
+    .btn-test:hover{background:rgba(99,102,241,0.25)}
+    .status-dot{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:5px 11px;border-radius:6px;margin-top:7px}
+    .dot-green{background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.22);color:#4ade80}
+    .dot-red{background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);color:#f87171}
+    .dot-yellow{background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.2);color:#fbbf24}
+    .model-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:2px}
+    .model-card{background:rgba(255,255,255,0.04);border:1.5px solid rgba(255,255,255,0.08);border-radius:10px;padding:12px 14px;cursor:pointer;transition:all .15s;position:relative}
+    .model-card:hover{border-color:rgba(99,102,241,0.35);background:rgba(99,102,241,0.06)}
+    .model-card.selected{border-color:rgba(99,102,241,0.6);background:rgba(99,102,241,0.1)}
+    .model-card input[type=radio]{position:absolute;opacity:0;pointer-events:none}
+    .model-name{font-size:12.5px;font-weight:700;color:#e2e8f0;margin-bottom:4px}
+    .model-tag{display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;margin-bottom:6px}
+    .tag-free{background:rgba(34,197,94,0.12);color:#4ade80;border:1px solid rgba(34,197,94,0.25)}
+    .tag-paid{background:rgba(251,191,36,0.1);color:#fbbf24;border:1px solid rgba(251,191,36,0.25)}
+    .tag-custom{background:rgba(139,92,246,0.1);color:#a78bfa;border:1px solid rgba(139,92,246,0.25)}
+    .model-desc{font-size:11px;color:rgba(255,255,255,0.35);line-height:1.5}
+    .custom-model-wrap{margin-top:12px;display:none}
+    .custom-model-wrap.visible{display:block}
+    .portfolio-note{background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:8px;padding:12px 15px;font-size:12px;color:rgba(129,140,248,0.9);line-height:1.6}
+    .save-row{display:flex;align-items:center;gap:16px;margin-top:6px}
+    .btn-primary{background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;border-radius:8px;padding:11px 28px;font-size:13px;font-weight:700;font-family:'Syne',sans-serif;cursor:pointer;box-shadow:0 4px 20px rgba(99,102,241,0.25);transition:all .15s}
+    .btn-primary:hover{box-shadow:0 4px 28px rgba(99,102,241,0.45);transform:translateY(-1px)}
+    #save-status{font-size:13px;color:#4ade80;opacity:0;transition:opacity .3s}
+    .divider{height:1px;background:rgba(255,255,255,0.06);margin:14px 0}
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="logo"><span class="logo-mark">✦</span><h1>CoverCraft</h1></div>
+  <p class="subtitle">Personalized for Tirth Shah · Settings &amp; Configuration</p>
+
+  <!-- ── API Keys ── -->
+  <div class="card">
+    <div class="card-title">🔑 API Keys</div>
+
+    <div class="field">
+      <label>OpenRouter API Key</label>
+      <div class="key-row">
+        <input type="password" id="openrouter-key" class="mono" placeholder="sk-or-v1-…" autocomplete="off" />
+        <button class="btn-test" id="test-openrouter-btn">Test</button>
+      </div>
+      <div id="openrouter-status"></div>
+      <p class="hint">Get your key at <a href="https://openrouter.ai/keys" target="_blank">openrouter.ai/keys</a>. Free tier available — no credit card needed.</p>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="field">
+      <label>Tavily API Key</label>
+      <div class="key-row">
+        <input type="password" id="tavily-key" class="mono" placeholder="tvly-dev-…" autocomplete="off" />
+        <button class="btn-test" id="test-tavily-btn">Test</button>
+      </div>
+      <div id="tavily-status"></div>
+      <p class="hint">Get your key at <a href="https://app.tavily.com" target="_blank">app.tavily.com</a>. 1,000 free searches/month.</p>
+    </div>
+  </div>
+
+  <!-- ── Model Selection ── -->
+  <div class="card">
+    <div class="card-title">🤖 AI Model</div>
+    <p class="hint" style="margin-bottom:12px;color:rgba(255,255,255,0.4)">Choose which model powers your cover letters. Free models are slower but cost nothing.</p>
+
+    <div class="model-grid">
+      <label class="model-card" id="card-free">
+        <input type="radio" name="model" value="openrouter/free" />
+        <div class="model-name">Free Routing</div>
+        <span class="model-tag tag-free">FREE</span>
+        <div class="model-desc">Routes to free models (Gemini Flash, DeepSeek R1). Slower, 0 cost.</div>
+      </label>
+
+      <label class="model-card" id="card-auto">
+        <input type="radio" name="model" value="openrouter/auto" />
+        <div class="model-name">Auto Routing</div>
+        <span class="model-tag tag-paid">PAID</span>
+        <div class="model-desc">OpenRouter picks the best model for the task. Faster, may charge.</div>
+      </label>
+
+      <label class="model-card" id="card-gemini-flash">
+        <input type="radio" name="model" value="google/gemini-2.0-flash-001" />
+        <div class="model-name">Gemini 2.0 Flash</div>
+        <span class="model-tag tag-free">FREE</span>
+        <div class="model-desc">Fast, reliable, free tier. Good quality cover letters.</div>
+      </label>
+
+      <label class="model-card" id="card-deepseek">
+        <input type="radio" name="model" value="deepseek/deepseek-r1:free" />
+        <div class="model-name">DeepSeek R1</div>
+        <span class="model-tag tag-free">FREE</span>
+        <div class="model-desc">Strong reasoning model, free. Slower but thorough.</div>
+      </label>
+
+      <label class="model-card" id="card-claude">
+        <input type="radio" name="model" value="anthropic/claude-3-haiku" />
+        <div class="model-name">Claude 3 Haiku</div>
+        <span class="model-tag tag-paid">PAID</span>
+        <div class="model-desc">Fast, excellent writing quality. Small cost per letter.</div>
+      </label>
+
+      <label class="model-card" id="card-custom">
+        <input type="radio" name="model" value="custom" />
+        <div class="model-name">Custom Model</div>
+        <span class="model-tag tag-custom">CUSTOM</span>
+        <div class="model-desc">Enter any OpenRouter model string manually.</div>
+      </label>
+    </div>
+
+    <div class="custom-model-wrap" id="custom-model-wrap">
+      <label style="margin-top:0">Custom Model String</label>
+      <input type="text" id="custom-model-input" placeholder="e.g. mistralai/mistral-7b-instruct" />
+      <p class="hint">Browse all models at <a href="https://openrouter.ai/models" target="_blank">openrouter.ai/models</a></p>
+    </div>
+  </div>
+
+  <!-- ── Default Style ── -->
+  <div class="card">
+    <div class="card-title">✍️ Default Cover Letter Style</div>
+    <div class="field">
+      <label>Style used when panel first opens</label>
+      <select id="default-type">
+        <option value="formal">Formal &amp; Polished (Recommended)</option>
+        <option value="storytelling">Story-Driven Narrative</option>
+        <option value="achievement">Achievement-Led (Quantified)</option>
+        <option value="concise">Concise &amp; Punchy</option>
+        <option value="startup">Startup Energy</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- ── Portfolio ── -->
+  <div class="card">
+    <div class="card-title">📋 Portfolio</div>
+    <div class="portfolio-note">
+      ✦ Tirth Shah's complete portfolio is baked directly into the extension — all 7 experiences (TCS, Texas A&M, BlackTieCars, Mays Business School, HCLTech, Alphaa AI), plus all metrics, certifications, and awards. No upload needed.
+    </div>
+    <p style="color:#4ade80;font-size:12px;margin-top:10px">✓ Portfolio loaded · 7 experiences · 4 certifications · 3+ awards</p>
+  </div>
+
+  <div class="save-row">
+    <button class="btn-primary" id="save-btn">Save Settings</button>
+    <span id="save-status">✓ Saved!</span>
+  </div>
+</div>
+<script src="options.js"></script>
+</body>
+</html>

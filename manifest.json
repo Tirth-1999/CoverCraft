@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "CoverCraft",
+  "version": "2.0",
+  "description": "AI-powered cover letter generator for Tirth Shah",
+  "icons": {
+    "16":  "icons/icon16.png",
+    "48":  "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "background": {
+    "service_worker": "src/background/background.js"
+  },
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_icon":  { "48": "icons/icon48.png" }
+  },
+  "options_page": "src/options/options.html",
+  "content_scripts": [{
+    "matches": ["<all_urls>"],
+    "js":      ["src/content/content.js"],
+    "run_at":  "document_idle"
+  }],
+  "permissions": ["activeTab", "scripting", "storage", "tabs"],
+  "web_accessible_resources": [{
+    "resources": ["src/logs/logs.html", "src/logs/logs.js", "src/dashboard/dashboard.html", "src/dashboard/dashboard.js"],
+    "matches":   ["<all_urls>"]
+  }]
+}

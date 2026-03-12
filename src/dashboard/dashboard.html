@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>CoverCraft — Dashboard</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:#07070d;color:#e2e8f0;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px;padding:32px 36px;min-width:900px}
+
+    /* ── Header ── */
+    .hdr{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:28px}
+    .hdr-left h1{font-size:22px;font-weight:800;color:#fff}
+    .hdr-left h1 span{color:#818cf8}
+    .hdr-left p{font-size:12px;color:#475569;margin-top:3px}
+    .toolbar{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+    .btn{padding:7px 16px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid #2a2a3e;background:#14141f;color:#94a3b8;font-family:inherit;transition:all .14s}
+    .btn:hover{background:#1e1e2e;color:#e2e8f0}
+    .btn-green{border-color:#14532d;color:#4ade80}
+    .btn-green:hover{background:#0d1f16}
+    .btn-red{border-color:#7f1d1d;color:#f87171}
+    .btn-red:hover{background:#1f0d0d}
+
+    /* ── Stats ── */
+    .stats{display:flex;gap:12px;margin-bottom:28px;flex-wrap:wrap}
+    .stat{background:#0f0f18;border:1px solid #1e2035;border-radius:10px;padding:14px 20px;min-width:120px}
+    .stat-val{font-size:24px;font-weight:800;color:#818cf8}
+    .stat-lbl{font-size:10px;color:#475569;margin-top:3px;text-transform:uppercase;letter-spacing:.06em}
+
+    /* ── Tabs ── */
+    .tabs{display:flex;gap:3px;margin-bottom:20px;border-bottom:1px solid #1a1a28;padding-bottom:0}
+    .tab{padding:8px 18px;font-size:12px;font-weight:700;cursor:pointer;color:#475569;border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .13s;background:none;border-top:none;border-left:none;border-right:none;font-family:inherit}
+    .tab:hover{color:#94a3b8}
+    .tab.active{color:#818cf8;border-bottom-color:#818cf8}
+    .tab-panel{display:none}
+    .tab-panel.active{display:block}
+
+    /* ── Empty state ── */
+    .empty{text-align:center;padding:60px;color:#334155}
+    .empty-icon{font-size:36px;margin-bottom:10px}
+    .empty-text{font-size:14px;font-weight:600}
+    .empty-sub{font-size:12px;margin-top:4px;color:#1e293b}
+
+    /* ── Log cards ── */
+    .log-card{background:#0f0f18;border:1px solid #1e2035;border-radius:12px;margin-bottom:12px;overflow:hidden;transition:border-color .15s}
+    .log-card:hover{border-color:#2a2a4e}
+    .log-hdr{display:flex;align-items:center;gap:12px;padding:13px 16px;cursor:pointer;background:#11111c;transition:background .12s;user-select:none}
+    .log-hdr:hover{background:#16162a}
+    .log-num{font-size:11px;font-weight:700;color:#6366f1;background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.2);padding:2px 8px;border-radius:20px;white-space:nowrap;flex-shrink:0}
+    .log-meta{flex:1;min-width:0}
+    .log-title{font-size:13px;font-weight:700;color:#e2e8f0}
+    .log-url{font-size:10px;color:#334155;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:500px}
+    .log-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
+    .kind-pill{font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px}
+    .pill-pipeline{background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.25);color:#818cf8}
+    .pill-extract{background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.25);color:#fbbf24}
+    .style-pill{font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(139,92,246,0.12);border:1px solid rgba(139,92,246,0.25);color:#a78bfa}
+    .time-str{font-size:11px;color:#334155;white-space:nowrap}
+    .chev{font-size:11px;color:#334155;transition:transform .18s;flex-shrink:0}
+    .chev.open{transform:rotate(90deg)}
+    .log-body{display:none;border-top:1px solid #1a1a28}
+    .log-body.open{display:block}
+
+    /* ── Step blocks inside card ── */
+    .step{border-top:1px solid #1a1a28}
+    .step:first-child{border-top:none}
+    .step-hdr{display:flex;align-items:flex-start;gap:11px;padding:12px 16px;cursor:pointer;transition:background .1s}
+    .step-hdr:hover{background:rgba(255,255,255,.015)}
+    .step-icon{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;margin-top:1px}
+    .si1{background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.3)}
+    .si2{background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.3)}
+    .si3{background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3)}
+    .si4{background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.3)}
+    .step-info{flex:1}
+    .step-lbl{font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.07em}
+    .step-sum{font-size:12px;color:#475569;margin-top:2px}
+    .badges{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
+    .badge{font-size:10px;padding:2px 6px;border-radius:3px;font-weight:600}
+    .b-blue{background:rgba(59,130,246,.1);color:#60a5fa}
+    .b-ind{background:rgba(99,102,241,.1);color:#818cf8}
+    .b-amb{background:rgba(245,158,11,.1);color:#fbbf24}
+    .b-grn{background:rgba(16,185,129,.1);color:#34d399}
+    .b-red{background:rgba(239,68,68,.1);color:#f87171}
+    .b-gray{background:rgba(148,163,184,.07);color:#94a3b8}
+    .schev{font-size:10px;color:#1e293b;margin-top:3px;transition:transform .15s;flex-shrink:0}
+    .schev.open{transform:rotate(90deg)}
+    .step-body{display:none;padding:4px 16px 16px 55px}
+    .step-body.open{display:block}
+
+    /* ── Content inside steps ── */
+    .sec{margin-top:12px}
+    .sec-lbl{font-size:10px;font-weight:700;color:#4338ca;letter-spacing:.08em;text-transform:uppercase;margin-bottom:5px;display:flex;align-items:center;gap:6px}
+    .cp{font-size:10px;color:#334155;background:#0f0f18;border:1px solid #1e2035;padding:2px 9px;border-radius:4px;cursor:pointer;margin-left:auto;font-family:inherit}
+    .cp:hover{color:#64748b}
+    .cp.ok{color:#34d399}
+    pre.code{background:#040408;border:1px solid #161620;border-radius:6px;padding:10px 12px;font-family:'Cascadia Code','Fira Code',Consolas,monospace;font-size:11px;color:#cbd5e1;white-space:pre-wrap;word-break:break-word;max-height:300px;overflow-y:auto;line-height:1.6;margin:0}
+    table.kv{width:100%;border-collapse:collapse;background:#040408;border:1px solid #161620;border-radius:6px;overflow:hidden}
+    table.kv td{padding:5px 10px;font-size:12px;border-bottom:1px solid #161620;vertical-align:top}
+    table.kv td:first-child{color:#475569;font-weight:600;white-space:nowrap;width:130px}
+    table.kv td:last-child{color:#cbd5e1}
+    table.kv tr:last-child td{border-bottom:none}
+    .pills{display:flex;flex-wrap:wrap;gap:4px}
+    .pill{font-size:10px;padding:2px 8px;border-radius:20px;background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.2);color:#818cf8}
+    .src-card{background:#040408;border:1px solid #161620;border-radius:5px;padding:9px 11px;margin-bottom:6px}
+    .src-title{font-size:11px;font-weight:700;color:#818cf8;margin-bottom:2px}
+    .src-url{font-size:10px;color:#334155;margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .src-snip{font-size:11px;color:#94a3b8;line-height:1.5}
+    .src-tag{font-size:9px;color:#334155;margin-top:3px;font-style:italic}
+    .err-box{background:rgba(239,68,68,.05);border:1px solid rgba(239,68,68,.2);border-radius:5px;padding:9px 12px;color:#f87171;font-size:12px;line-height:1.5}
+    .skip-box{background:rgba(148,163,184,.04);border:1px solid #1e2035;border-radius:5px;padding:9px 12px;color:#475569;font-size:12px}
+  </style>
+</head>
+<body>
+  <div class="hdr">
+    <div class="hdr-left">
+      <h1>CoverCraft <span>Dashboard</span></h1>
+      <p>Every scrape, extraction, research and generation logged here in real time</p>
+    </div>
+    <div class="toolbar">
+      <button class="btn" id="refresh-btn">↻ Refresh</button>
+      <button class="btn btn-green" id="export-btn">↓ Export Full Report (CSV)</button>
+      <button class="btn btn-red" id="clear-btn">🗑 Clear All</button>
+    </div>
+  </div>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="all">All Activity</button>
+    <button class="tab" data-tab="pipeline">Pipelines</button>
+    <button class="tab" data-tab="extract">Extractions</button>
+  </div>
+
+  <div class="tab-panel active" id="tab-all"></div>
+  <div class="tab-panel" id="tab-pipeline"></div>
+  <div class="tab-panel" id="tab-extract"></div>
+
+  <script src="dashboard.js"></script>
+</body>
+</html>
