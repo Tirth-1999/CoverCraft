@@ -1,10 +1,13 @@
 // CoverCraft Background Service Worker v2
 // Clean rebuild — no dead code
 
+// Load local API keys (src/config.js is gitignored; copy from src/config.example.js)
+importScripts('../config.js');
+
 // ─── Default keys & model (overridden by settings) ───────────────────────────
 var DEFAULTS = {
-  openrouterKey: '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',
-  tavilyKey:     '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',
+  openrouterKey: COVERCRAFT_CONFIG.openrouterKey,
+  tavilyKey:     COVERCRAFT_CONFIG.tavilyKey,
   model:         'openrouter/free'
 };
 

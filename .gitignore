@@ -1,0 +1,24 @@
+# ─── API Keys (NEVER commit this file) ───────────────────────────────────────
+src/config.js
+
+# ─── OS & editor files ────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+.idea/
+.vscode/
+*.sublime-workspace
+*.suo
+*.user
+
+# ─── Node (if you ever add a build step) ─────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-error.log
+
+# ─── Build/dist artifacts ─────────────────────────────────────────────────────
+dist/
+build/
+*.zip
+*.crx

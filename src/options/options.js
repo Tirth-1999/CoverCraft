@@ -1,6 +1,6 @@
-// ─── Default values (baked-in keys as fallback) ───────────────────────────────
-var DEFAULT_OR_KEY  = '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';
-var DEFAULT_TV_KEY  = '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';
+// ─── Default values (loaded from src/config.js via options.html) ─────────────
+var DEFAULT_OR_KEY  = (typeof COVERCRAFT_CONFIG !== 'undefined') ? COVERCRAFT_CONFIG.openrouterKey : '';
+var DEFAULT_TV_KEY  = (typeof COVERCRAFT_CONFIG !== 'undefined') ? COVERCRAFT_CONFIG.tavilyKey     : '';
 var DEFAULT_MODEL   = 'openrouter/free';
 
 // ─── Load saved settings on open ─────────────────────────────────────────────
