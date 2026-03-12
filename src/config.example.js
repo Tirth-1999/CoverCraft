@@ -9,6 +9,6 @@
 //   Tavily     → https://app.tavily.com       (1,000 free searches/month)
 
 var COVERCRAFT_CONFIG = {
-  openrouterKey: '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',
-  tavilyKey:     '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'
+  openrouterKey: 'sk-or-v1-REPLACE_WITH_YOUR_OPENROUTER_KEY',
+  tavilyKey:     'tvly-dev-REPLACE_WITH_YOUR_TAVILY_KEY'
 };
