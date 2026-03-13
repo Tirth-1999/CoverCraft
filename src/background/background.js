@@ -444,7 +444,13 @@ async function runPipeline(payload, sendResponse) {
   appendLog(log);
   sendResponse({
     coverLetter: log.output,
-    extracted:   log.step2 && log.step2.parsed
+    extracted:   log.step2 && log.step2.parsed,
+    owner: {
+      name:    PORTFOLIO.name    || '',
+      phone:   PORTFOLIO.phone   || '',
+      email:   PORTFOLIO.email   || '',
+      website: PORTFOLIO.website || ''
+    }
   });
 }
 
@@ -471,7 +477,13 @@ function stripFormatting(text) {
   var ownerName = (typeof PORTFOLIO !== 'undefined' && PORTFOLIO.name) ? PORTFOLIO.name : '';
   if (ownerName) {
     var nameEsc = ownerName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    s = s.replace(new RegExp('(Sincerely[,.]?\\s*\\n\\s*' + nameEsc + ')[\\s\\S]*', 'i'), '$1');
+    // Match "Sincerely," followed by 1-2 newlines then the name, strip anything after
+    s = s.replace(new RegExp('(Sincerely[,.]?\\s*\\n{1,2}\\s*' + nameEsc + ')[\\s\\S]*', 'i'), '$1');
+  }
+
+  // Ensure sign-off is present — if the model omitted it, append it
+  if (ownerName && !/Sincerely/i.test(s)) {
+    s = s.trim() + '\n\nSincerely,\n' + ownerName;
   }
 
   return s.trim();
