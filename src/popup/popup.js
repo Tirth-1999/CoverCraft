@@ -3,9 +3,16 @@
     document.getElementById('status').textContent = msg;
   }
 
-  // Load model name
+  // Load model name — with timeout fallback in case storage is slow
+  var badgeTimeout = setTimeout(function() {
+    var badge = document.getElementById('model-badge');
+    if (badge && badge.textContent === 'Loading...') {
+      badge.textContent = '\u2B21 arcee-ai/trinity-large-preview:free';
+    }
+  }, 2000);
   chrome.storage.sync.get(['model'], function(d) {
-    var m = d.model || 'openrouter/free';
+    clearTimeout(badgeTimeout);
+    var m = (chrome.runtime.lastError ? null : d.model) || 'arcee-ai/trinity-large-preview:free';
     document.getElementById('model-badge').textContent = '\u2B21 ' + m;
   });
 

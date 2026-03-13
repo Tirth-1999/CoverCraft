@@ -97,12 +97,13 @@
   function buildXLSX(sheets) {
     var files = [];
 
-    // [Content_Types].xml
+    // [Content_Types].xml — includes styles part for full Excel compatibility
     var cts = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
       + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
       + '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
       + '<Default Extension="xml" ContentType="application/xml"/>'
       + '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+      + '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
       + sheets.map(function(_,i) {
           return '<Override PartName="/xl/worksheets/sheet'+(i+1)+'.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>';
         }).join('')
@@ -117,14 +118,27 @@
       + '</Relationships>'
     )});
 
-    // xl/_rels/workbook.xml.rels
+    // xl/_rels/workbook.xml.rels — includes styles relationship
     files.push({ name: 'xl/_rels/workbook.xml.rels', data: strBytes(
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
       + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+      + '<Relationship Id="rId0" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
       + sheets.map(function(_,i) {
           return '<Relationship Id="rId'+(i+1)+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet'+(i+1)+'.xml"/>';
         }).join('')
       + '</Relationships>'
+    )});
+
+    // xl/styles.xml — minimal but valid; required to suppress Excel format warnings
+    files.push({ name: 'xl/styles.xml', data: strBytes(
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+      + '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+      + '<fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>'
+      + '<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>'
+      + '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
+      + '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+      + '<cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs>'
+      + '</styleSheet>'
     )});
 
     // xl/workbook.xml

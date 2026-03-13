@@ -8,7 +8,7 @@ importScripts('../config.js');
 var DEFAULTS = {
   openrouterKey: COVERCRAFT_CONFIG.openrouterKey,
   tavilyKey:     COVERCRAFT_CONFIG.tavilyKey,
-  model:         'openrouter/free'
+  model:         'arcee-ai/trinity-large-preview:free'
 };
 
 // Runtime config — loaded from chrome.storage.sync
@@ -233,7 +233,7 @@ async function aiChat(systemMsg, userMsg, temperature, maxTokens) {
     var e = await resp.json().catch(function() { return {}; });
     throw new Error((e.error && e.error.message) || ('OpenRouter HTTP ' + resp.status));
   }
-  var d = await resp.json();
+  var d = await resp.json().catch(function() { throw new Error('Empty or invalid response from OpenRouter'); });
   return {
     content: (d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) || '',
     model:   d.model || CFG.model
@@ -460,11 +460,19 @@ async function runPipeline(payload, sendResponse) {
     var sysGen = buildSystemPrompt(payload.coverLetterType || 'formal');
     var usrGen = buildUserPrompt({ extracted: extracted, rawPageText: payload.rawPageText, companyResearch: tvResult.summary, style: payload.coverLetterType || 'formal' });
 
-    var genResp    = await aiChat(sysGen, usrGen, 0.72, 1400);
-    var coverLetter = stripFormatting(genResp.content.trim());
+    // Retry up to 3 times if model returns an empty response (common with free-tier models)
+    var genResp, coverLetter, genAttempts = 0;
+    do {
+      genAttempts++;
+      genResp    = await aiChat(sysGen, usrGen, 0.72, 2200);
+      coverLetter = stripFormatting(genResp.content.trim());
+      if (!coverLetter && genAttempts < 3) {
+        await new Promise(function(r) { setTimeout(r, 1500); });
+      }
+    } while (!coverLetter && genAttempts < 3);
 
     if (!coverLetter) {
-      throw new Error('AI returned an empty response. Try a different model or click Generate again.');
+      throw new Error('AI returned an empty response after ' + genAttempts + ' attempts. Try a different model or click Generate again.');
     }
 
     log.step4 = {
@@ -476,6 +484,7 @@ async function runPipeline(payload, sendResponse) {
       inputChars:   sysGen.length + usrGen.length,
       outputChars:  coverLetter.length,
       outputWords:  coverLetter.trim().split(/\s+/).length,
+      genAttempts:  genAttempts,
       status:       'ok'
     };
 
@@ -497,7 +506,7 @@ async function runPipeline(payload, sendResponse) {
 
 // ─── Markdown / formatting stripper ──────────────────────────────────────────
 function stripFormatting(text) {
-  return text
+  var s = text
     .replace(/\*\*([^*]+)\*\*/g, '$1')  // remove bold
     .replace(/\*([^*]+)\*/g, '$1')       // remove italic
     .replace(/^#{1,6}\s+/gm, '')         // remove markdown headers
@@ -509,6 +518,15 @@ function stripFormatting(text) {
     .replace(/\r\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+
+  // Strip any preamble block before "Dear" (AI sometimes adds address/date header)
+  var dearIdx = s.search(/\bDear\b/i);
+  if (dearIdx > 0) s = s.slice(dearIdx).trim();
+
+  // Strip any contact info or extra content after "Tirth Shah" in the sign-off
+  s = s.replace(/(Sincerely[,.]?\s*\n\s*Tirth(?:\s+H\.?\s*Shah|\s+Shah)?)[\s\S]*/i, '$1');
+
+  return s.trim();
 }
 
 // ─── Cover letter prompts ─────────────────────────────────────────────────────
@@ -524,70 +542,83 @@ function buildSystemPrompt(style) {
     '• First line must be exactly "Dear Hiring Manager," — NO date line, NO address block, NO recipient block before it.',
     '• Write in first person (I / my / me) throughout. Never write the applicant name in the body.',
     '• Prose paragraphs only — no bullet lists, no dash lists, no colon-introduced lists.',
-    '• Keep body to 4–5 paragraphs, 320–400 words total (sign-off not counted).',
+    '• HARD MINIMUM: 450 words in the letter body (sign-off excluded). HARD MAXIMUM: 560 words. Count your words before finishing. If you are under 450 words, you MUST expand each paragraph with more context, specifics, and reasoning until you reach 450. Do not stop early.',
+    '• Every paragraph must be substantive — no filler, no repetition, no hollow praise.',
     '',
     '━━━ EXPERIENCE INTEGRITY ━━━',
-    '• The PORTFOLIO has distinct experience entries, each with a "company" name and "highlights" array.',
-    '• NEVER combine, blend, or transplant facts across different entries. A metric from Texas A&M Utilities cannot appear in a sentence about Tata Consultancy Services. One claim = one source entry.',
-    '• If a specific experience is not relevant to the role, skip it or pick a different highlight from the SAME entry. Never force relevance by merging.',
-    '• Quote metrics verbatim from the portfolio. Never invent numbers, round up, or add date ranges to job descriptions.',
+    '• The PORTFOLIO has distinct experience entries, each with a unique "company" name and its own "highlights" array.',
+    '• CRITICAL RULE — ONE SENTENCE = ONE SOURCE. Every factual claim must trace back to exactly one PORTFOLIO experience entry. If you cannot trace a sentence to a single specific entry, cut it.',
+    '• NEVER combine, blend, or transplant highlights across entries. Do NOT mix metrics from two different companies in the same sentence or clause. Do NOT imply that work done at Company A was done at or during Company B.',
+    '• Before writing each paragraph, decide which single PORTFOLIO entry it covers. Every sentence in that paragraph must use only the highlights from THAT entry. If you need a second experience, start a new paragraph.',
+    '• If an experience is irrelevant to the role, skip it entirely. Do not force relevance by merging it with another entry. Pick the next most-relevant entry instead.',
+    '• Quote metrics verbatim from the portfolio: exact numbers, exact percentages, exact timeframes. Never round up, extrapolate, or rephrase a number.',
     '',
     '━━━ HUMAN VOICE — BANNED WORDS & PATTERNS ━━━',
-    '• NEVER use: orchestrated, leveraged (as buzzword), spearheaded, facilitated (when meaning "helped"), utilized (use "used"), paramount, multifaceted, synergy, holistic, transformative, seamlessly, best-in-class, cutting-edge (as filler), passionate about, fast-paced environment, detail-oriented, team player, game-changer, game changer, stakeholders (use "the team" or specific people), robust (as filler).',
-    '• NEVER use em-dashes (—). Use a comma, period, or semicolon instead.',
+    '• NEVER use any of these words or phrases: orchestrated, leveraged (as buzzword), spearheaded, facilitated (when meaning "helped"), utilized (say "used"), paramount, multifaceted, synergy, holistic, transformative, seamlessly, best-in-class, cutting-edge (as filler), passionate about, fast-paced environment, detail-oriented, team player, game-changer, stakeholders (say "the team" or be specific), robust (as filler), honed, garnered, adept at, versed in, proven track record, results-driven, self-motivated, dynamic (as empty adjective), innovative (as empty filler), I am excited to, I am thrilled to, I am eager to, deep dive, value-add, impactful, mission-driven (unless quoting the company), touch base, hard-working.',
+    '• NEVER use em-dashes (—) or en-dashes (–). Use a comma, period, or semicolon instead.',
     '• NEVER use Oxford-comma lists of four or more items in a row.',
-    '• Write like a confident, smart person talking naturally about their own work. Vary sentence length. Use active voice. Short sentences are fine — even preferred — when they land a point.',
-    '• Do NOT sound like a corporate AI tool or a recruiting template.',
+    '• Do NOT start every sentence with "I". Vary openers: lead with the action, the number, or the outcome.',
+    '• Contractions are welcome ("I\'ve built", "it\'s been", "they don\'t") — they sound natural and human.',
+    '• One or two short punchy sentences per paragraph (under 12 words) are encouraged — they add rhythm and confidence.',
+    '• Write like a confident engineer or analyst talking casually but precisely to a smart colleague. No corporate-speak, no template phrases, no hollow adjectives.',
+    '• Do NOT sound like a large-language model, a recruiting AI, or a resume template service.',
     '',
     '━━━ SIGN-OFF ━━━',
     '• The final sign-off must be EXACTLY these two lines, nothing more:\n  Sincerely,\n  Tirth Shah',
+    '• After "Tirth Shah" there must be NOTHING — no phone number, no email, no website, no extra lines, no "P.S.".',
+    '• Do NOT include any address block, date, or header block before "Dear". The letter starts immediately with "Dear Hiring Manager,".',
     ''
   ].join('\n');
 
   var structures = {
     formal: [
       '━━━ STRUCTURE (FORMAL & POLISHED) ━━━',
-      'Para 1 (~80 words): Open "I am delighted to apply for the [ROLE] at [COMPANY]." Mention MS-MIS at Texas A&M. Tie 2 relevant skills directly to the role.',
-      'Para 2 (~90 words): Lead with the most relevant experience entry. Use 2-3 hard metrics from that SAME entry. Connect directly to 1-2 listed responsibilities.',
-      'Para 3 (~80 words): A second distinct experience or project — different tools or domain from Para 2. At least one metric from that SAME entry.',
-      'Para 4 (~60 words): Use company research to show specific admiration for mission, product, or culture. Connect to a personal reason.',
-      'Para 5 (~40 words): Thank the reader, express eagerness for a conversation. Avoid "I look forward to hearing from you."'
+      'Para 1 (MIN 90 words): Open "I am applying for the [ROLE] at [COMPANY]." State your MS-MIS at Texas A&M and the most relevant top-line strength. Tie it directly to 2 things in the job description.',
+      'Para 2 (MIN 110 words): Most relevant experience entry. Use 2-3 hard metrics from THAT SAME entry. Describe the problem, what you built, and what changed. Connect explicitly to 1-2 listed responsibilities.',
+      'Para 3 (MIN 100 words): A second distinct experience entry — different domain or toolset. Minimum 2 metrics from THAT entry only. Show depth not covered by Para 2.',
+      'Para 4 (MIN 75 words): A third proof point or a skill/project that fills a specific gap in the job requirements. Can be from education, a side project, or a certification if no third experience applies.',
+      'Para 5 (MIN 60 words): Use company research to show genuine, specific interest in their mission, product, or team. One concrete detail, not generic praise.',
+      'Para 6 (MIN 40 words): Thank the reader. Express that you want a conversation. No hollow phrases like "I look forward to hearing from you."'
     ].join('\n'),
 
     storytelling: [
       '━━━ STRUCTURE (STORY-DRIVEN) ━━━',
-      'Para 1 (~80 words): Open with a real, specific moment or challenge from the portfolio. Pivot naturally to the role.',
-      'Para 2 (~90 words): Narrative arc — what was built, what got hard, what the metric outcome was. Story, not a list.',
-      'Para 3 (~80 words): Second story beat from a different experience entry. At least one metric.',
-      'Para 4 (~60 words): Why THIS company specifically. Use research. Personal and concrete, not generic praise.',
-      'Para 5 (~40 words): Energetic close that sounds like an invitation to talk.'
+      'Para 1 (MIN 90 words): Open with a real, specific moment or problem from the portfolio. Make it vivid. Pivot naturally to why this role is the next chapter.',
+      'Para 2 (MIN 110 words): The main story arc — what the challenge was, what you built or changed, the specific outcome in numbers. From a single PORTFOLIO entry.',
+      'Para 3 (MIN 100 words): Second story beat from a completely different experience entry. Different stakes, different tools, same standard of evidence.',
+      'Para 4 (MIN 75 words): Third concrete example or skill that closes a remaining gap in the job requirements.',
+      'Para 5 (MIN 60 words): Why THIS company, at this moment. Use research. One or two sentences that could only be written about this specific company.',
+      'Para 6 (MIN 40 words): Energetic, human close that sounds like an invitation to talk.'
     ].join('\n'),
 
     achievement: [
       '━━━ STRUCTURE (ACHIEVEMENT-LED) ━━━',
-      'Para 1 (~70 words): Open with 2 quantified wins from different experience entries. End with applying for the role.',
-      'Para 2 (~90 words): Primary experience. Every sentence has a metric. Pattern: assertion → number → business outcome.',
-      'Para 3 (~80 words): Second experience or project. Different role, still metric-heavy. All facts from one entry.',
-      'Para 4 (~60 words): Company fit, research-backed, specific.',
-      'Para 5 (~40 words): Confident, direct close.'
+      'Para 1 (MIN 80 words): Open with 2 quantified wins from different PORTFOLIO entries. State the role you\'re applying for.',
+      'Para 2 (MIN 110 words): Primary experience. Every sentence must have a metric. Pattern: action → number → business impact. All from one entry.',
+      'Para 3 (MIN 100 words): Second experience. Different domain, same evidence standard. Minimum 2 metrics from that entry.',
+      'Para 4 (MIN 75 words): Third proof point, certifications, or academic project directly tied to a specific job requirement.',
+      'Para 5 (MIN 60 words): Company fit paragraph — specific and research-backed.',
+      'Para 6 (MIN 40 words): Confident, direct close.'
     ].join('\n'),
 
     concise: [
       '━━━ STRUCTURE (CONCISE & PUNCHY) ━━━',
-      'Exactly 4 paragraphs. Total body 220-260 words.',
-      'Para 1 (~50 words): One opening sentence, one credential, one sentence on fit.',
-      'Para 2 (~65 words): Best experience. One metric per sentence.',
-      'Para 3 (~60 words): Second experience or project. One metric.',
-      'Para 4 (~50 words): Company admiration + close in one tight paragraph.'
+      'Exactly 5 paragraphs. Total body 450-500 words.',
+      'Para 1 (MIN 70 words): One strong opener, credential, direct fit statement.',
+      'Para 2 (MIN 100 words): Best experience. Every sentence has a metric. One entry only.',
+      'Para 3 (MIN 90 words): Second experience. One entry only. Minimum 2 metrics.',
+      'Para 4 (MIN 70 words): Third proof or skill that closes a specific job requirement gap.',
+      'Para 5 (MIN 60 words): Company admiration (specific) + close in one tight paragraph.'
     ].join('\n'),
 
     startup: [
       '━━━ STRUCTURE (STARTUP ENERGY) ━━━',
-      'Para 1 (~80 words): Lead with building BlackTieCars solo — $10K+ revenue, 3x growth, 3 months. Pivot to applying for the role.',
-      'Para 2 (~85 words): Most relevant experience. Direct language: "built", "shipped", "owned", "cut X by Y%". Metrics from that same entry.',
-      'Para 3 (~80 words): Second proof point from a different entry. Fast-execution framing.',
-      'Para 4 (~65 words): Why this company, at this stage. Reference their product or problem. Specific.',
-      'Para 5 (~40 words): Short, decisive close.'
+      'Para 1 (MIN 90 words): Lead with building BlackTieCars solo — $10K+ revenue, 3x growth, 3 months. Pivot to the role.',
+      'Para 2 (MIN 110 words): Most relevant experience. Direct language: "built", "shipped", "cut X by Y%". At least 2 metrics from that same entry.',
+      'Para 3 (MIN 100 words): Second proof point from a completely different entry. Show breadth and speed of execution.',
+      'Para 4 (MIN 70 words): Third angle — a specific technical skill or project that matches something in the job requirements.',
+      'Para 5 (MIN 60 words): Why this company, at this stage. Reference their actual product or problem. No generic praise.',
+      'Para 6 (MIN 40 words): Short, decisive close.'
     ].join('\n')
   };
 

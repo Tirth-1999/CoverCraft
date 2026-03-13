@@ -114,11 +114,22 @@
             '</div>',
           '</div>',
 
-          // Model selector
+          // Output section (shown after generation)
+          '<div id="cc-output-wrap" style="display:none">',
+            '<label class="cc-lbl">Your Cover Letter</label>',
+            '<textarea id="cc-output" class="cc-output" rows="12" readonly></textarea>',
+            '<div class="cc-action-row">',
+            '<button id="cc-copy-btn" class="cc-sm-btn cc-copy-btn">⎘ Copy</button>',
+            '<button id="cc-pdf-btn" class="cc-sm-btn" style="flex:1;text-align:center;background:rgba(16,185,129,0.1);border-color:rgba(16,185,129,0.2);color:#34d399">⬇ Download PDF</button>',
+          '</div>',
+          '</div>',
+
+          // Model + style always visible above generate button
           '<div class="cc-field">',
             '<label class="cc-lbl">AI Model</label>',
             '<select id="cc-model-select" class="cc-select">',
               '<option value="openrouter/free">Free (Gemini Flash / DeepSeek — no cost)</option>',
+              '<option value="arcee-ai/trinity-large-preview:free" selected>Arcee Trinity Large (free — fast, great writing)</option>',
               '<option value="openrouter/auto">Auto (best model — may cost)</option>',
               '<option value="google/gemini-2.0-flash-001">Gemini 2.0 Flash (free)</option>',
               '<option value="deepseek/deepseek-r1:free">DeepSeek R1 (free)</option>',
@@ -126,7 +137,6 @@
             '</select>',
           '</div>',
 
-          // Style selector
           '<div class="cc-field">',
             '<label class="cc-lbl">Cover Letter Style</label>',
             '<select id="cc-style-select" class="cc-select">',
@@ -141,16 +151,6 @@
           // Status + generate button
           '<div id="cc-status" class="cc-status"></div>',
           '<button id="cc-generate-btn" class="cc-btn-primary" disabled>Generate Cover Letter</button>',
-
-          // Output section
-          '<div id="cc-output-wrap" style="display:none">',
-            '<label class="cc-lbl">Your Cover Letter</label>',
-            '<textarea id="cc-output" class="cc-output" rows="12" readonly></textarea>',
-            '<div class="cc-action-row">',
-            '<button id="cc-copy-btn" class="cc-sm-btn cc-copy-btn">⎘ Copy</button>',
-            '<button id="cc-pdf-btn" class="cc-sm-btn" style="flex:1;text-align:center;background:rgba(16,185,129,0.1);border-color:rgba(16,185,129,0.2);color:#34d399">⬇ Download PDF</button>',
-          '</div>',
-          '</div>',
 
         '<div id="cc-footer">',
           '<button class="cc-foot-btn" id="cc-foot-dash">📊 Dashboard</button>',
@@ -182,10 +182,10 @@
       '.cc-sm-btn{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:#94a3b8;padding:4px 10px;font-size:11px;cursor:pointer;font-family:inherit;white-space:nowrap}',
       '.cc-sm-btn:hover{background:rgba(255,255,255,0.1);color:#e2e8f0}',
       '.cc-copy-btn,.cc-pdf-btn-inner{flex:1;text-align:center}',
-      '.cc-row2{display:flex;flex-direction:column;gap:8px}',
-      '.cc-field{display:flex;flex-direction:column;gap:4px}',
+      '.cc-row2{display:flex;flex-direction:column;gap:8px;width:100%}',
+      '.cc-field{display:flex;flex-direction:column;gap:4px;min-width:0;overflow:hidden}',
       '.cc-lbl{font-size:10.5px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.05em}',
-      '.cc-input,.cc-select{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:7px;color:#e2e8f0;padding:7px 10px;font-size:12px;font-family:inherit;outline:none;width:100%;box-sizing:border-box;min-width:0;transition:border-color .15s}',
+      '.cc-input,.cc-select{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:7px;color:#e2e8f0;padding:7px 10px;font-size:12px;font-family:inherit;outline:none;width:100%;max-width:100%;box-sizing:border-box;min-width:0;transition:border-color .15s}',
       '.cc-input:focus,.cc-select:focus{border-color:rgba(99,102,241,0.5)}',
       '.cc-select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'10\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%236366f1\' stroke-width=\'2.5\'%3E%3Cpath d=\'m6 9 6 6 6-6\'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;padding-right:28px;cursor:pointer}',
       '.cc-select option{background:#0d0d18}',
@@ -196,7 +196,7 @@
       '.cc-btn-primary:disabled{opacity:0.45;cursor:not-allowed}',
       '#cc-output-wrap{display:flex;flex-direction:column;gap:6px}',
       '.cc-action-row{display:flex;gap:6px}',
-      '.cc-output{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:7px;color:#cbd5e1;padding:10px;font-size:12px;font-family:inherit;resize:vertical;line-height:1.6}',
+      '.cc-output{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:7px;color:#cbd5e1;padding:10px;font-size:12px;font-family:inherit;resize:vertical;line-height:1.6;width:100%;max-width:100%;box-sizing:border-box}',
       '#cc-footer{display:flex;gap:6px;padding:10px 14px;border-top:1px solid #1e1e30;background:#11111e}',
       '.cc-foot-btn{flex:1;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:6px;color:#475569;font-size:10px;font-weight:600;cursor:pointer;padding:6px 4px;font-family:inherit;text-align:center;transition:all .13s}',
       '.cc-foot-btn:hover{background:rgba(99,102,241,0.1);border-color:rgba(99,102,241,0.2);color:#818cf8}'
@@ -426,85 +426,162 @@
 
   // ─── Direct PDF blob download (no new tab, no print dialog) ─────────────────
   function downloadCoverLetterPDF(text, jobTitle, company) {
-    var W = 612, H = 792, mL = 54, mR = 54, mT = 50;
-    var textW = W - mL - mR;
-    var bodyFS = 11, bodyLH = 17;
-    var smallFS = 8.5, smallLH = 13;
+    var W = 612, H = 792, mL = 54, mR = 54;
+    var textW = W - mL - mR;    // 504pt usable width
+    var bodyFS = 12, bodyLH = 19;
+    var smallFS = 9;
+    var nameFS  = 20;
 
+    // Escape PDF string special chars; strip non-ASCII
     function pe(s) {
       return String(s || '')
-        .replace(/\u2014/g, '-').replace(/\u2013/g, '-')
+        .replace(/\u2014/g, ',').replace(/\u2013/g, '-')
         .replace(/[\u201C\u201D]/g, '"').replace(/[\u2018\u2019]/g, "'")
         .replace(/[^\x20-\x7E]/g, '')
         .replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
     }
 
-    function tw(str, size) { return str.length * 0.52 * size; }
+    // Times-Roman character advance widths from Adobe AFM (units: 1/1000 em)
+    // Most common characters mapped explicitly; everything else falls back.
+    var AFM = {
+      ' ':250, '!':333, '"':408, '#':500, '$':500, '%':833, '&':778, "'":333,
+      '(':333, ')':333, '*':500, '+':564, ',':250, '-':333, '.':250, '/':278,
+      '0':500, '1':500, '2':500, '3':500, '4':500, '5':500, '6':500, '7':500,
+      '8':500, '9':500, ':':278, ';':278, '<':564, '=':564, '>':564, '?':444,
+      '@':921, 'A':722, 'B':667, 'C':667, 'D':722, 'E':611, 'F':556, 'G':722,
+      'H':722, 'I':333, 'J':389, 'K':722, 'L':611, 'M':889, 'N':722, 'O':722,
+      'P':556, 'Q':722, 'R':667, 'S':556, 'T':611, 'U':722, 'V':722, 'W':944,
+      'X':722, 'Y':722, 'Z':611,
+      'a':444, 'b':500, 'c':444, 'd':500, 'e':444, 'f':333, 'g':500, 'h':500,
+      'i':278, 'j':278, 'k':500, 'l':278, 'm':778, 'n':500, 'o':500, 'p':500,
+      'q':500, 'r':333, 's':389, 't':278, 'u':500, 'v':500, 'w':722, 'x':500,
+      'y':500, 'z':444
+    };
+    function charW(c, sz) {
+      var u = AFM[c];
+      return (u !== undefined ? u : 500) * sz / 1000;
+    }
+    function tw(s, sz) {
+      var w = 0;
+      for (var i = 0; i < s.length; i++) w += charW(s[i], sz);
+      return w;
+    }
 
-    function wrap(text, maxPt, size) {
-      var words = text.split(/\s+/), lines = [], cur = '';
+    // Word-wrap: 98% safety margin (AFM widths are exact so we only need tiny buffer)
+    function wrap(seg, maxW, size) {
+      var safeW = maxW * 0.98;
+      var words = (seg || '').trim().split(/\s+/), lines = [], cur = '';
       words.forEach(function(w) {
         if (!cur) { cur = w; return; }
-        if (tw(cur + ' ' + w, size) <= maxPt) { cur += ' ' + w; }
+        var test = cur + ' ' + w;
+        if (tw(test, size) <= safeW) { cur = test; }
         else { lines.push(cur); cur = w; }
       });
       if (cur) lines.push(cur);
       return lines.length ? lines : [''];
     }
 
-    var ops = [], y = H - mT;
+    var ops = [], y = H - 50;  // y=742 top of content
 
-    y -= 20;
-    ops.push('BT /F2 17 Tf 1 0 0 1 ' + mL + ' ' + y + ' Tm (Tirth Shah) Tj ET');
+    // ── TWO-COLUMN HEADER ────────────────────────────────────────────────────
+    // Left: "Tirth Shah" in large bold font
+    ops.push('BT /F2 ' + nameFS + ' Tf 1 0 0 1 ' + mL + ' ' + y + ' Tm (Tirth Shah) Tj ET');
 
-    var c1 = '979-635-2045  |  tirthdhara108@gmail.com';
-    var c2 = 'Tirthcshah.com';
-    ops.push('BT /F1 ' + smallFS + ' Tf 1 0 0 1 ' + (W - mR - tw(c1, smallFS)).toFixed(1) + ' ' + y + ' Tm (' + pe(c1) + ') Tj ET');
-    var websiteY = y - smallLH;
-    var websiteX = W - mR - tw(c2, smallFS);
-    ops.push('BT /F1 ' + smallFS + ' Tf 1 0 0 1 ' + websiteX.toFixed(1) + ' ' + websiteY + ' Tm (' + pe(c2) + ') Tj ET');
+    // Right: contact info smaller, right-aligned on the same baseline
+    var phone = '979-635-2045';
+    var email = 'tirthdhara108@gmail.com';
+    var web   = 'Tirthcshah.com';
+    var sep      = '   |   ';   // wide separator between phone and email
+    var sepLast  = '   |';      // no trailing space before the blue website link
+    var contactFull = phone + sep + email + sepLast + web;
+    var contactBeforeWeb = phone + sep + email + sepLast;
+    var fullW  = tw(contactFull, smallFS);
+    var preW   = tw(contactBeforeWeb, smallFS);
+    var webStrW = tw(web, smallFS);
+    var contactStartX = W - mR - fullW;
+    // Snap to exact AFM boundary so no sub-pixel drift before the blue segment
+    var webStartX = contactStartX + preW;
 
-    y -= 8;
-    ops.push('0.5 w ' + mL + ' ' + y + ' m ' + (W - mR) + ' ' + y + ' l S');
-    y -= 14;
+    // Draw phone + email + separator (black), then website (blue) as one visual line
+    ops.push('BT /F1 ' + smallFS + ' Tf 1 0 0 1 ' + contactStartX.toFixed(2) + ' ' + y + ' Tm (' + pe(contactBeforeWeb) + ') Tj ET');
+    // Draw website in blue — starts exactly where the black text ended
+    ops.push('0 0.35 0.75 rg');
+    ops.push('BT /F1 ' + smallFS + ' Tf 1 0 0 1 ' + webStartX.toFixed(2) + ' ' + y + ' Tm (' + pe(web) + ') Tj ET');
+    ops.push('0 g');
 
-    var date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-    var meta = '';
-    if (jobTitle) meta += pe(jobTitle);
-    if (jobTitle && company) meta += ' - ' + pe(company);
-    else if (company) meta += pe(company);
-    meta += (meta ? '   ' : '') + pe(date);
-    ops.push('BT /F1 ' + smallFS + ' Tf 1 0 0 1 ' + mL + ' ' + y + ' Tm (' + meta + ') Tj ET');
-    y -= 20;
+    // ── Horizontal rule ──────────────────────────────────────────────────────
+    var ruleY = y - 12;
+    ops.push('0.5 w ' + mL + ' ' + ruleY + ' m ' + (W - mR) + ' ' + ruleY + ' l S');
 
+    // ── Date line ────────────────────────────────────────────────────────────
+    var dateY = ruleY - 15;
+    var date  = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    ops.push('BT /F1 ' + smallFS + ' Tf 1 0 0 1 ' + mL + ' ' + dateY + ' Tm (' + pe(date) + ') Tj ET');
+
+    // ── Body paragraphs — fully justified ───────────────────────────────────
+    y = dateY - (bodyLH + 8);
     text.split(/\n\n+/).map(function(p) { return p.trim(); }).filter(Boolean).forEach(function(para) {
-      var lines = wrap(para, textW, bodyFS);
+      if (y < 54) return;
+      // Honour hard \n within a block (handles sign-off "Sincerely,\nTirth Shah")
+      var segments = para.split('\n');
+      var allLines = [];
+      // Track whether each line is the last of its segment (never justify last lines)
+      var isLastFlags = [];
+      segments.forEach(function(seg) {
+        if (!seg.trim()) { allLines.push(''); isLastFlags.push(true); return; }
+        var wrapped = wrap(seg, textW, bodyFS);
+        wrapped.forEach(function(wl, wi) {
+          allLines.push(wl);
+          isLastFlags.push(wi === wrapped.length - 1);
+        });
+      });
       ops.push('BT /F1 ' + bodyFS + ' Tf 1 0 0 1 ' + mL + ' ' + y + ' Tm');
-      lines.forEach(function(line, i) {
+      allLines.forEach(function(line, i) {
         if (i > 0) ops.push('0 -' + bodyLH + ' Td');
+
+        var isLast     = isLastFlags[i];
+        var spaceCount = (line.match(/ /g) || []).length;
+        var charCount  = line.length;
+        var lineW      = tw(line, bodyFS);
+        var extra      = textW - lineW;
+
+        // Full justification using Tc (character spacing) + Tw (word spacing) combined.
+        // Tw = 2 × Tc so word boundaries carry more weight than inter-letter spacing.
+        // Formula: Tc × charCount + Tw × spaceCount = extra
+        //       => Tc × (charCount + 2 × spaceCount) = extra
+        // This guarantees every non-last line reaches the right margin regardless of
+        // how many spaces it contains — no fallback, no clamp.
+        if (!isLast && spaceCount > 0 && extra > 0) {
+          var Tc = extra / (charCount + 2 * spaceCount);
+          var Tw = 2 * Tc;
+          ops.push(Tc.toFixed(4) + ' Tc ' + Tw.toFixed(4) + ' Tw');
+        } else {
+          ops.push('0 Tc 0 Tw');
+        }
+
         ops.push('(' + pe(line) + ') Tj');
         y -= bodyLH;
       });
-      ops.push('ET');
-      y -= 8;
+      ops.push('0 Tc 0 Tw ET');  // always reset both spacing operators after each block
+      y -= 10;  // inter-paragraph gap
     });
 
     var stream = ops.join('\n');
 
+    // Hyperlink annotation for Tirthcshah.com (positioned at header right side)
+    var headerY = H - 50;  // same baseline used for the header
     var annot = '<< /Type /Annot /Subtype /Link'
-      + ' /Rect [' + Math.floor(websiteX) + ' ' + Math.floor(websiteY - 2) + ' ' + Math.ceil(W - mR) + ' ' + Math.ceil(websiteY + smallFS) + ']'
+      + ' /Rect [' + Math.floor(webStartX - 1) + ' ' + (headerY - 2) + ' ' + Math.ceil(webStartX + webStrW + 2) + ' ' + (headerY + smallFS + 1) + ']'
       + ' /Border [0 0 0]'
       + ' /A << /Type /Action /S /URI /URI (https://Tirthcshah.com) >> >>';
 
+    // ── Build PDF objects ────────────────────────────────────────────────────
     var pdf = '%PDF-1.4\n', off = {};
-    function obj(id, body) {
-      off[id] = pdf.length;
-      pdf += id + ' 0 obj\n' + body + '\nendobj\n';
-    }
+    function obj(id, body) { off[id] = pdf.length; pdf += id + ' 0 obj\n' + body + '\nendobj\n'; }
 
     obj(1, '<< /Length ' + stream.length + ' >>\nstream\n' + stream + '\nendstream');
-    obj(2, '<< /Type /Font /Subtype /Type1 /BaseFont /Times-Roman /Encoding /WinAnsiEncoding >>');
-    obj(3, '<< /Type /Font /Subtype /Type1 /BaseFont /Times-Bold /Encoding /WinAnsiEncoding >>');
+    obj(2, '<< /Type /Font /Subtype /Type1 /BaseFont /Times-Roman  /Encoding /WinAnsiEncoding >>');
+    obj(3, '<< /Type /Font /Subtype /Type1 /BaseFont /Times-Bold   /Encoding /WinAnsiEncoding >>');
     obj(4, annot);
     obj(5, '<< /Type /Page /Parent 6 0 R /MediaBox [0 0 ' + W + ' ' + H + '] /Contents 1 0 R /Annots [4 0 R] /Resources << /Font << /F1 2 0 R /F2 3 0 R >> >> >>');
     obj(6, '<< /Type /Pages /Kids [5 0 R] /Count 1 >>');
@@ -523,13 +600,10 @@
     var fname = ((jobTitle || 'Cover_Letter') + (company ? '_' + company : '') + '.pdf')
       .replace(/[^a-zA-Z0-9_.-]/g, '_').replace(/_+/g, '_');
     a.download = fname;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(function() { URL.revokeObjectURL(a.href); }, 10000);
     setStatus('PDF downloaded!', 'success');
   }
-
 
   // ─── Observer ────────────────────────────────────────────────────────────────
   if (detectSimplify()) {

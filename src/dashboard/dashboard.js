@@ -324,17 +324,22 @@ function renderStats() {
 
   var pipelines = allLogs.filter(function(l){return l.kind==='pipeline';});
   var extracts  = allLogs.filter(function(l){return l.kind==='extract';});
-  var companies = {};
+
+  // Deduplicate pipelines by role+company key
+  var seenApps = {}, companies = {};
   pipelines.forEach(function(l) {
-    var co = (l.step2&&l.step2.parsed&&l.step2.parsed.companyName) || '?';
+    var title = (l.step2&&l.step2.parsed&&l.step2.parsed.jobTitle)    || (l.step1&&l.step1.titleHint)   || '';
+    var co    = (l.step2&&l.step2.parsed&&l.step2.parsed.companyName) || (l.step1&&l.step1.companyHint)  || '?';
+    var key = title.trim().toLowerCase() + '|' + co.trim().toLowerCase();
+    seenApps[key] = 1;
     companies[co] = 1;
   });
 
   [
-    [allLogs.length,              'Total Events'],
-    [pipelines.length,            'Pipelines'],
-    [extracts.length,             'Extractions'],
-    [Object.keys(companies).length,'Companies']
+    [Object.keys(seenApps).length,    'Unique Apps'],
+    [pipelines.length,                'Total Runs'],
+    [extracts.length,                 'Extractions'],
+    [Object.keys(companies).length,   'Companies']
   ].forEach(function(item) {
     var s = mkEl('div','stat');
     s.appendChild(mkEl('div','stat-val',item[0]));
