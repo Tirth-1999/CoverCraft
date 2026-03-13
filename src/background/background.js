@@ -290,6 +290,8 @@ async function handleExtract(payload, sendResponse) {
 // ─── RUN_PIPELINE — full extract → tavily → generate ─────────────────────────
 async function runPipeline(payload, sendResponse) {
   await loadConfig();
+  // Use model from payload immediately (avoids first-run race with RELOAD_CONFIG)
+  if (payload.model) CFG.model = payload.model;
 
   var pipelineId = Date.now();
   var ts = new Date().toISOString();
@@ -459,7 +461,11 @@ async function runPipeline(payload, sendResponse) {
     var usrGen = buildUserPrompt({ extracted: extracted, rawPageText: payload.rawPageText, companyResearch: tvResult.summary, style: payload.coverLetterType || 'formal' });
 
     var genResp    = await aiChat(sysGen, usrGen, 0.72, 1400);
-    var coverLetter = genResp.content.trim();
+    var coverLetter = stripFormatting(genResp.content.trim());
+
+    if (!coverLetter) {
+      throw new Error('AI returned an empty response. Try a different model or click Generate again.');
+    }
 
     log.step4 = {
       timestamp:    new Date().toISOString(),
@@ -489,44 +495,118 @@ async function runPipeline(payload, sendResponse) {
   });
 }
 
+// ─── Markdown / formatting stripper ──────────────────────────────────────────
+function stripFormatting(text) {
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, '$1')  // remove bold
+    .replace(/\*([^*]+)\*/g, '$1')       // remove italic
+    .replace(/^#{1,6}\s+/gm, '')         // remove markdown headers
+    .replace(/^[-*•]\s+/gm, '')          // remove bullet lists
+    .replace(/\u2014/g, ',')             // em-dash → comma
+    .replace(/\u2013/g, '-')             // en-dash → hyphen
+    .replace(/[\u201C\u201D]/g, '"')     // smart double quotes → straight
+    .replace(/[\u2018\u2019]/g, "'")     // smart single quotes → straight
+    .replace(/\r\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 // ─── Cover letter prompts ─────────────────────────────────────────────────────
 function buildSystemPrompt(style) {
-  var styles = {
-    formal:       'STYLE: FORMAL AND POLISHED.\nStructure: Date → "Hiring Manager / [Company] / [City]" → "Dear Hiring Manager," → Para 1 (delighted to apply + MS-MIS + 2 skills) → Para 2 (Data Engineer role + tools + 2 metrics) → Para 3 (second experience + different tools + outcomes) → Para 4 (soft skills) → Para 5 (company admiration using research) → Para 6 (forward-looking close) → Sincerely sign-off.',
-    storytelling: 'STYLE: STORY-DRIVEN. Open with a defining moment. Arc: passion origin → challenge → solution → impact → why this company. Same formal envelope.',
-    achievement:  'STYLE: ACHIEVEMENT-LED. Para 1 opens with 2 quantified wins. Every paragraph has a metric. Format: assertion → proof metric → business impact.',
-    concise:      'STYLE: CONCISE. Max 250 words body. 4 paragraphs. One metric per paragraph. No filler.',
-    startup:      'STYLE: STARTUP ENERGY. Energetic voice. Reference BlackTieCars as founder-level proof. Emphasize speed, autonomy, 0-to-1 execution.'
-  };
-  return [
-    'You are writing a professional cover letter AS Tirth Shah in first person.',
-    'PORTFOLIO: ' + JSON.stringify(PORTFOLIO),
+  var COMMON = [
+    'You are writing a professional cover letter for a job applicant. Write entirely in FIRST PERSON.',
     '',
-    styles[style] || styles.formal,
+    'APPLICANT PORTFOLIO (use ONLY these facts — never invent or embellish numbers, dates, or achievements):',
+    JSON.stringify(PORTFOLIO),
     '',
-    'RULES:',
-    '- Output ONLY the letter. No labels, markdown, or commentary.',
-    '- Never invent metrics. Only use numbers from the portfolio.',
-    '- Always open: "I am delighted to apply for..."',
-    '- Always close: Sincerely,\nTirth Shah\n979-635-2045\nTirthcshah.com'
+    '━━━ NON-NEGOTIABLE RULES ━━━',
+    '• Output ONLY the letter text. Zero markdown, asterisks (*/**), bold, bullets, headers, or commentary.',
+    '• First line must be exactly "Dear Hiring Manager," — NO date line, NO address block, NO recipient block before it.',
+    '• Write in first person (I / my / me) throughout. Never write the applicant name in the body.',
+    '• Prose paragraphs only — no bullet lists, no dash lists, no colon-introduced lists.',
+    '• Keep body to 4–5 paragraphs, 320–400 words total (sign-off not counted).',
+    '',
+    '━━━ EXPERIENCE INTEGRITY ━━━',
+    '• The PORTFOLIO has distinct experience entries, each with a "company" name and "highlights" array.',
+    '• NEVER combine, blend, or transplant facts across different entries. A metric from Texas A&M Utilities cannot appear in a sentence about Tata Consultancy Services. One claim = one source entry.',
+    '• If a specific experience is not relevant to the role, skip it or pick a different highlight from the SAME entry. Never force relevance by merging.',
+    '• Quote metrics verbatim from the portfolio. Never invent numbers, round up, or add date ranges to job descriptions.',
+    '',
+    '━━━ HUMAN VOICE — BANNED WORDS & PATTERNS ━━━',
+    '• NEVER use: orchestrated, leveraged (as buzzword), spearheaded, facilitated (when meaning "helped"), utilized (use "used"), paramount, multifaceted, synergy, holistic, transformative, seamlessly, best-in-class, cutting-edge (as filler), passionate about, fast-paced environment, detail-oriented, team player, game-changer, game changer, stakeholders (use "the team" or specific people), robust (as filler).',
+    '• NEVER use em-dashes (—). Use a comma, period, or semicolon instead.',
+    '• NEVER use Oxford-comma lists of four or more items in a row.',
+    '• Write like a confident, smart person talking naturally about their own work. Vary sentence length. Use active voice. Short sentences are fine — even preferred — when they land a point.',
+    '• Do NOT sound like a corporate AI tool or a recruiting template.',
+    '',
+    '━━━ SIGN-OFF ━━━',
+    '• The final sign-off must be EXACTLY these two lines, nothing more:\n  Sincerely,\n  Tirth Shah',
+    ''
   ].join('\n');
+
+  var structures = {
+    formal: [
+      '━━━ STRUCTURE (FORMAL & POLISHED) ━━━',
+      'Para 1 (~80 words): Open "I am delighted to apply for the [ROLE] at [COMPANY]." Mention MS-MIS at Texas A&M. Tie 2 relevant skills directly to the role.',
+      'Para 2 (~90 words): Lead with the most relevant experience entry. Use 2-3 hard metrics from that SAME entry. Connect directly to 1-2 listed responsibilities.',
+      'Para 3 (~80 words): A second distinct experience or project — different tools or domain from Para 2. At least one metric from that SAME entry.',
+      'Para 4 (~60 words): Use company research to show specific admiration for mission, product, or culture. Connect to a personal reason.',
+      'Para 5 (~40 words): Thank the reader, express eagerness for a conversation. Avoid "I look forward to hearing from you."'
+    ].join('\n'),
+
+    storytelling: [
+      '━━━ STRUCTURE (STORY-DRIVEN) ━━━',
+      'Para 1 (~80 words): Open with a real, specific moment or challenge from the portfolio. Pivot naturally to the role.',
+      'Para 2 (~90 words): Narrative arc — what was built, what got hard, what the metric outcome was. Story, not a list.',
+      'Para 3 (~80 words): Second story beat from a different experience entry. At least one metric.',
+      'Para 4 (~60 words): Why THIS company specifically. Use research. Personal and concrete, not generic praise.',
+      'Para 5 (~40 words): Energetic close that sounds like an invitation to talk.'
+    ].join('\n'),
+
+    achievement: [
+      '━━━ STRUCTURE (ACHIEVEMENT-LED) ━━━',
+      'Para 1 (~70 words): Open with 2 quantified wins from different experience entries. End with applying for the role.',
+      'Para 2 (~90 words): Primary experience. Every sentence has a metric. Pattern: assertion → number → business outcome.',
+      'Para 3 (~80 words): Second experience or project. Different role, still metric-heavy. All facts from one entry.',
+      'Para 4 (~60 words): Company fit, research-backed, specific.',
+      'Para 5 (~40 words): Confident, direct close.'
+    ].join('\n'),
+
+    concise: [
+      '━━━ STRUCTURE (CONCISE & PUNCHY) ━━━',
+      'Exactly 4 paragraphs. Total body 220-260 words.',
+      'Para 1 (~50 words): One opening sentence, one credential, one sentence on fit.',
+      'Para 2 (~65 words): Best experience. One metric per sentence.',
+      'Para 3 (~60 words): Second experience or project. One metric.',
+      'Para 4 (~50 words): Company admiration + close in one tight paragraph.'
+    ].join('\n'),
+
+    startup: [
+      '━━━ STRUCTURE (STARTUP ENERGY) ━━━',
+      'Para 1 (~80 words): Lead with building BlackTieCars solo — $10K+ revenue, 3x growth, 3 months. Pivot to applying for the role.',
+      'Para 2 (~85 words): Most relevant experience. Direct language: "built", "shipped", "owned", "cut X by Y%". Metrics from that same entry.',
+      'Para 3 (~80 words): Second proof point from a different entry. Fast-execution framing.',
+      'Para 4 (~65 words): Why this company, at this stage. Reference their product or problem. Specific.',
+      'Para 5 (~40 words): Short, decisive close.'
+    ].join('\n')
+  };
+
+  return COMMON + (structures[style] || structures.formal);
 }
 
 function buildUserPrompt(p) {
-  var today = new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
   var ex = p.extracted || {};
   var lines = [
-    'Write a cover letter for Tirth Shah.',
-    'TODAY: ' + today,
+    'Write the cover letter now.',
     '',
     'JOB DETAILS:',
-    '- Title: '           + (ex.jobTitle       || 'infer from text'),
-    '- Company: '         + (ex.companyName     || 'infer from text'),
-    '- Location: '        + (ex.location        || 'not specified'),
-    '- Seniority: '       + (ex.seniorityLevel  || 'not specified'),
-    '- Keywords: '        + ((ex.keywords||[]).join(', ')           || 'see text'),
-    '- Responsibilities: '+ ((ex.responsibilities||[]).join(' | ')  || 'see text'),
-    '- Requirements: '    + ((ex.requirements||[]).join(' | ')      || 'see text')
+    '- Role: '             + (ex.jobTitle        || 'infer from posting'),
+    '- Company: '          + (ex.companyName      || 'infer from posting'),
+    '- Location: '         + (ex.location         || 'not specified'),
+    '- Seniority: '        + (ex.seniorityLevel   || 'not specified'),
+    '- Keywords: '         + ((ex.keywords         || []).join(', ') || 'see posting'),
+    '- Responsibilities: ' + ((ex.responsibilities || []).join(' | ') || 'see posting'),
+    '- Requirements: '     + ((ex.requirements     || []).join(' | ') || 'see posting')
   ];
   if (p.companyResearch) {
     lines.push('');
@@ -538,6 +618,7 @@ function buildUserPrompt(p) {
   lines.push('---');
   lines.push((p.rawPageText || '').slice(0, 3500));
   lines.push('---');
-  lines.push('Write the complete cover letter now.');
+  lines.push('');
+  lines.push('Begin immediately with "Dear Hiring Manager," — no date, no address block, no preamble.');
   return lines.join('\n');
 }

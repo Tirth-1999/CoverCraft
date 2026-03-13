@@ -182,10 +182,10 @@
       '.cc-sm-btn{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:#94a3b8;padding:4px 10px;font-size:11px;cursor:pointer;font-family:inherit;white-space:nowrap}',
       '.cc-sm-btn:hover{background:rgba(255,255,255,0.1);color:#e2e8f0}',
       '.cc-copy-btn,.cc-pdf-btn-inner{flex:1;text-align:center}',
-      '.cc-row2{display:grid;grid-template-columns:1fr 1fr;gap:8px;min-width:0}',
+      '.cc-row2{display:flex;flex-direction:column;gap:8px}',
       '.cc-field{display:flex;flex-direction:column;gap:4px}',
       '.cc-lbl{font-size:10.5px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.05em}',
-      '.cc-input,.cc-select{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:7px;color:#e2e8f0;padding:7px 10px;font-size:12px;font-family:inherit;outline:none;width:100%;min-width:0;transition:border-color .15s}',
+      '.cc-input,.cc-select{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:7px;color:#e2e8f0;padding:7px 10px;font-size:12px;font-family:inherit;outline:none;width:100%;box-sizing:border-box;min-width:0;transition:border-color .15s}',
       '.cc-input:focus,.cc-select:focus{border-color:rgba(99,102,241,0.5)}',
       '.cc-select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'10\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%236366f1\' stroke-width=\'2.5\'%3E%3Cpath d=\'m6 9 6 6 6-6\'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;padding-right:28px;cursor:pointer}',
       '.cc-select option{background:#0d0d18}',
@@ -351,46 +351,45 @@
       btn.disabled = true;
       setStatus('Step 1/3: Extracting job details...', 'loading');
 
-      // Update model in config before running
+      // Save model preference, then send pipeline directly with model in payload.
+      // (background.js uses payload.model immediately — no race with RELOAD_CONFIG)
       chrome.storage.sync.set({ model: model }, function() {
-        chrome.runtime.sendMessage({ type: 'RELOAD_CONFIG' }, function() {
-          // Progress status updates
-          var t1 = setTimeout(function() { setStatus('Step 2/3: Researching company...', 'loading'); }, 2000);
-          var t2 = setTimeout(function() { setStatus('Step 3/3: Writing cover letter...', 'loading'); }, 5000);
+        // Progress status updates
+        var t1 = setTimeout(function() { setStatus('Step 2/3: Researching company...', 'loading'); }, 2500);
+        var t2 = setTimeout(function() { setStatus('Step 3/3: Writing cover letter...', 'loading'); }, 6000);
 
-          chrome.runtime.sendMessage({
-            type: 'RUN_PIPELINE',
-            payload: { rawPageText: rawText, coverLetterType: style, titleHint: titleHint, companyHint: companyHint, pageUrl: window.location.href }
-          }, function(resp) {
-            clearTimeout(t1); clearTimeout(t2);
-            btn.disabled = false;
+        chrome.runtime.sendMessage({
+          type: 'RUN_PIPELINE',
+          payload: { rawPageText: rawText, coverLetterType: style, model: model, titleHint: titleHint, companyHint: companyHint, pageUrl: window.location.href }
+        }, function(resp) {
+          clearTimeout(t1); clearTimeout(t2);
+          btn.disabled = false;
 
-            if (chrome.runtime.lastError) { setStatus('Connection error — try again.', 'error'); return; }
-            if (!resp)                    { setStatus('No response from background.', 'error'); return; }
-            if (resp.error)               { setStatus('Error: ' + resp.error, 'error'); return; }
+          if (chrome.runtime.lastError) { setStatus('Connection error — try again.', 'error'); return; }
+          if (!resp)                    { setStatus('No response from background.', 'error'); return; }
+          if (resp.error)               { setStatus('Error: ' + resp.error, 'error'); return; }
 
-            var outputWrap = document.getElementById('cc-output-wrap');
-            var outputEl   = document.getElementById('cc-output');
-            if (outputEl) outputEl.value = resp.coverLetter || '';
-            if (outputWrap) outputWrap.style.display = 'flex';
+          var outputWrap = document.getElementById('cc-output-wrap');
+          var outputEl   = document.getElementById('cc-output');
+          if (outputEl) outputEl.value = resp.coverLetter || '';
+          if (outputWrap) outputWrap.style.display = 'flex';
 
-            // Update hints from extracted data
-            if (resp.extracted) {
-              var te = document.getElementById('cc-title-hint');
-              var ce = document.getElementById('cc-company-hint');
-              if (te && resp.extracted.jobTitle)    te.value = resp.extracted.jobTitle;
-              if (ce && resp.extracted.companyName) ce.value = resp.extracted.companyName;
-              if (resp.extracted.jobTitle && resp.extracted.companyName) {
-                setInfo(resp.extracted.jobTitle + ' @ ' + resp.extracted.companyName);
-              }
+          // Update hints from extracted data
+          if (resp.extracted) {
+            var te = document.getElementById('cc-title-hint');
+            var ce = document.getElementById('cc-company-hint');
+            if (te && resp.extracted.jobTitle)    te.value = resp.extracted.jobTitle;
+            if (ce && resp.extracted.companyName) ce.value = resp.extracted.companyName;
+            if (resp.extracted.jobTitle && resp.extracted.companyName) {
+              setInfo(resp.extracted.jobTitle + ' @ ' + resp.extracted.companyName);
             }
+          }
 
-            setStatus('Done! Cover letter ready.', 'success');
-            setTimeout(function() {
-              var wrap = document.getElementById('cc-output-wrap');
-              if (wrap) wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            }, 100);
-          });
+          setStatus('Done! Cover letter ready.', 'success');
+          setTimeout(function() {
+            var wrap = document.getElementById('cc-output-wrap');
+            if (wrap) wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          }, 100);
         });
       });
     });
@@ -425,71 +424,112 @@
     });
   }
 
-  // ─── PDF download ────────────────────────────────────────────────────────────
+  // ─── Direct PDF blob download (no new tab, no print dialog) ─────────────────
   function downloadCoverLetterPDF(text, jobTitle, company) {
-    var date = new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
+    var W = 612, H = 792, mL = 54, mR = 54, mT = 50;
+    var textW = W - mL - mR;
+    var bodyFS = 11, bodyLH = 17;
+    var smallFS = 8.5, smallLH = 13;
 
-    // Split into paragraphs for proper justified rendering (pre-wrap breaks justification).
-    var escaped = text
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-    var paragraphs = escaped.split(/\n\n+/).map(function(p) {
-      return '<p>' + p.trim().replace(/\n/g, '<br>') + '</p>';
-    }).join('\n');
-
-        var html = [
-      '<!DOCTYPE html>',
-      '<html><head><meta charset="utf-8">',
-      '<style>',
-      // Tight margins: 0.65in top/bottom, 0.75in sides — fits more per page
-      '  @page { size: letter; margin: 0.65in 0.75in; }',
-      '  * { box-sizing: border-box; }',
-      '  body { font-family: "Times New Roman", Georgia, serif; font-size: 11.5pt;',
-      '         line-height: 1.55; color: #000; background: #fff; margin: 0; }',
-      // Header: name left, contact right, plain black rule
-      '  .hdr { display: flex; justify-content: space-between; align-items: flex-end;',
-      '         border-bottom: 1.5pt solid #000; padding-bottom: 8pt; margin-bottom: 14pt; }',
-      '  .hdr-name { font-size: 17pt; font-weight: bold; color: #000; letter-spacing: -0.3px; }',
-      '  .hdr-contact { font-size: 8.5pt; color: #000; text-align: right; line-height: 1.5; }',
-      // Slim meta line — plain black, no color
-      '  .meta { font-size: 8.5pt; color: #000; margin-bottom: 16pt;',
-      '          font-family: Arial, Helvetica, sans-serif; letter-spacing: 0.04em; }',
-      // Paragraphs: fully justified, no widow/orphan, consistent spacing
-      '  p { margin: 0 0 9pt 0; text-align: justify; text-justify: inter-word;',
-      '      hyphens: auto; orphans: 2; widows: 2; }',
-      '  br { display: block; margin-bottom: 0; }',
-      '</style>',
-      '</head><body>',
-
-      '<div class="hdr">',
-      '  <div class="hdr-name">Tirth Shah</div>',
-      '  <div class="hdr-contact">979-635-2045 &nbsp;&bull;&nbsp; tirthdhara108@gmail.com<br>',
-      '    Tirthcshah.com &nbsp;&bull;&nbsp; College Station, TX</div>',
-      '</div>',
-
-      '<div class="meta">',
-      (jobTitle ? jobTitle.replace(/&/g,'&amp;').replace(/</g,'&lt;') : '') +
-      (company  ? ' &mdash; ' + company.replace(/&/g,'&amp;').replace(/</g,'&lt;') : '') +
-      (jobTitle||company ? ' &nbsp;&middot;&nbsp; ' : '') + date,
-      '</div>',
-
-      paragraphs,
-
-      '</body></html>'
-    ].join('\n');
-
-    var blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-    var url  = URL.createObjectURL(blob);
-    var win  = window.open(url, '_blank');
-    if (win) {
-      win.addEventListener('load', function() {
-        // Short delay lets fonts render before print dialog opens
-        setTimeout(function() { win.print(); }, 500);
-      });
+    function pe(s) {
+      return String(s || '')
+        .replace(/\u2014/g, '-').replace(/\u2013/g, '-')
+        .replace(/[\u201C\u201D]/g, '"').replace(/[\u2018\u2019]/g, "'")
+        .replace(/[^\x20-\x7E]/g, '')
+        .replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
     }
-    setStatus('Print dialog opened — choose “Save as PDF”', 'success');
-    setTimeout(function() { URL.revokeObjectURL(url); }, 60000);
+
+    function tw(str, size) { return str.length * 0.52 * size; }
+
+    function wrap(text, maxPt, size) {
+      var words = text.split(/\s+/), lines = [], cur = '';
+      words.forEach(function(w) {
+        if (!cur) { cur = w; return; }
+        if (tw(cur + ' ' + w, size) <= maxPt) { cur += ' ' + w; }
+        else { lines.push(cur); cur = w; }
+      });
+      if (cur) lines.push(cur);
+      return lines.length ? lines : [''];
+    }
+
+    var ops = [], y = H - mT;
+
+    y -= 20;
+    ops.push('BT /F2 17 Tf 1 0 0 1 ' + mL + ' ' + y + ' Tm (Tirth Shah) Tj ET');
+
+    var c1 = '979-635-2045  |  tirthdhara108@gmail.com';
+    var c2 = 'Tirthcshah.com';
+    ops.push('BT /F1 ' + smallFS + ' Tf 1 0 0 1 ' + (W - mR - tw(c1, smallFS)).toFixed(1) + ' ' + y + ' Tm (' + pe(c1) + ') Tj ET');
+    var websiteY = y - smallLH;
+    var websiteX = W - mR - tw(c2, smallFS);
+    ops.push('BT /F1 ' + smallFS + ' Tf 1 0 0 1 ' + websiteX.toFixed(1) + ' ' + websiteY + ' Tm (' + pe(c2) + ') Tj ET');
+
+    y -= 8;
+    ops.push('0.5 w ' + mL + ' ' + y + ' m ' + (W - mR) + ' ' + y + ' l S');
+    y -= 14;
+
+    var date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    var meta = '';
+    if (jobTitle) meta += pe(jobTitle);
+    if (jobTitle && company) meta += ' - ' + pe(company);
+    else if (company) meta += pe(company);
+    meta += (meta ? '   ' : '') + pe(date);
+    ops.push('BT /F1 ' + smallFS + ' Tf 1 0 0 1 ' + mL + ' ' + y + ' Tm (' + meta + ') Tj ET');
+    y -= 20;
+
+    text.split(/\n\n+/).map(function(p) { return p.trim(); }).filter(Boolean).forEach(function(para) {
+      var lines = wrap(para, textW, bodyFS);
+      ops.push('BT /F1 ' + bodyFS + ' Tf 1 0 0 1 ' + mL + ' ' + y + ' Tm');
+      lines.forEach(function(line, i) {
+        if (i > 0) ops.push('0 -' + bodyLH + ' Td');
+        ops.push('(' + pe(line) + ') Tj');
+        y -= bodyLH;
+      });
+      ops.push('ET');
+      y -= 8;
+    });
+
+    var stream = ops.join('\n');
+
+    var annot = '<< /Type /Annot /Subtype /Link'
+      + ' /Rect [' + Math.floor(websiteX) + ' ' + Math.floor(websiteY - 2) + ' ' + Math.ceil(W - mR) + ' ' + Math.ceil(websiteY + smallFS) + ']'
+      + ' /Border [0 0 0]'
+      + ' /A << /Type /Action /S /URI /URI (https://Tirthcshah.com) >> >>';
+
+    var pdf = '%PDF-1.4\n', off = {};
+    function obj(id, body) {
+      off[id] = pdf.length;
+      pdf += id + ' 0 obj\n' + body + '\nendobj\n';
+    }
+
+    obj(1, '<< /Length ' + stream.length + ' >>\nstream\n' + stream + '\nendstream');
+    obj(2, '<< /Type /Font /Subtype /Type1 /BaseFont /Times-Roman /Encoding /WinAnsiEncoding >>');
+    obj(3, '<< /Type /Font /Subtype /Type1 /BaseFont /Times-Bold /Encoding /WinAnsiEncoding >>');
+    obj(4, annot);
+    obj(5, '<< /Type /Page /Parent 6 0 R /MediaBox [0 0 ' + W + ' ' + H + '] /Contents 1 0 R /Annots [4 0 R] /Resources << /Font << /F1 2 0 R /F2 3 0 R >> >> >>');
+    obj(6, '<< /Type /Pages /Kids [5 0 R] /Count 1 >>');
+    obj(7, '<< /Type /Catalog /Pages 6 0 R >>');
+
+    var xrefPos = pdf.length;
+    pdf += 'xref\n0 8\n0000000000 65535 f \n';
+    [1, 2, 3, 4, 5, 6, 7].forEach(function(id) {
+      pdf += String(off[id]).padStart(10, '0') + ' 00000 n \n';
+    });
+    pdf += 'trailer\n<< /Size 8 /Root 7 0 R >>\nstartxref\n' + xrefPos + '\n%%EOF';
+
+    var blob = new Blob([pdf], { type: 'application/pdf' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    var fname = ((jobTitle || 'Cover_Letter') + (company ? '_' + company : '') + '.pdf')
+      .replace(/[^a-zA-Z0-9_.-]/g, '_').replace(/_+/g, '_');
+    a.download = fname;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function() { URL.revokeObjectURL(a.href); }, 10000);
+    setStatus('PDF downloaded!', 'success');
   }
+
 
   // ─── Observer ────────────────────────────────────────────────────────────────
   if (detectSimplify()) {

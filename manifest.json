@@ -23,7 +23,7 @@
   }],
   "permissions": ["activeTab", "scripting", "storage", "tabs"],
   "web_accessible_resources": [{
-    "resources": ["src/logs/logs.html", "src/logs/logs.js", "src/dashboard/dashboard.html", "src/dashboard/dashboard.js"],
+    "resources": ["src/logs/logs.html", "src/logs/logs.js", "src/dashboard/dashboard.html", "src/dashboard/dashboard.js", "src/dashboard/xlsxgen.js"],
     "matches":   ["<all_urls>"]
   }]
 }

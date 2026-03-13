@@ -367,10 +367,6 @@ function render() {
 }
 
 // ─── Export helpers ───────────────────────────────────────────────────────────
-function csvEscape(v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; }
-function csvRow(arr)  { return arr.map(csvEscape).join(','); }
-function csvSheet(name, rows) { return name + '\r\n' + rows.map(csvRow).join('\r\n'); }
-
 function downloadBlob(content, filename, mime) {
   var a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([content], { type: mime }));
@@ -381,184 +377,115 @@ function downloadBlob(content, filename, mime) {
   setTimeout(function() { URL.revokeObjectURL(a.href); }, 5000);
 }
 
-// ─── Export: 6-section CSV (Excel opens each section as a named block) ────────
-function exportCSV() {
+// ─── Export: proper multi-sheet XLSX ─────────────────────────────────────────
+function exportExcel() {
   if (!allLogs.length) { alert('No logs to export.'); return; }
 
   var today     = new Date().toISOString().slice(0, 10);
   var pipelines = allLogs.filter(function(l) { return l.kind === 'pipeline'; });
   var extracts  = allLogs.filter(function(l) { return l.kind === 'extract';  });
-  var sections  = [];
+  var sheets    = [];
 
-  // ── Section 1: Summary ──────────────────────────────────────────────────────
   var companies = {}, styles = {}, models = {};
   pipelines.forEach(function(l) {
     var co = (l.step2 && l.step2.parsed && l.step2.parsed.companyName) || 'Unknown';
-    companies[co] = (companies[co] || 0) + 1;
-    styles[l.style || 'formal']    = (styles[l.style || 'formal'] || 0) + 1;
-    models[l.model || 'unknown']   = (models[l.model || 'unknown'] || 0) + 1;
+    companies[co]                  = (companies[co]                  || 0) + 1;
+    styles[l.style   || 'formal']  = (styles[l.style   || 'formal']  || 0) + 1;
+    models[l.model   || 'unknown'] = (models[l.model   || 'unknown'] || 0) + 1;
   });
   var sumRows = [
-    ['CoverCraft Export', today],
-    [],
-    ['SUMMARY'],
+    ['CoverCraft Export', today], [],
     ['Metric', 'Value'],
-    ['Total Events',     allLogs.length],
-    ['Pipelines Run',    pipelines.length],
-    ['Auto-Extractions', extracts.length],
-    ['Unique Companies', Object.keys(companies).length],
-    [],
-    ['TOP COMPANIES'],
-    ['Company', 'Pipelines']
+    ['Total Events', allLogs.length], ['Pipelines Run', pipelines.length],
+    ['Auto-Extractions', extracts.length], ['Unique Companies', Object.keys(companies).length],
+    [], ['TOP COMPANIES'], ['Company', 'Pipelines']
   ];
-  Object.keys(companies).sort(function(a, b) { return companies[b] - companies[a]; }).slice(0, 10).forEach(function(co) {
-    sumRows.push([co, companies[co]]);
-  });
+  Object.keys(companies).sort(function(a,b){return companies[b]-companies[a];}).slice(0,15)
+    .forEach(function(co){ sumRows.push([co, companies[co]]); });
   sumRows.push([], ['STYLES USED'], ['Style', 'Count']);
-  Object.keys(styles).forEach(function(s) { sumRows.push([s, styles[s]]); });
+  Object.keys(styles).forEach(function(s){ sumRows.push([s, styles[s]]); });
   sumRows.push([], ['MODELS USED'], ['Model', 'Count']);
-  Object.keys(models).forEach(function(m) { sumRows.push([m, models[m]]); });
-  sections.push(csvSheet('SUMMARY', sumRows));
+  Object.keys(models).forEach(function(m){ sumRows.push([m, models[m]]); });
+  sheets.push({ name: 'Summary', rows: sumRows });
 
-  // ── Section 2: Pipelines ────────────────────────────────────────────────────
   var pHdr = ['#','Timestamp','Job Title','Company','Location','Seniority',
-              'Keywords','Responsibilities','Requirements',
-              'Style','Model','URL',
-              'Scrape Words','Scrape Chars',
-              'Extract Parse','Extract Status',
-              'Tavily Skipped','Tavily Error','Tavily Sources Count',
-              'Output Words','Output Chars','Pipeline Error'];
+              'Keywords','Responsibilities','Requirements','Style','Model','URL',
+              'Scrape Words','Scrape Chars','Title Hint','Company Hint',
+              'Extract Parse','Extract Status','Tavily Skipped','Tavily Error',
+              'Tavily Sources','Gen Words','Gen Chars','Pipeline Error'];
   var pRows = [pHdr];
-  pipelines.forEach(function(l, i) {
-    var s1 = l.step1 || {};
-    var s2 = l.step2 || {};
-    var s3 = l.step3 || {};
-    var s4 = l.step4 || {};
-    var p  = s2.parsed || {};
+  pipelines.forEach(function(l,i) {
+    var s1=l.step1||{},s2=l.step2||{},s3=l.step3||{},s4=l.step4||{},p=s2.parsed||{};
     pRows.push([
-      pipelines.length - i,
-      l.timestamp ? new Date(l.timestamp).toLocaleString() : '',
-      p.jobTitle       || '',
-      p.companyName    || '',
-      p.location       || '',
-      p.seniorityLevel || '',
-      (p.keywords        || []).join('; '),
-      (p.responsibilities || []).join(' | '),
-      (p.requirements    || []).join(' | '),
-      l.style  || '',
-      l.model  || '',
-      l.url    || '',
-      s1.wordCount || 0,
-      s1.charCount || 0,
-      s2.parseNote || '',
-      s2.status    || '',
-      s3.skipped ? 'Yes' : 'No',
-      s3.error   || '',
-      (s3.sources || []).length,
-      s4.outputWords || 0,
-      s4.outputChars || 0,
-      l.error || ''
+      pipelines.length-i, l.timestamp?new Date(l.timestamp).toLocaleString():'',
+      p.jobTitle||'',p.companyName||'',p.location||'',p.seniorityLevel||'',
+      (p.keywords||[]).join('; '),(p.responsibilities||[]).join(' | '),(p.requirements||[]).join(' | '),
+      l.style||'',l.model||'',l.url||'',
+      s1.wordCount||0,s1.charCount||0,s1.titleHint||'',s1.companyHint||'',
+      s2.parseNote||'',s2.status||'',
+      s3.skipped?'Yes':'No',s3.error||'',(s3.sources||[]).length,
+      s4.outputWords||0,s4.outputChars||0,l.error||''
     ]);
   });
-  sections.push(csvSheet('PIPELINES', pRows));
+  sheets.push({ name: 'Pipelines', rows: pRows });
 
-  // ── Section 3: Tavily research detail ───────────────────────────────────────
-  var tvHdr = ['#','Timestamp','Company','Job Title',
-               'Query 1 (culture)','Query 2 (product)',
-               'Summary (300 chars)','Sources Count',
-               'Source Titles','Source URLs',
-               'Skipped','Skip Reason','Error'];
-  var tvRows = [tvHdr];
-  pipelines.forEach(function(l, i) {
-    var s2 = l.step2 || {};
-    var s3 = l.step3 || {};
-    var p  = s2.parsed || {};
-    var srcTitles = (s3.sources || []).map(function(s) { return s.title || ''; }).join(' | ');
-    var srcURLs   = (s3.sources || []).map(function(s) { return s.url   || ''; }).join(' | ');
-    tvRows.push([
-      pipelines.length - i,
-      l.timestamp ? new Date(l.timestamp).toLocaleString() : '',
-      p.companyName || '',
-      p.jobTitle    || '',
-      s3.query1 || '',
-      s3.query2 || '',
-      (s3.summary || '').slice(0, 300),
-      (s3.sources || []).length,
-      srcTitles.slice(0, 400),
-      srcURLs.slice(0, 400),
-      s3.skipped    ? 'Yes' : 'No',
-      s3.skipReason || '',
-      s3.error      || ''
-    ]);
-  });
-  sections.push(csvSheet('TAVILY RESEARCH', tvRows));
-
-  // ── Section 4: Cover letters (full text) ────────────────────────────────────
-  var clHdr = ['#','Timestamp','Job Title','Company','Style','Model','Output Words','Cover Letter'];
-  var clRows = [clHdr];
-  pipelines.forEach(function(l, i) {
-    var s2 = l.step2 || {};
-    var s4 = l.step4 || {};
-    var p  = s2.parsed || {};
+  var clRows = [['#','Timestamp','Job Title','Company','Style','Model','Words','Cover Letter']];
+  pipelines.forEach(function(l,i) {
+    var s2=l.step2||{},s4=l.step4||{},p=s2.parsed||{};
     clRows.push([
-      pipelines.length - i,
-      l.timestamp ? new Date(l.timestamp).toLocaleString() : '',
-      p.jobTitle    || '',
-      p.companyName || '',
-      l.style  || '',
-      l.model  || '',
-      s4.outputWords || 0,
-      s4.rawResponse || l.output || ''
+      pipelines.length-i,l.timestamp?new Date(l.timestamp).toLocaleString():'',
+      p.jobTitle||'',p.companyName||'',l.style||'',l.model||'',s4.outputWords||0,
+      s4.rawResponse||l.output||''
     ]);
   });
-  sections.push(csvSheet('COVER LETTERS', clRows));
+  sheets.push({ name: 'Cover Letters', rows: clRows });
 
-  // ── Section 5: AI prompts (system + user for each pipeline step) ─────────────
-  var prHdr = ['#','Timestamp','Job Title','Company','Step','System Prompt (500 chars)','User Prompt (500 chars)','Raw Response (500 chars)'];
-  var prRows = [prHdr];
-  pipelines.forEach(function(l, i) {
-    var idx = pipelines.length - i;
-    var s2  = l.step2 || {};
-    var s4  = l.step4 || {};
-    var p   = s2.parsed || {};
-    var ts  = l.timestamp ? new Date(l.timestamp).toLocaleString() : '';
-    var title = p.jobTitle || ''; var co = p.companyName || '';
-    if (s2.systemPrompt || s2.userPrompt) {
-      prRows.push([idx, ts, title, co, 'Extract',
-        (s2.systemPrompt || '').slice(0, 500),
-        (s2.userPrompt   || '').slice(0, 500),
-        (s2.rawResponse  || '').slice(0, 500)]);
-    }
-    if (s4.systemPrompt || s4.userPrompt) {
-      prRows.push([idx, ts, title, co, 'Generate',
-        (s4.systemPrompt || '').slice(0, 500),
-        (s4.userPrompt   || '').slice(0, 500),
-        (s4.rawResponse  || '').slice(0, 500)]);
-    }
+  var tvRows = [['#','Timestamp','Company','Job Title','Query 1','Query 2',
+                 'Summary','Sources','Source Titles','Source URLs','Source Snippets',
+                 'Skipped','Skip Reason','Error']];
+  pipelines.forEach(function(l,i) {
+    var s2=l.step2||{},s3=l.step3||{},p=s2.parsed||{};
+    tvRows.push([
+      pipelines.length-i,l.timestamp?new Date(l.timestamp).toLocaleString():'',
+      p.companyName||'',p.jobTitle||'',s3.query1||'',s3.query2||'',
+      s3.summary||'',(s3.sources||[]).length,
+      (s3.sources||[]).map(function(s){return s.title||'';}).join(' | '),
+      (s3.sources||[]).map(function(s){return s.url||'';}).join(' | '),
+      (s3.sources||[]).map(function(s){return (s.snippet||'').slice(0,200);}).join(' || '),
+      s3.skipped?'Yes':'No',s3.skipReason||'',s3.error||''
+    ]);
   });
-  sections.push(csvSheet('AI PROMPTS', prRows));
+  sheets.push({ name: 'Tavily Research', rows: tvRows });
 
-  // ── Section 6: Auto-extractions (quick title+company scrapes) ───────────────
-  var exHdr = ['#','Timestamp','URL','Job Title','Company','Input Words','Model','Error'];
-  var exRows = [exHdr];
-  extracts.forEach(function(l, i) {
-    var res = l.result || {};
+  var prRows = [['#','Timestamp','Job Title','Company','Step','Model',
+                 'System Prompt','User Prompt','Raw AI Response']];
+  pipelines.forEach(function(l,i) {
+    var idx=pipelines.length-i,s2=l.step2||{},s4=l.step4||{},p=s2.parsed||{};
+    var ts=l.timestamp?new Date(l.timestamp).toLocaleString():'';
+    if (s2.systemPrompt||s2.userPrompt)
+      prRows.push([idx,ts,p.jobTitle||'',p.companyName||'','Step 2 - Extraction',s2.model||l.model||'',
+        s2.systemPrompt||'',s2.userPrompt||'',s2.rawResponse||'']);
+    if (s4.systemPrompt||s4.userPrompt)
+      prRows.push([idx,ts,p.jobTitle||'',p.companyName||'','Step 4 - Generation',s4.model||l.model||'',
+        s4.systemPrompt||'',s4.userPrompt||'',s4.rawResponse||'']);
+  });
+  sheets.push({ name: 'AI Prompts', rows: prRows });
+
+  var exRows = [['#','Timestamp','URL','Job Title','Company','Input Words','Model',
+                 'System Prompt Preview','Raw Response Preview','Error']];
+  extracts.forEach(function(l,i) {
+    var res=l.result||{};
     exRows.push([
-      extracts.length - i,
-      l.timestamp ? new Date(l.timestamp).toLocaleString() : '',
-      l.url    || '',
-      res.jobTitle    || '',
-      res.companyName || '',
-      l.inputWords || 0,
-      l.model  || '',
-      l.error  || ''
+      extracts.length-i,l.timestamp?new Date(l.timestamp).toLocaleString():'',
+      l.url||'',res.jobTitle||'',res.companyName||'',l.inputWords||0,l.model||'',
+      (l.systemPrompt||'').slice(0,300),(l.rawResponse||'').slice(0,500),l.error||''
     ]);
   });
-  sections.push(csvSheet('AUTO-EXTRACTIONS', exRows));
+  sheets.push({ name: 'Auto-Extractions', rows: exRows });
 
-  // Join sections with 3 blank lines between them — Excel reads each as a visual block
-  var combined = sections.join('\r\n\r\n\r\n');
-  downloadBlob(combined, 'CoverCraft_Export_' + today + '.csv', 'text/csv;charset=utf-8;');
+  var xlsxBytes = XLSXGen.generate(sheets);
+  downloadBlob(xlsxBytes, 'CoverCraft_Export_' + today + '.xlsx',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 }
 
 // ─── Load & init ──────────────────────────────────────────────────────────────
@@ -581,7 +508,7 @@ document.querySelectorAll('.tab').forEach(function(tab) {
 });
 
 document.getElementById('refresh-btn').addEventListener('click', load);
-document.getElementById('export-btn').addEventListener('click', exportCSV);
+document.getElementById('export-btn').addEventListener('click', exportExcel);
 document.getElementById('clear-btn').addEventListener('click', function() {
   if (confirm('Clear all CoverCraft logs?')) {
     chrome.runtime.sendMessage({ type: 'CLEAR_LOGS' }, function() {

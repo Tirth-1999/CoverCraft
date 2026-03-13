@@ -1,6 +1,9 @@
 # ─── API Keys (NEVER commit this file) ───────────────────────────────────────
 src/config.js
 
+# ─── Sample cover letters (personal files, not needed in repo) ────────────────
+samples/
+
 # ─── OS & editor files ────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
