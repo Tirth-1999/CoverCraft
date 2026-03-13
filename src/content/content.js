@@ -579,110 +579,128 @@
     var date  = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     ops.push('BT /F1 ' + smallFS + ' Tf 1 0 0 1 ' + mL + ' ' + dateY + ' Tm (' + pe(date) + ') Tj ET');
 
-    // ── Auto-fit: shrink font until all content fits on one page ─────────────
-    var bodyBottom = 54;  // bottom margin
-    var bodyStartY = dateY - (bodyLH + 8);
-    var availH = bodyStartY - bodyBottom;
-
-    // Parse paragraphs once
+    // ── Body paragraphs — paginated across as many pages as needed ──────────
+    var bodyBottom = 54;                        // bottom margin
+    var bodyStartY = dateY - (bodyLH + 8);      // first line of body on page 1
     var paras = text.split(/\n\n+/).map(function(p) { return p.trim(); }).filter(Boolean);
 
-    // Calculate total height needed at a given font size + line height
-    function calcHeight(fs, lh) {
-      var totalH = 0;
-      paras.forEach(function(para) {
-        var segments = para.split('\n');
-        var lineCount = 0;
-        segments.forEach(function(seg) {
-          if (!seg.trim()) { lineCount++; return; }
-          lineCount += wrap(seg, textW, fs).length;
-        });
-        totalH += lineCount * lh + 10;  // 10pt inter-paragraph gap
-      });
-      return totalH;
-    }
-
-    // Try shrinking from default down to 8pt in 0.5pt steps
-    var tryFS = bodyFS, tryLH = bodyLH;
-    while (calcHeight(tryFS, tryLH) > availH && tryFS > 8) {
-      tryFS  -= 0.5;
-      tryLH   = Math.round(tryFS * 1.55);  // maintain ~1.55× line height ratio
-    }
-    bodyFS = tryFS;
-    bodyLH = tryLH;
-    // Recalculate bodyStartY with potentially new bodyLH
-    bodyStartY = dateY - (bodyLH + 8);
-
-    // ── Body paragraphs — fully justified ───────────────────────────────────
-    y = bodyStartY;
-    paras.forEach(function(para) {
-      if (y < bodyBottom) return;
-      // Honour hard \n within a block (handles sign-off "Sincerely,\n[Name]")
+    // Flatten all paragraphs into individual positioned lines
+    var flatLines = [];
+    paras.forEach(function(para, pi) {
       var segments = para.split('\n');
-      var allLines = [];
-      // Track whether each line is the last of its segment (never justify last lines)
-      var isLastFlags = [];
+      var paraLines = [];
       segments.forEach(function(seg) {
-        if (!seg.trim()) { allLines.push(''); isLastFlags.push(true); return; }
+        if (!seg.trim()) { paraLines.push({ line: '', isLast: true }); return; }
         var wrapped = wrap(seg, textW, bodyFS);
         wrapped.forEach(function(wl, wi) {
-          allLines.push(wl);
-          isLastFlags.push(wi === wrapped.length - 1);
+          paraLines.push({ line: wl, isLast: wi === wrapped.length - 1 });
         });
       });
-      ops.push('BT /F1 ' + bodyFS + ' Tf 1 0 0 1 ' + mL + ' ' + y + ' Tm');
-      allLines.forEach(function(line, i) {
-        if (i > 0) ops.push('0 -' + bodyLH + ' Td');
-
-        var isLast     = isLastFlags[i];
-        var spaceCount = (line.match(/ /g) || []).length;
-        var charCount  = line.length;
-        var lineW      = tw(line, bodyFS);
-        var extra      = textW - lineW;
-
-        // Full justification using Tc (character spacing) + Tw (word spacing) combined.
-        if (!isLast && spaceCount > 0 && extra > 0) {
-          var Tc = extra / (charCount + 2 * spaceCount);
-          var Tw = 2 * Tc;
-          ops.push(Tc.toFixed(4) + ' Tc ' + Tw.toFixed(4) + ' Tw');
-        } else {
-          ops.push('0 Tc 0 Tw');
-        }
-
-        ops.push('(' + pe(line) + ') Tj');
-        y -= bodyLH;
+      paraLines.forEach(function(item, li) {
+        flatLines.push({
+          line:     item.line,
+          isLast:   item.isLast,
+          afterGap: li === paraLines.length - 1 && pi < paras.length - 1
+        });
       });
-      ops.push('0 Tc 0 Tw ET');  // always reset both spacing operators after each block
-      y -= 10;  // inter-paragraph gap
     });
 
-    var stream = ops.join('\n');
+    // Distribute lines across pages, starting a fresh stream when each page fills
+    // ops already holds the page-1 header content
+    var pageStreams = [];
+    var curOps = ops;
+    y = bodyStartY;
 
-    // Hyperlink annotation for the website (positioned at header right side)
-    var headerY = H - 50;  // same baseline used for the header
+    flatLines.forEach(function(item) {
+      // Page break — flush current page and start a new one
+      if (y < bodyBottom + bodyLH) {
+        pageStreams.push(curOps.join('\n'));
+        curOps = [];
+        y = H - mL;  // top body margin on continuation pages
+      }
+
+      var line = item.line;
+      var isLast = item.isLast;
+      var spaceCount = (line.match(/ /g) || []).length;
+      var charCount  = line.length;
+      var lineW      = tw(line, bodyFS);
+      var extra      = textW - lineW;
+
+      if (!isLast && spaceCount > 0 && extra > 0) {
+        var Tc = extra / (charCount + 2 * spaceCount);
+        var Tw = 2 * Tc;
+        curOps.push(Tc.toFixed(4) + ' Tc ' + Tw.toFixed(4) + ' Tw');
+      } else {
+        curOps.push('0 Tc 0 Tw');
+      }
+      // Absolute positioning (Tm) so lines land correctly on every page
+      curOps.push('BT /F1 ' + bodyFS + ' Tf 1 0 0 1 ' + mL + ' ' + y.toFixed(2) + ' Tm (' + pe(line) + ') Tj ET');
+
+      y -= bodyLH;
+      if (item.afterGap) y -= 10;  // inter-paragraph gap
+    });
+    pageStreams.push(curOps.join('\n'));  // flush last page
+
+    // Hyperlink annotation for the website (page 1 header only)
+    var headerY = H - 50;
     var annot = '<< /Type /Annot /Subtype /Link'
       + ' /Rect [' + Math.floor(webStartX - 1) + ' ' + (headerY - 2) + ' ' + Math.ceil(webStartX + webStrW + 2) + ' ' + (headerY + smallFS + 1) + ']'
       + ' /Border [0 0 0]'
       + ' /A << /Type /Action /S /URI /URI (https://' + pe(web) + ') >> >>';
 
-    // ── Build PDF objects ────────────────────────────────────────────────────
+    // ── Build multi-page PDF ─────────────────────────────────────────────────
+    // Object layout (N = number of pages):
+    //   1 … N       content streams
+    //   N+1         Times-Roman font
+    //   N+2         Times-Bold font
+    //   N+3         hyperlink annotation
+    //   N+4 … 2N+3  page objects
+    //   2N+4        Pages dictionary
+    //   2N+5        Catalog
+    var numPages   = pageStreams.length;
+    var fontBase   = numPages + 1;
+    var fontBold   = numPages + 2;
+    var annotId    = numPages + 3;
+    var firstPageId = numPages + 4;
+    var pagesId    = firstPageId + numPages;
+    var catalogId  = pagesId + 1;
+    var totalObjs  = catalogId;
+
     var pdf = '%PDF-1.4\n', off = {};
     function obj(id, body) { off[id] = pdf.length; pdf += id + ' 0 obj\n' + body + '\nendobj\n'; }
 
-    obj(1, '<< /Length ' + stream.length + ' >>\nstream\n' + stream + '\nendstream');
-    obj(2, '<< /Type /Font /Subtype /Type1 /BaseFont /Times-Roman  /Encoding /WinAnsiEncoding >>');
-    obj(3, '<< /Type /Font /Subtype /Type1 /BaseFont /Times-Bold   /Encoding /WinAnsiEncoding >>');
-    obj(4, annot);
-    obj(5, '<< /Type /Page /Parent 6 0 R /MediaBox [0 0 ' + W + ' ' + H + '] /Contents 1 0 R /Annots [4 0 R] /Resources << /Font << /F1 2 0 R /F2 3 0 R >> >> >>');
-    obj(6, '<< /Type /Pages /Kids [5 0 R] /Count 1 >>');
-    obj(7, '<< /Type /Catalog /Pages 6 0 R >>');
-
-    var xrefPos = pdf.length;
-    pdf += 'xref\n0 8\n0000000000 65535 f \n';
-    [1, 2, 3, 4, 5, 6, 7].forEach(function(id) {
-      pdf += String(off[id]).padStart(10, '0') + ' 00000 n \n';
+    // Content streams (one per page)
+    pageStreams.forEach(function(stream, i) {
+      obj(i + 1, '<< /Length ' + stream.length + ' >>\nstream\n' + stream + '\nendstream');
     });
-    pdf += 'trailer\n<< /Size 8 /Root 7 0 R >>\nstartxref\n' + xrefPos + '\n%%EOF';
+
+    // Fonts
+    obj(fontBase, '<< /Type /Font /Subtype /Type1 /BaseFont /Times-Roman /Encoding /WinAnsiEncoding >>');
+    obj(fontBold,  '<< /Type /Font /Subtype /Type1 /BaseFont /Times-Bold  /Encoding /WinAnsiEncoding >>');
+
+    // Hyperlink annotation
+    obj(annotId, annot);
+
+    // Page objects
+    var pageKids = [];
+    for (var pi = 0; pi < numPages; pi++) {
+      var pageId    = firstPageId + pi;
+      var annotsStr = pi === 0 ? ' /Annots [' + annotId + ' 0 R]' : '';
+      obj(pageId, '<< /Type /Page /Parent ' + pagesId + ' 0 R /MediaBox [0 0 ' + W + ' ' + H + '] /Contents ' + (pi + 1) + ' 0 R' + annotsStr + ' /Resources << /Font << /F1 ' + fontBase + ' 0 R /F2 ' + fontBold + ' 0 R >> >> >>');
+      pageKids.push(pageId + ' 0 R');
+    }
+
+    // Pages + Catalog
+    obj(pagesId,   '<< /Type /Pages /Kids [' + pageKids.join(' ') + '] /Count ' + numPages + ' >>');
+    obj(catalogId, '<< /Type /Catalog /Pages ' + pagesId + ' 0 R >>');
+
+    // Cross-reference table
+    var xrefPos = pdf.length;
+    pdf += 'xref\n0 ' + (totalObjs + 1) + '\n0000000000 65535 f \n';
+    for (var xid = 1; xid <= totalObjs; xid++) {
+      pdf += String(off[xid]).padStart(10, '0') + ' 00000 n \n';
+    }
+    pdf += 'trailer\n<< /Size ' + (totalObjs + 1) + ' /Root ' + catalogId + ' 0 R >>\nstartxref\n' + xrefPos + '\n%%EOF';
 
     var blob = new Blob([pdf], { type: 'application/pdf' });
     var a = document.createElement('a');
