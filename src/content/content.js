@@ -84,7 +84,7 @@
       '<div id="cc-panel">',
 
         '<div id="cc-header">',
-          '<div id="cc-title"><span class="cc-star">✦</span> CoverCraft <span class="cc-sub">for Tirth Shah</span></div>',
+          '<div id="cc-title"><span class="cc-star">✦</span> CoverCraft <span class="cc-sub">your cover letter AI</span></div>',
           '<div id="cc-header-btns">',
             '<button id="cc-min-btn" title="Minimize">−</button>',
             '<button id="cc-close-btn" title="Close">✕</button>',
@@ -484,13 +484,15 @@
     var ops = [], y = H - 50;  // y=742 top of content
 
     // ── TWO-COLUMN HEADER ────────────────────────────────────────────────────
-    // Left: "Tirth Shah" in large bold font
-    ops.push('BT /F2 ' + nameFS + ' Tf 1 0 0 1 ' + mL + ' ' + y + ' Tm (Tirth Shah) Tj ET');
+    // Pull identity from PORTFOLIO so this works for any white-label user
+    var ownerName = (typeof PORTFOLIO !== 'undefined' && PORTFOLIO.name) ? PORTFOLIO.name : 'Your Name';
+    // Left: name in large bold font
+    ops.push('BT /F2 ' + nameFS + ' Tf 1 0 0 1 ' + mL + ' ' + y + ' Tm (' + pe(ownerName) + ') Tj ET');
 
     // Right: contact info smaller, right-aligned on the same baseline
-    var phone = '979-635-2045';
-    var email = 'tirthdhara108@gmail.com';
-    var web   = 'Tirthcshah.com';
+    var phone = (typeof PORTFOLIO !== 'undefined' && PORTFOLIO.phone)   ? PORTFOLIO.phone   : '';
+    var email = (typeof PORTFOLIO !== 'undefined' && PORTFOLIO.email)   ? PORTFOLIO.email   : '';
+    var web   = (typeof PORTFOLIO !== 'undefined' && PORTFOLIO.website) ? PORTFOLIO.website : '';
     var sep      = '   |   ';   // wide separator between phone and email
     var sepLast  = '   |';      // no trailing space before the blue website link
     var contactFull = phone + sep + email + sepLast + web;
@@ -522,7 +524,7 @@
     y = dateY - (bodyLH + 8);
     text.split(/\n\n+/).map(function(p) { return p.trim(); }).filter(Boolean).forEach(function(para) {
       if (y < 54) return;
-      // Honour hard \n within a block (handles sign-off "Sincerely,\nTirth Shah")
+      // Honour hard \n within a block (handles sign-off "Sincerely,\n[Name]")
       var segments = para.split('\n');
       var allLines = [];
       // Track whether each line is the last of its segment (never justify last lines)
@@ -568,12 +570,12 @@
 
     var stream = ops.join('\n');
 
-    // Hyperlink annotation for Tirthcshah.com (positioned at header right side)
+    // Hyperlink annotation for the website (positioned at header right side)
     var headerY = H - 50;  // same baseline used for the header
     var annot = '<< /Type /Annot /Subtype /Link'
       + ' /Rect [' + Math.floor(webStartX - 1) + ' ' + (headerY - 2) + ' ' + Math.ceil(webStartX + webStrW + 2) + ' ' + (headerY + smallFS + 1) + ']'
       + ' /Border [0 0 0]'
-      + ' /A << /Type /Action /S /URI /URI (https://Tirthcshah.com) >> >>';
+      + ' /A << /Type /Action /S /URI /URI (https://' + pe(web) + ') >> >>';
 
     // ── Build PDF objects ────────────────────────────────────────────────────
     var pdf = '%PDF-1.4\n', off = {};

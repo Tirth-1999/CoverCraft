@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "CoverCraft",
   "version": "2.0",
-  "description": "AI-powered cover letter generator for Tirth Shah",
+  "description": "AI-powered cover letter generator — personalized Chrome extension",
   "icons": {
     "16":  "icons/icon16.png",
     "48":  "icons/icon48.png",

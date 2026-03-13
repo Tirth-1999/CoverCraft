@@ -4,6 +4,9 @@
 // Load local API keys (src/config.js is gitignored; copy from src/config.example.js)
 importScripts('../config.js');
 
+// Load personal portfolio (src/portfolio.js is gitignored; copy from src/portfolio.example.js)
+importScripts('../portfolio.js');
+
 // ─── Default keys & model (overridden by settings) ───────────────────────────
 var DEFAULTS = {
   openrouterKey: COVERCRAFT_CONFIG.openrouterKey,
@@ -37,65 +40,6 @@ function loadConfig() {
 loadConfig();
 
 // ─── Portfolio ────────────────────────────────────────────────────────────────
-var PORTFOLIO = {
-  name: 'Tirth Shah', phone: '979-635-2045', website: 'Tirthcshah.com', email: 'tirthdhara108@gmail.com',
-  education: 'MS Management Information Systems, Texas A&M University (May 2026), GPA 9.86/10. B.E. Computer Engineering, SVIT/GTU, GPA 9.5/10.',
-  achievements: [
-    'Co-Founded BlackTieCars: built full-stack platform solo generating $10K+ revenue and 3x business growth in 3 months',
-    'Reduced manual reporting 95% via Python ETL at Texas A&M, saving 300+ hrs/year',
-    'Migrated 7 data aggregators to GCP data-fabric, increasing hit ratio 45% and reducing lookup time 93%',
-    'Built AI chat assistant with Google Gemini 2.5 Flash + ChromaDB: under 3s response time, 90%+ accuracy on BI queries',
-    'Won TAMU Datathon 2025 with AI-Powered Regulatory Document Classifier',
-    'MS-MIS Scholarship Recipient, Texas A&M University',
-    'Employee of the Month (x2), Texas A&M University'
-  ],
-  experiences: [
-    { company: 'HCLTech', role: 'Global Engagement Management Intern', duration: 'Feb 2026 - Present',
-      highlights: ['Building knowledge of global client engagement governance and cross-functional operations at large-scale IT services org'] },
-    { company: 'Mays Business School, Texas A&M University', role: 'Graduate Student Assistant', duration: 'Nov 2025 - Feb 2026',
-      highlights: [
-        'Architected Python ETL platform processing 2,400+ admissions records from 7 programs, eliminating 95% manual reporting, saving 300+ hrs/year',
-        'Engineered ML forecasting engine (Prophet, ARIMA, scikit-learn) achieving under 15% MAPE for enrollment predictions 8 months ahead',
-        'Built production AI chat assistant with Google Gemini 2.5 Flash + ChromaDB: under 3s response time, 90%+ accuracy on BI questions',
-        'Designed Streamlit dashboard with Google OAuth 2.0, RBAC, 6 modules analyzing $500K+ annual marketing spend'
-      ]},
-    { company: 'Texas A&M University - Utilities and Energy Services', role: 'Data Engineer Student Worker', duration: 'Feb 2025 - Nov 2025',
-      highlights: [
-        'Orchestrated Python ETL for 50,000+ daily sensor feeds from 15 sources into SQL, automating Power BI reporting, cutting manual work 95%',
-        'Built week-ahead forecast integrating ERCOT market price, weather, solar data - increasing forecast accuracy 30%',
-        'Digitized billing with OCR pipeline achieving 97% accuracy, cutting processing from 2 hrs to 6 minutes'
-      ]},
-    { company: 'Black Tie Concierge, Inc.', role: 'AI and Data Intern - Digital Product Strategy', duration: 'May 2025 - Aug 2025',
-      highlights: [
-        'Solely built complete digital platform with Next.js, TypeScript, Supabase generating $10K+ revenue and 3x growth in 3 months',
-        'Engineered serverless architecture cutting manual processes 70%',
-        'Integrated Stripe, Google Maps API, CI/CD via Vercel achieving 99.9% uptime'
-      ]},
-    { company: 'Tata Consultancy Services', role: 'Data Engineer', duration: 'Jan 2024 - Aug 2024',
-      highlights: [
-        'Modernized 60+ legacy SAS scripts to Python, cutting runtime 80%, compute cost 50%, tripling peak-hour throughput',
-        'Replaced 15+ Excel reports with interactive dashboards, reducing errors 90%',
-        'Implemented QA automation compressing test cycles from 3 days to 2 hours'
-      ]},
-    { company: 'Tata Consultancy Services', role: 'Data Migration Analyst', duration: 'Aug 2021 - Jan 2024',
-      highlights: [
-        'Migrated on-prem workflows to GCP data-fabric unifying 7 data aggregators, increasing hit ratio 45% and reducing lookup time 93%',
-        'Standardized heterogeneous client files via GCP ETL into canonical schemas enabling reliable matching at scale'
-      ]},
-    { company: 'Alphaa AI', role: 'Data Science Intern', duration: 'Nov 2020 - Feb 2021',
-      highlights: [
-        'Engineered revenue-forecasting dashboards with time-series + 10,000+ Monte Carlo simulations delivering +40% YoY revenue improvement',
-        'Built sentiment-tagged sales analytics dashboard increasing user conversion rate 30%'
-      ]}
-  ],
-  skills: 'Python, SQL, Power BI, Tableau, Azure, GCP, AWS, dbt, Airflow, Docker, Kubernetes, LangChain, Next.js, TypeScript, FastAPI, TensorFlow, PyTorch, Scikit-learn, Pandas, NumPy, Supabase, Stripe, Google Gemini, ChromaDB, Streamlit, SAS, OCR. Domains: Machine Learning, NLP, ETL, Data Pipelines, Data Modeling, MLOps, Business Intelligence, Cloud Architecture, Full-Stack Development, Product Management, AI Automation.',
-  certifications: [
-    'Professional Scrum Master I (PSM I) - Scrum.org, Sep 2024',
-    'Microsoft Certified: Azure Data Fundamentals, May 2022',
-    'Microsoft Certified: Azure AI Fundamentals, May 2022',
-    'Microsoft Certified: Azure Fundamentals, Jun 2021'
-  ]
-};
 
 // ─── Unified log storage ──────────────────────────────────────────────────────
 // All activity is stored in a single 'covercraft_logs' array.
@@ -523,8 +467,12 @@ function stripFormatting(text) {
   var dearIdx = s.search(/\bDear\b/i);
   if (dearIdx > 0) s = s.slice(dearIdx).trim();
 
-  // Strip any contact info or extra content after "Tirth Shah" in the sign-off
-  s = s.replace(/(Sincerely[,.]?\s*\n\s*Tirth(?:\s+H\.?\s*Shah|\s+Shah)?)[\s\S]*/i, '$1');
+  // Strip any contact info or extra content after the name in the sign-off
+  var ownerName = (typeof PORTFOLIO !== 'undefined' && PORTFOLIO.name) ? PORTFOLIO.name : '';
+  if (ownerName) {
+    var nameEsc = ownerName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    s = s.replace(new RegExp('(Sincerely[,.]?\\s*\\n\\s*' + nameEsc + ')[\\s\\S]*', 'i'), '$1');
+  }
 
   return s.trim();
 }
@@ -564,8 +512,8 @@ function buildSystemPrompt(style) {
     '• Do NOT sound like a large-language model, a recruiting AI, or a resume template service.',
     '',
     '━━━ SIGN-OFF ━━━',
-    '• The final sign-off must be EXACTLY these two lines, nothing more:\n  Sincerely,\n  Tirth Shah',
-    '• After "Tirth Shah" there must be NOTHING — no phone number, no email, no website, no extra lines, no "P.S.".',
+    '• The final sign-off must be EXACTLY these two lines, nothing more:\n  Sincerely,\n  ' + (PORTFOLIO.name || 'Your Name'),
+    '• After the name there must be NOTHING — no phone number, no email, no website, no extra lines, no "P.S.".',
     '• Do NOT include any address block, date, or header block before "Dear". The letter starts immediately with "Dear Hiring Manager,".',
     ''
   ].join('\n');
@@ -573,7 +521,7 @@ function buildSystemPrompt(style) {
   var structures = {
     formal: [
       '━━━ STRUCTURE (FORMAL & POLISHED) ━━━',
-      'Para 1 (MIN 90 words): Open "I am applying for the [ROLE] at [COMPANY]." State your MS-MIS at Texas A&M and the most relevant top-line strength. Tie it directly to 2 things in the job description.',
+      'Para 1 (MIN 90 words): Open "I am applying for the [ROLE] at [COMPANY]." State your educational background and the most relevant top-line strength. Tie it directly to 2 things in the job description.',
       'Para 2 (MIN 110 words): Most relevant experience entry. Use 2-3 hard metrics from THAT SAME entry. Describe the problem, what you built, and what changed. Connect explicitly to 1-2 listed responsibilities.',
       'Para 3 (MIN 100 words): A second distinct experience entry — different domain or toolset. Minimum 2 metrics from THAT entry only. Show depth not covered by Para 2.',
       'Para 4 (MIN 75 words): A third proof point or a skill/project that fills a specific gap in the job requirements. Can be from education, a side project, or a certification if no third experience applies.',
@@ -613,7 +561,7 @@ function buildSystemPrompt(style) {
 
     startup: [
       '━━━ STRUCTURE (STARTUP ENERGY) ━━━',
-      'Para 1 (MIN 90 words): Lead with building BlackTieCars solo — $10K+ revenue, 3x growth, 3 months. Pivot to the role.',
+      'Para 1 (MIN 90 words): Lead with your most impressive portfolio achievement — solo project, business result, or quantified impact. Pivot to the role.',
       'Para 2 (MIN 110 words): Most relevant experience. Direct language: "built", "shipped", "cut X by Y%". At least 2 metrics from that same entry.',
       'Para 3 (MIN 100 words): Second proof point from a completely different entry. Show breadth and speed of execution.',
       'Para 4 (MIN 70 words): Third angle — a specific technical skill or project that matches something in the job requirements.',
