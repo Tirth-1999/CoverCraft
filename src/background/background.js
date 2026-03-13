@@ -473,18 +473,17 @@ function stripFormatting(text) {
   var dearIdx = s.search(/\bDear\b/i);
   if (dearIdx > 0) s = s.slice(dearIdx).trim();
 
-  // Strip any contact info or extra content after the name in the sign-off
-  var ownerName = (typeof PORTFOLIO !== 'undefined' && PORTFOLIO.name) ? PORTFOLIO.name : '';
-  if (ownerName) {
-    var nameEsc = ownerName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    // Match "Sincerely," followed by 1-2 newlines then the name, strip anything after
-    s = s.replace(new RegExp('(Sincerely[,.]?\\s*\\n{1,2}\\s*' + nameEsc + ')[\\s\\S]*', 'i'), '$1');
+  // Ensure the letter always opens with "Dear Hiring Manager," — prepend if AI omitted it
+  if (!/^Dear Hiring Manager/i.test(s)) {
+    s = 'Dear Hiring Manager,\n\n' + s;
   }
 
-  // Ensure sign-off is present — if the model omitted it, append it
-  if (ownerName && !/Sincerely/i.test(s)) {
-    s = s.trim() + '\n\nSincerely,\n' + ownerName;
-  }
+  // Strip any AI-generated sign-off entirely (we always append our own from PORTFOLIO)
+  s = s.replace(/\n+\s*Sincerely[,.]?[\s\S]*/i, '').trim();
+
+  // Always append the canonical sign-off from PORTFOLIO
+  var ownerName = (typeof PORTFOLIO !== 'undefined' && PORTFOLIO.name) ? PORTFOLIO.name : '';
+  s = s + '\n\nSincerely,\n' + (ownerName || 'Your Name');
 
   return s.trim();
 }
@@ -499,7 +498,7 @@ function buildSystemPrompt(style) {
     '',
     '━━━ NON-NEGOTIABLE RULES ━━━',
     '• Output ONLY the letter text. Zero markdown, asterisks (*/**), bold, bullets, headers, or commentary.',
-    '• First line must be exactly "Dear Hiring Manager," — NO date line, NO address block, NO recipient block before it.',
+    '• YOUR OUTPUT MUST BEGIN WITH EXACTLY THIS — "Dear Hiring Manager," — as the very first characters, followed by two blank lines, then paragraph 1. NO preamble, NO label like "[Cover Letter]", NO date, NO address, NO recipient block. Nothing before "Dear Hiring Manager,".',
     '• Write in first person (I / my / me) throughout. Never write the applicant name in the body.',
     '• Prose paragraphs only — no bullet lists, no dash lists, no colon-introduced lists.',
     '• HARD MINIMUM: 450 words in the letter body (sign-off excluded). HARD MAXIMUM: 560 words. Count your words before finishing. If you are under 450 words, you MUST expand each paragraph with more context, specifics, and reasoning until you reach 450. Do not stop early.',
@@ -524,16 +523,15 @@ function buildSystemPrompt(style) {
     '• Do NOT sound like a large-language model, a recruiting AI, or a resume template service.',
     '',
     '━━━ SIGN-OFF ━━━',
-    '• The final sign-off must be EXACTLY these two lines, nothing more:\n  Sincerely,\n  ' + (PORTFOLIO.name || 'Your Name'),
-    '• After the name there must be NOTHING — no phone number, no email, no website, no extra lines, no "P.S.".',
-    '• Do NOT include any address block, date, or header block before "Dear". The letter starts immediately with "Dear Hiring Manager,".',
+    '• Do NOT write a sign-off. End the letter after the closing paragraph. The sign-off ("Sincerely, [Name]") will be added automatically.',
     ''
   ].join('\n');
 
   var structures = {
     formal: [
       '━━━ STRUCTURE (FORMAL & POLISHED) ━━━',
-      'Para 1 (MIN 90 words): Open "I am applying for the [ROLE] at [COMPANY]." State your educational background and the most relevant top-line strength. Tie it directly to 2 things in the job description.',
+      'Your output: "Dear Hiring Manager," → blank line → Para 1 → Para 2 → Para 3 → Para 4 → Para 5 → Para 6. Sign-off is added automatically.',
+      'Para 1 (MIN 90 words): Open with "I am applying for the [ROLE] at [COMPANY]." State your educational background and the most relevant top-line strength. Tie it directly to 2 things in the job description.',
       'Para 2 (MIN 110 words): Most relevant experience entry. Use 2-3 hard metrics from THAT SAME entry. Describe the problem, what you built, and what changed. Connect explicitly to 1-2 listed responsibilities.',
       'Para 3 (MIN 100 words): A second distinct experience entry — different domain or toolset. Minimum 2 metrics from THAT entry only. Show depth not covered by Para 2.',
       'Para 4 (MIN 75 words): A third proof point or a skill/project that fills a specific gap in the job requirements. Can be from education, a side project, or a certification if no third experience applies.',
@@ -543,6 +541,7 @@ function buildSystemPrompt(style) {
 
     storytelling: [
       '━━━ STRUCTURE (STORY-DRIVEN) ━━━',
+      'Your output: "Dear Hiring Manager," → blank line → Para 1 → Para 2 → Para 3 → Para 4 → Para 5 → Para 6. Sign-off is added automatically.',
       'Para 1 (MIN 90 words): Open with a real, specific moment or problem from the portfolio. Make it vivid. Pivot naturally to why this role is the next chapter.',
       'Para 2 (MIN 110 words): The main story arc — what the challenge was, what you built or changed, the specific outcome in numbers. From a single PORTFOLIO entry.',
       'Para 3 (MIN 100 words): Second story beat from a completely different experience entry. Different stakes, different tools, same standard of evidence.',
@@ -553,6 +552,7 @@ function buildSystemPrompt(style) {
 
     achievement: [
       '━━━ STRUCTURE (ACHIEVEMENT-LED) ━━━',
+      'Your output: "Dear Hiring Manager," → blank line → Para 1 → Para 2 → Para 3 → Para 4 → Para 5 → Para 6. Sign-off is added automatically.',
       'Para 1 (MIN 80 words): Open with 2 quantified wins from different PORTFOLIO entries. State the role you\'re applying for.',
       'Para 2 (MIN 110 words): Primary experience. Every sentence must have a metric. Pattern: action → number → business impact. All from one entry.',
       'Para 3 (MIN 100 words): Second experience. Different domain, same evidence standard. Minimum 2 metrics from that entry.',
@@ -563,16 +563,18 @@ function buildSystemPrompt(style) {
 
     concise: [
       '━━━ STRUCTURE (CONCISE & PUNCHY) ━━━',
+      'Your output: "Dear Hiring Manager," → blank line → Para 1 → Para 2 → Para 3 → Para 4 → Para 5. Sign-off is added automatically.',
       'Exactly 5 paragraphs. Total body 450-500 words.',
-      'Para 1 (MIN 70 words): One strong opener, credential, direct fit statement.',
-      'Para 2 (MIN 100 words): Best experience. Every sentence has a metric. One entry only.',
-      'Para 3 (MIN 90 words): Second experience. One entry only. Minimum 2 metrics.',
-      'Para 4 (MIN 70 words): Third proof or skill that closes a specific job requirement gap.',
-      'Para 5 (MIN 60 words): Company admiration (specific) + close in one tight paragraph.'
+      'Para 1 (MIN 85 words): One strong opener, credential, direct fit statement.',
+      'Para 2 (MIN 110 words): Best experience. Every sentence has a metric. One entry only.',
+      'Para 3 (MIN 100 words): Second experience. One entry only. Minimum 2 metrics.',
+      'Para 4 (MIN 85 words): Third proof or skill that closes a specific job requirement gap.',
+      'Para 5 (MIN 70 words): Company admiration (specific) + close in one tight paragraph.'
     ].join('\n'),
 
     startup: [
       '━━━ STRUCTURE (STARTUP ENERGY) ━━━',
+      'Your output: "Dear Hiring Manager," → blank line → Para 1 → Para 2 → Para 3 → Para 4 → Para 5 → Para 6. Sign-off is added automatically.',
       'Para 1 (MIN 90 words): Lead with your most impressive portfolio achievement — solo project, business result, or quantified impact. Pivot to the role.',
       'Para 2 (MIN 110 words): Most relevant experience. Direct language: "built", "shipped", "cut X by Y%". At least 2 metrics from that same entry.',
       'Para 3 (MIN 100 words): Second proof point from a completely different entry. Show breadth and speed of execution.',
@@ -610,6 +612,6 @@ function buildUserPrompt(p) {
   lines.push((p.rawPageText || '').slice(0, 3500));
   lines.push('---');
   lines.push('');
-  lines.push('Begin immediately with "Dear Hiring Manager," — no date, no address block, no preamble.');
+  lines.push('IMPORTANT: Your very first output characters must be "Dear Hiring Manager," — not a label, not a date, not anything else. Start there. End after the closing paragraph — do NOT write a sign-off or your name; that will be added automatically.');
   return lines.join('\n');
 }
