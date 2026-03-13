@@ -1,5 +1,7 @@
 # ✦ CoverCraft
 
+[![Visitors](https://visitor-badge.laobi.icu/badge?page_id=Tirth-1999.CoverCraft)](https://github.com/Tirth-1999/CoverCraft)
+
 **AI-powered cover letter generator — Chrome Extension (Manifest V3)**
 
 CoverCraft is a Chrome extension that sits on any job posting page, scrapes the job description, researches the company via Tavily, and generates a tailored, professional cover letter using an LLM — all in one click. It is fully **white-label**: swap in your own portfolio file and API keys, reload the extension, and every generated letter is deeply personalized to *you*.
