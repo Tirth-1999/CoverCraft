@@ -217,6 +217,7 @@ async function handleExtract(payload, sendResponse) {
     var r = await aiChat(logEntry.systemPrompt, logEntry.userPrompt, 0.0, 300);
     logEntry.rawResponse = r.content;
     logEntry.model = r.model;
+    if (!r.content || !r.content.trim()) throw new Error('Model returned an empty response');
     var clean = r.content.replace(/```json|```/g, '').trim();
     var parsed;
     try { parsed = JSON.parse(clean); }
