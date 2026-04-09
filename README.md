@@ -8,19 +8,19 @@ It turns a live job page into a reusable workspace where you can generate a tail
 
 ### Extension popup
 
-![CoverCraft popup](branding/Untitled.png)
+![CoverCraft popup](site/branding/Untitled.png)
 
 ### Cover letter on the job page
 
-![CoverCraft cover letter flow](branding/extension-cover-letter.png)
+![CoverCraft cover letter flow](site/branding/extension-cover-letter.png)
 
 ### Reusable control center
 
-![CoverCraft dashboard overview](branding/dashboard-overview.jpeg)
+![CoverCraft dashboard overview](site/branding/dashboard-overview.jpeg)
 
 ### Account and sync surface
 
-![CoverCraft account overview](branding/website-account-overview.jpeg)
+![CoverCraft account overview](site/branding/website-account-overview.jpeg)
 
 ## Why CoverCraft
 
