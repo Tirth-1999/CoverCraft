@@ -1920,6 +1920,52 @@ section[id] {
   margin-bottom: 5rem;
 }
 
+.legal-shell {
+  width: min(940px, 100%);
+  margin-inline: auto;
+  display: grid;
+  gap: 1.15rem;
+  padding: 1.4rem;
+}
+
+.legal-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  color: var(--faint);
+  font-size: 0.9rem;
+}
+
+.legal-section {
+  display: grid;
+  gap: 0.65rem;
+  padding-top: 0.15rem;
+}
+
+.legal-section h3 {
+  margin: 0;
+  font-size: 1.12rem;
+  font-family: Syne, Inter, system-ui, sans-serif;
+  letter-spacing: -0.03em;
+}
+
+.privacy-list {
+  margin: 0;
+  padding-left: 1.15rem;
+  display: grid;
+  gap: 0.55rem;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.legal-shell a {
+  color: #d6dcff;
+}
+
+.legal-shell a:hover {
+  color: #ffffff;
+}
+
 .site-footer {
   width: min(1080px, calc(100% - 2rem));
   margin: 4.2rem auto 2.8rem;
