@@ -1,23 +1,62 @@
 (function() {
-  function showStatus(msg) {
-    document.getElementById('status').textContent = msg;
+  function byId(id) {
+    return document.getElementById(id);
   }
 
-  // Load model name — with timeout fallback in case storage is slow
-  var badgeTimeout = setTimeout(function() {
-    var badge = document.getElementById('model-badge');
-    if (badge && badge.textContent === 'Loading...') {
-      badge.textContent = '\u2B21 arcee-ai/trinity-large-preview:free';
+  function bind(id, eventName, handler) {
+    var el = byId(id);
+    if (!el) return null;
+    el.addEventListener(eventName, handler);
+    return el;
+  }
+
+  function showStatus(msg) {
+    var status = byId('status');
+    if (status) status.textContent = msg;
+  }
+
+  function initialsForName(name, fallback) {
+    var text = String(name || '').trim();
+    if (!text) return fallback || 'G';
+    return text.split(/\s+/).filter(Boolean).slice(0, 2).map(function(part) {
+      return part.charAt(0).toUpperCase();
+    }).join('') || (fallback || 'G');
+  }
+
+  function renderAccount(cloud) {
+    var avatar = byId('account-avatar');
+    var name = byId('account-name');
+    var sub = byId('account-sub');
+    if (!avatar || !name || !sub) return;
+    avatar.innerHTML = '';
+    if (cloud && cloud.signedIn && cloud.user) {
+      if (cloud.user.photoURL) {
+        var img = document.createElement('img');
+        img.src = cloud.user.photoURL;
+        img.alt = cloud.user.displayName || cloud.user.email || 'User';
+        avatar.appendChild(img);
+      } else {
+        avatar.textContent = initialsForName(cloud.user.displayName || cloud.user.email, 'U');
+      }
+      name.textContent = cloud.user.displayName || 'Signed in';
+      sub.textContent = cloud.user.email || 'Account connected';
+      return;
     }
-  }, 2000);
-  chrome.storage.sync.get(['model'], function(d) {
-    clearTimeout(badgeTimeout);
-    var m = (chrome.runtime.lastError ? null : d.model) || 'arcee-ai/trinity-large-preview:free';
-    document.getElementById('model-badge').textContent = '\u2B21 ' + m;
+    avatar.textContent = 'G';
+    name.textContent = 'Guest';
+    sub.textContent = 'Not signed in';
+  }
+
+  chrome.runtime.sendMessage({ type: 'GET_SETTINGS' }, function(resp) {
+    var settings = resp && resp.settings || {};
+    var model = settings.model || 'openrouter/free';
+    var badge = byId('model-badge');
+    if (badge) badge.textContent = '\u2B21 ' + model;
+    renderAccount(resp && resp.cloud || null);
   });
 
   // Open Panel — dispatch event to content script
-  document.getElementById('open-btn').addEventListener('click', function() {
+  bind('open-btn', 'click', function() {
     chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
       if (!tabs || !tabs[0]) { showStatus('No active tab found.'); return; }
       var tabId = tabs[0].id;
@@ -45,7 +84,7 @@
   });
 
   // Dashboard — open new tab
-  document.getElementById('dash-btn').addEventListener('click', function() {
+  bind('dash-btn', 'click', function() {
     chrome.tabs.create({ url: chrome.runtime.getURL('src/dashboard/dashboard.html') }, function() {
       if (chrome.runtime.lastError) { showStatus('Could not open dashboard.'); return; }
       window.close();
@@ -53,9 +92,16 @@
   });
 
   // Settings — open options page
-  document.getElementById('settings-btn').addEventListener('click', function() {
-    chrome.tabs.create({ url: chrome.runtime.getURL('src/options/options.html') }, function() {
+  bind('settings-btn', 'click', function() {
+    chrome.tabs.create({ url: chrome.runtime.getURL('src/dashboard/dashboard.html#profile') }, function() {
       window.close();
+    });
+  });
+
+  bind('website-link', 'click', function(event) {
+    event.preventDefault();
+    chrome.tabs.create({ url: chrome.runtime.getURL('site/index.html') }, function() {
+      if (!chrome.runtime.lastError) window.close();
     });
   });
 })();

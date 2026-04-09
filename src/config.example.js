@@ -6,9 +6,11 @@
 //
 // Get your keys:
 //   OpenRouter → https://openrouter.ai/keys  (free tier available)
+//   Groq       → https://console.groq.com/keys
 //   Tavily     → https://app.tavily.com       (1,000 free searches/month)
 
 var COVERCRAFT_CONFIG = {
   openrouterKey: 'sk-or-v1-REPLACE_WITH_YOUR_OPENROUTER_KEY',
+  groqKey:       'gsk_REPLACE_WITH_YOUR_GROQ_KEY',
   tavilyKey:     'tvly-dev-REPLACE_WITH_YOUR_TAVILY_KEY'
 };

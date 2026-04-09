@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CoverCraft | Account</title>
+  <meta name="description" content="Manage CoverCraft sign-in, sync, and profile state from a dedicated account page.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="bg-orb orb-a"></div>
+  <div class="bg-orb orb-b"></div>
+  <div class="noise"></div>
+
+  <header class="site-header">
+    <a class="brand" href="index.html#top">
+      <span class="brand-mark">✦</span>
+      <span class="brand-text">CoverCraft</span>
+    </a>
+    <nav class="nav">
+      <a href="index.html#flow">Flow</a>
+      <a href="index.html#setup">Setup</a>
+      <a href="index.html#surfaces">Product</a>
+      <a href="index.html#faq">FAQ</a>
+      <a href="account.html">Account</a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <section class="section account-top">
+      <div class="panel reveal account-center-shell">
+        <div class="section-head account-head">
+          <div class="eyebrow eyebrow-hero">Account</div>
+          <h2>Identity, sync, and profile in one place.</h2>
+          <p id="site-account-copy">Manage the account and profile details that power your cover letters, resumes, and follow-up answers.</p>
+        </div>
+        <div class="account-summary-card account-summary-card-lg">
+          <div class="account-summary-top account-summary-top-lg">
+            <div class="account-avatar account-avatar-lg" id="site-account-avatar">G</div>
+            <div class="account-identity-copy">
+              <div class="account-name account-name-lg" id="site-account-name">Guest</div>
+              <div class="account-sub" id="site-account-sub">Not signed in</div>
+              <div class="account-status-row" id="site-account-badges"></div>
+            </div>
+          </div>
+        </div>
+        <div class="sync-action-bar">
+          <button class="site-action-btn site-action-btn--primary" id="site-sign-in-btn" type="button">Sign In With Google</button>
+          <button class="site-action-btn site-action-btn--secondary" id="site-sync-btn" type="button">Sync Now</button>
+          <button class="site-action-btn site-action-btn--secondary" id="site-open-settings-btn" type="button">Open Extension Settings</button>
+          <button class="site-action-btn site-action-btn--danger" id="site-sign-out-btn" type="button">Sign Out</button>
+        </div>
+        <div class="site-account-status account-inline-status" id="site-account-status"></div>
+        <div class="mini-grid account-stats-grid" id="site-account-stats"></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="panel reveal account-editor-shell">
+        <div class="editor-head">
+          <div>
+            <div class="eyebrow">Profile</div>
+            <h2>Active profile details.</h2>
+            <p class="account-editor-copy" id="site-profile-copy">Update the profile used in cover letters, tailored resumes, and exports.</p>
+          </div>
+        </div>
+        <div class="account-guest-note hidden" id="site-profile-guest-note">Sign in with Google to unlock profile editing and synced identity details.</div>
+        <div class="account-editor-sections" id="site-profile-sections">
+          <div class="account-editor-section">
+            <div class="editor-section-head">
+              <h3>Identity</h3>
+              <p>These details are used in cover letters, tailored resumes, PDF exports, and the account summary.</p>
+            </div>
+            <div class="account-editor-grid">
+              <label class="account-field">
+                <span>Full name</span>
+                <input type="text" id="site-profile-name-input" placeholder="Tirth Shah">
+              </label>
+              <label class="account-field">
+                <span>Title</span>
+                <input type="text" id="site-profile-title-input" placeholder="Data Scientist">
+              </label>
+              <label class="account-field">
+                <span>Location</span>
+                <input type="text" id="site-profile-location-input" placeholder="Austin, TX">
+              </label>
+              <label class="account-field">
+                <span>Website</span>
+                <input type="text" id="site-profile-website-input" placeholder="https://your-site.com">
+              </label>
+            </div>
+          </div>
+          <div class="account-editor-section">
+            <div class="editor-section-head">
+              <h3>Contact</h3>
+              <p>Keep these fields updated so the active profile is ready before you generate the next application.</p>
+            </div>
+            <div class="account-editor-grid">
+              <label class="account-field">
+                <span>Email</span>
+                <input type="email" id="site-profile-email-input" placeholder="name@example.com">
+              </label>
+              <label class="account-field">
+                <span>Phone</span>
+                <input type="text" id="site-profile-phone-input" placeholder="(555) 555-5555">
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="editor-actions editor-actions-bottom">
+          <button class="site-action-btn" id="site-profile-refresh-btn" type="button">Reload Profile</button>
+          <button class="site-action-btn" id="site-profile-save-btn" type="button">Save Profile</button>
+        </div>
+        <div class="site-account-status" id="site-profile-status"></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head reveal">
+        <div class="eyebrow">Website Surfaces</div>
+        <h2>The account pages on the site.</h2>
+      </div>
+      <div class="shot-grid account-shot-grid">
+        <article class="panel reveal shot-card">
+          <div class="eyebrow">Account</div>
+          <h3>Identity, sync, and top-line usage.</h3>
+          <div class="shot-frame account-shot-frame">
+            <img src="../branding/website-account-overview.jpeg" alt="CoverCraft website account overview">
+          </div>
+        </article>
+        <article class="panel reveal shot-card">
+          <div class="eyebrow">Profile</div>
+          <h3>Editable profile details for exports.</h3>
+          <div class="shot-frame account-shot-frame">
+            <img src="../branding/website-profile-details.jpeg" alt="CoverCraft website profile details">
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section id="faq" class="section">
+      <div class="section-head reveal">
+        <div class="eyebrow">FAQ</div>
+        <h2>Account basics.</h2>
+      </div>
+      <div class="faq">
+        <button class="faq-item reveal" data-faq>
+          <span>Do API keys sync with Google?</span>
+          <span class="faq-icon">+</span>
+          <div class="faq-body">No. API keys stay local even when cloud sync is enabled.</div>
+        </button>
+        <button class="faq-item reveal" data-faq>
+          <span>What does cloud sync back up?</span>
+          <span class="faq-icon">+</span>
+          <div class="faq-body">Sessions, research, generated output, and the active profile can be synced.</div>
+        </button>
+        <button class="faq-item reveal" data-faq>
+          <span>Can I edit the active profile here?</span>
+          <span class="faq-icon">+</span>
+          <div class="faq-body">Yes. Signed-in users can update the profile used across letters, resumes, and exports.</div>
+        </button>
+        <button class="faq-item reveal" data-faq>
+          <span>Do I need the extension open?</span>
+          <span class="faq-icon">+</span>
+          <div class="faq-body">Open this page from CoverCraft when you want live account actions and synced profile editing.</div>
+        </button>
+        <button class="faq-item reveal" data-faq>
+          <span>Can I use this page without signing in?</span>
+          <span class="faq-icon">+</span>
+          <div class="faq-body">Yes, but signed-in users get sync controls and editable profile details tied to the active account.</div>
+        </button>
+        <button class="faq-item reveal" data-faq>
+          <span>What changes when cloud sync is off?</span>
+          <span class="faq-icon">+</span>
+          <div class="faq-body">Your work stays local-first, and account-linked backups to Firebase are not pushed.</div>
+        </button>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-top">
+      <div class="footer-brand-block">
+        <div class="footer-mark">CoverCraft</div>
+        <p class="footer-note">Manage identity, sync, and the active profile that powers letters, resumes, and exports.</p>
+      </div>
+      <div class="footer-grid">
+        <div class="footer-col">
+          <div class="footer-caption">Account</div>
+          <a href="account.html">Overview</a>
+          <a href="account.html#faq">FAQ</a>
+          <a href="index.html#surfaces">Product surfaces</a>
+        </div>
+        <div class="footer-col">
+          <div class="footer-caption">Workspace</div>
+          <a href="index.html#flow">Workflow</a>
+          <a href="index.html#setup">Setup</a>
+          <a href="index.html#surfaces">Dashboard and profile</a>
+        </div>
+        <div class="footer-col">
+          <div class="footer-caption">Profile</div>
+          <a href="account.html">Identity</a>
+          <a href="account.html">Sync state</a>
+          <a href="account.html">Export-ready details</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>Keep identity, sync, and output aligned.</span>
+      <span>API keys remain local.</span>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

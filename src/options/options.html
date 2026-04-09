@@ -6,179 +6,208 @@
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html{scrollbar-gutter:stable}
     body{background:#07070d;color:#e2e8f0;font-family:'Syne',sans-serif;min-height:100vh}
-    .page{max-width:660px;margin:0 auto;padding:44px 24px}
-    .logo{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+    .page{max-width:920px;margin:0 auto;padding:42px 24px 60px}
+    .hero{margin-bottom:26px}
+    .logo{display:flex;align-items:center;gap:10px;margin-bottom:8px}
     .logo-mark{font-size:26px;color:#818cf8}
-    h1{font-size:26px;font-weight:800;background:linear-gradient(135deg,#fff,#818cf8);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;letter-spacing:-0.5px}
-    .subtitle{color:rgba(255,255,255,0.35);font-size:13px;margin-top:5px;margin-bottom:36px}
-    .card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:22px;margin-bottom:18px}
-    .card-title{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#818cf8;margin-bottom:16px}
-    .field{margin-bottom:16px}
-    .field:last-child{margin-bottom:0}
-    label{display:block;font-size:12.5px;color:rgba(255,255,255,0.65);margin-bottom:6px;font-weight:600}
-    input[type="text"],input[type="password"],select,textarea{width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#e2e8f0;padding:10px 13px;font-size:13px;font-family:'Syne',sans-serif;outline:none;transition:border-color .15s}
-    input[type="text"]:focus,input[type="password"]:focus,select:focus,textarea:focus{border-color:rgba(99,102,241,0.5)}
-    input[type="password"],input.mono{font-family:'DM Mono',monospace;letter-spacing:1.5px;font-size:12px}
-    select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%236366f1' stroke-width='2.5'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:34px;cursor:pointer}
-    select option{background:#0a0a0f}
-    .hint{font-size:11px;color:rgba(255,255,255,0.28);margin-top:6px;line-height:1.55}
-    .hint a{color:#818cf8;text-decoration:none}
-    .hint a:hover{text-decoration:underline}
-    .key-row{display:flex;gap:8px;align-items:center}
-    .key-row input{flex:1}
-    .btn-test{background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.3);color:#818cf8;border-radius:7px;padding:9px 16px;font-size:12px;font-weight:700;font-family:'Syne',sans-serif;cursor:pointer;white-space:nowrap;transition:all .15s}
-    .btn-test:hover{background:rgba(99,102,241,0.25)}
-    .status-dot{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:5px 11px;border-radius:6px;margin-top:7px}
-    .dot-green{background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.22);color:#4ade80}
-    .dot-red{background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);color:#f87171}
-    .dot-yellow{background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.2);color:#fbbf24}
-    .model-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:2px}
-    .model-card{background:rgba(255,255,255,0.04);border:1.5px solid rgba(255,255,255,0.08);border-radius:10px;padding:12px 14px;cursor:pointer;transition:all .15s;position:relative}
-    .model-card:hover{border-color:rgba(99,102,241,0.35);background:rgba(99,102,241,0.06)}
-    .model-card.selected{border-color:rgba(99,102,241,0.6);background:rgba(99,102,241,0.1)}
-    .model-card input[type=radio]{position:absolute;opacity:0;pointer-events:none}
-    .model-name{font-size:12.5px;font-weight:700;color:#e2e8f0;margin-bottom:4px}
-    .model-tag{display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;margin-bottom:6px}
-    .tag-free{background:rgba(34,197,94,0.12);color:#4ade80;border:1px solid rgba(34,197,94,0.25)}
-    .tag-paid{background:rgba(251,191,36,0.1);color:#fbbf24;border:1px solid rgba(251,191,36,0.25)}
-    .tag-custom{background:rgba(139,92,246,0.1);color:#a78bfa;border:1px solid rgba(139,92,246,0.25)}
-    .model-desc{font-size:11px;color:rgba(255,255,255,0.35);line-height:1.5}
-    .custom-model-wrap{margin-top:12px;display:none}
-    .custom-model-wrap.visible{display:block}
-    .portfolio-note{background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:8px;padding:12px 15px;font-size:12px;color:rgba(129,140,248,0.9);line-height:1.6}
-    .save-row{display:flex;align-items:center;gap:16px;margin-top:6px}
-    .btn-primary{background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;border-radius:8px;padding:11px 28px;font-size:13px;font-weight:700;font-family:'Syne',sans-serif;cursor:pointer;box-shadow:0 4px 20px rgba(99,102,241,0.25);transition:all .15s}
-    .btn-primary:hover{box-shadow:0 4px 28px rgba(99,102,241,0.45);transform:translateY(-1px)}
-    #save-status{font-size:13px;color:#4ade80;opacity:0;transition:opacity .3s}
-    .divider{height:1px;background:rgba(255,255,255,0.06);margin:14px 0}
+    h1{font-size:30px;font-weight:800;letter-spacing:-.04em}
+    .subtitle{font-size:13px;color:#64748b;line-height:1.6;max-width:760px}
+    .stack{display:flex;flex-direction:column;gap:18px}
+    .card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:22px}
+    .card-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:#818cf8;margin-bottom:16px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    .field{display:flex;flex-direction:column;gap:6px}
+    label{font-size:12px;font-weight:700;color:#cbd5e1}
+    input[type="text"],input[type="password"],select,textarea{width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:12px;color:#e2e8f0;padding:11px 13px;font-size:13px;font-family:'Syne',sans-serif;outline:none}
+    textarea{min-height:220px;resize:vertical;font-family:'DM Mono',monospace;font-size:12px;line-height:1.6}
+    input.mono{font-family:'DM Mono',monospace;font-size:12px}
+    .hint{font-size:11px;color:#64748b;line-height:1.6}
+    .hint a{color:#a5b4fc;text-decoration:none}
+    .row{display:flex;gap:8px;align-items:center}
+    .row > *{flex:1}
+    .btn{border:none;border-radius:12px;padding:10px 14px;font:700 12px 'Syne',sans-serif;cursor:pointer;background:rgba(255,255,255,.06);color:#e2e8f0;border:1px solid rgba(255,255,255,.08)}
+    .btn:hover{background:rgba(255,255,255,.1)}
+    .btn-primary{background:linear-gradient(135deg,#6366f1,#8b5cf6);border-color:transparent}
+    .btn-secondary{color:#cbd5e1}
+    .btn-upload{background:rgba(129,140,248,.08);border-color:rgba(129,140,248,.2);color:#c7d2fe}
+    .btn-success{background:rgba(16,185,129,.08);border-color:rgba(16,185,129,.22);color:#86efac}
+    .status{min-height:18px;font-size:12px}
+    .status.error{color:#fca5a5}
+    .status.ok{color:#86efac}
+    .status.loading{color:#c7d2fe}
+    .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+    .chip{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;padding:5px 8px;border-radius:999px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);color:#cbd5e1}
+    .chip.warn{background:rgba(251,191,36,.08);border-color:rgba(251,191,36,.18);color:#fcd34d}
+    .chip.err{background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.18);color:#fca5a5}
+    .split{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    .check{display:flex;align-items:center;gap:10px;font-size:12px;color:#cbd5e1}
+    .check input{accent-color:#818cf8}
+    .source-box{padding:12px 14px;border-radius:14px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06)}
+    .source-box h3{font-size:12px;font-weight:800;color:#fff}
+    .source-box p{font-size:12px;color:#94a3b8;margin-top:6px;line-height:1.6}
+    .source-box strong{color:#fff}
+    .hidden{display:none}
+    @media (max-width: 860px){.grid,.split{grid-template-columns:1fr}.row{flex-direction:column;align-items:stretch}}
   </style>
 </head>
 <body>
-<div class="page">
-  <div class="logo"><span class="logo-mark">✦</span><h1>CoverCraft</h1></div>
-  <p class="subtitle">Your personalized cover letter extension · Settings &amp; Configuration</p>
+  <div class="page">
+    <div class="hero">
+      <div class="logo"><span class="logo-mark">✦</span><h1>CoverCraft Settings</h1></div>
+      <p class="subtitle">Set up your API keys, choose how CoverCraft appears on job pages, and import a reusable portfolio profile from JSON, PDF, or a resume image.</p>
+    </div>
 
-  <!-- ── API Keys ── -->
-  <div class="card">
-    <div class="card-title">🔑 API Keys</div>
+    <div class="stack">
+      <section class="card">
+        <div class="card-title">API Keys</div>
+        <div class="grid">
+          <div class="field">
+            <label for="openrouter-key">OpenRouter API Key</label>
+            <div class="row">
+              <input type="password" id="openrouter-key" class="mono" placeholder="sk-or-v1-…" autocomplete="off">
+              <button class="btn" id="test-openrouter-btn">Test</button>
+            </div>
+            <div class="hint">Optional when using Groq. Required for OpenRouter free-routing, Gemma, Nemotron, MiniMax, and Tavily-backed generation fallback. Get one at <a href="https://openrouter.ai/keys" target="_blank">openrouter.ai/keys</a>.</div>
+            <div id="openrouter-status" class="status"></div>
+          </div>
+          <div class="field">
+            <label for="groq-key">Groq API Key</label>
+            <div class="row">
+              <input type="password" id="groq-key" class="mono" placeholder="gsk-…" autocomplete="off">
+              <button class="btn" id="test-groq-btn">Test</button>
+            </div>
+            <div class="hint">Use Groq for free hosted chat models when you do not want to depend on OpenRouter routing.</div>
+            <div id="groq-status" class="status"></div>
+          </div>
+          <div class="field">
+            <label for="tavily-key">Tavily API Key</label>
+            <div class="row">
+              <input type="password" id="tavily-key" class="mono" placeholder="tvly-dev-…" autocomplete="off">
+              <button class="btn" id="test-tavily-btn">Test</button>
+            </div>
+            <div class="hint">Required for company research caching. Get one at <a href="https://app.tavily.com" target="_blank">app.tavily.com</a>.</div>
+            <div id="tavily-status" class="status"></div>
+          </div>
+        </div>
+      </section>
 
-    <div class="field">
-      <label>OpenRouter API Key</label>
-      <div class="key-row">
-        <input type="password" id="openrouter-key" class="mono" placeholder="sk-or-v1-…" autocomplete="off" />
-        <button class="btn-test" id="test-openrouter-btn">Test</button>
+      <section class="card">
+        <div class="card-title">Runtime Defaults</div>
+        <div class="grid">
+          <div class="field">
+            <label for="model-select">Default model</label>
+            <select id="model-select">
+              <optgroup label="OpenRouter">
+              <option value="openrouter/free">Free Routing</option>
+              <option value="google/gemma-3-12b-it:free">Google Gemma 3 12B</option>
+              <option value="meta-llama/llama-3.3-70b-instruct:free">Meta Llama 3.3 70B</option>
+              <option value="nvidia/nemotron-3-super-120b-a12b:free">NVIDIA Nemotron 3 Super 120B</option>
+              <option value="minimax/minimax-m2.5:free">MiniMax M2.5</option>
+              </optgroup>
+              <optgroup label="Groq">
+              <option value="groq/llama-3.1-8b-instant">Groq Llama 3.1 8B Instant</option>
+              <option value="groq/llama-3.3-70b-versatile">Groq Llama 3.3 70B Versatile</option>
+              <option value="groq/meta-llama/llama-4-scout-17b-16e-instruct">Groq Llama 4 Scout 17B</option>
+              <option value="groq/moonshotai/kimi-k2-instruct">Groq Kimi K2 Instruct</option>
+              <option value="groq/moonshotai/kimi-k2-instruct-0905">Groq Kimi K2 Instruct 0905</option>
+              <option value="groq/openai/gpt-oss-120b">Groq GPT-OSS 120B</option>
+              <option value="groq/openai/gpt-oss-20b">Groq GPT-OSS 20B</option>
+              <option value="groq/qwen/qwen3-32b">Groq Qwen3 32B</option>
+              </optgroup>
+              <option value="custom">Custom Model</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="custom-model-input">Custom model string</label>
+            <input type="text" id="custom-model-input" placeholder="openrouter model id">
+            <div class="hint">Only used when “Custom Model” is selected.</div>
+          </div>
+          <div class="field">
+            <label for="default-type">Default cover letter style</label>
+            <select id="default-type">
+              <option value="formal">Formal &amp; Polished</option>
+              <option value="storytelling">Story-Driven</option>
+              <option value="achievement">Achievement-Led</option>
+              <option value="concise">Concise &amp; Punchy</option>
+              <option value="startup">Startup Energy</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="trigger-mode">Trigger mode</label>
+            <select id="trigger-mode">
+              <option value="manual">Manual only</option>
+              <option value="auto_simplify">Auto-open when Simplify appears</option>
+            </select>
+            <div class="hint">Manual remains the default. Refresh restoration still works if a session was already open.</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-title">Profile</div>
+        <div style="margin-top:0" class="check">
+          <input type="checkbox" id="cloud-sync-enabled">
+          <label for="cloud-sync-enabled">Enable cloud sync for sessions and portfolio</label>
+        </div>
+        <div class="hint">API keys stay local. Signed-in users can sync sessions, research, cover letters, and the active portfolio to Firebase.</div>
+        <div class="source-box" style="margin-top:14px">
+          <h3>Google Cloud Account</h3>
+          <p id="cloud-auth-summary">Checking cloud status…</p>
+          <div class="chips" id="cloud-auth-chips"></div>
+          <div class="row" style="margin-top:12px">
+            <button class="btn btn-success" id="cloud-sign-in-btn">Sign In With Google</button>
+            <button class="btn" id="cloud-sync-btn">Sync Now</button>
+            <button class="btn btn-secondary" id="cloud-sign-out-btn">Sign Out</button>
+          </div>
+          <div id="cloud-auth-status" class="status"></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-title">Portfolio Import</div>
+        <div class="split">
+          <div class="source-box">
+            <h3>Active Portfolio Source</h3>
+            <p id="portfolio-source-text">Loading…</p>
+            <div class="chips" id="portfolio-validation"></div>
+          </div>
+          <div class="source-box">
+            <h3>Import Options</h3>
+            <p>Upload a prepared <strong>portfolio.json</strong>, a text-based <strong>PDF resume</strong>, or a clear <strong>JPEG resume image</strong>. PDFs with no embedded text may need to be re-uploaded as an image for best results.</p>
+            <div class="row" style="margin-top:12px">
+              <button class="btn btn-upload" id="upload-json-btn">Upload JSON</button>
+              <button class="btn btn-upload" id="upload-pdf-btn">Upload PDF Resume</button>
+              <button class="btn btn-upload" id="upload-image-btn">Upload JPEG Resume</button>
+            </div>
+          </div>
+        </div>
+
+        <input type="file" id="json-input" class="hidden" accept=".json,application/json">
+        <input type="file" id="pdf-input" class="hidden" accept="application/pdf">
+        <input type="file" id="image-input" class="hidden" accept="image/jpeg,image/jpg,image/png">
+
+        <div class="field" style="margin-top:18px">
+          <label for="portfolio-editor">Draft portfolio JSON</label>
+          <textarea id="portfolio-editor" placeholder="Imported or edited portfolio JSON will appear here."></textarea>
+          <div class="hint">Review the draft before applying it. You can manually edit the JSON if the resume parser needs cleanup.</div>
+        </div>
+        <div class="row">
+          <button class="btn btn-success" id="apply-portfolio-btn">Apply Draft Portfolio</button>
+          <button class="btn btn-secondary" id="load-current-btn">Load Current Portfolio</button>
+        </div>
+        <div id="portfolio-status" class="status"></div>
+      </section>
+
+      <div class="row">
+        <button class="btn btn-primary" id="save-btn">Save Runtime Settings</button>
+        <div id="save-status" class="status"></div>
       </div>
-      <div id="openrouter-status"></div>
-      <p class="hint">Get your key at <a href="https://openrouter.ai/keys" target="_blank">openrouter.ai/keys</a>. Free tier available — no credit card needed.</p>
-    </div>
-
-    <div class="divider"></div>
-
-    <div class="field">
-      <label>Tavily API Key</label>
-      <div class="key-row">
-        <input type="password" id="tavily-key" class="mono" placeholder="tvly-dev-…" autocomplete="off" />
-        <button class="btn-test" id="test-tavily-btn">Test</button>
-      </div>
-      <div id="tavily-status"></div>
-      <p class="hint">Get your key at <a href="https://app.tavily.com" target="_blank">app.tavily.com</a>. 1,000 free searches/month.</p>
     </div>
   </div>
 
-  <!-- ── Model Selection ── -->
-  <div class="card">
-    <div class="card-title">🤖 AI Model</div>
-    <p class="hint" style="margin-bottom:12px;color:rgba(255,255,255,0.4)">Choose which model powers your cover letters. Free models are slower but cost nothing.</p>
-
-    <div class="model-grid">
-      <label class="model-card" id="card-free">
-        <input type="radio" name="model" value="openrouter/free" />
-        <div class="model-name">Free Routing</div>
-        <span class="model-tag tag-free">FREE</span>
-        <div class="model-desc">Routes to free models (Gemini Flash, DeepSeek R1). Slower, 0 cost.</div>
-      </label>
-
-      <label class="model-card" id="card-arcee">
-        <input type="radio" name="model" value="arcee-ai/trinity-large-preview:free" />
-        <div class="model-name">Arcee Trinity Large</div>
-        <span class="model-tag tag-free">FREE</span>
-        <div class="model-desc">Fast, strong reasoning and writing quality. Recommended free option.</div>
-      </label>
-
-      <label class="model-card" id="card-auto">
-        <input type="radio" name="model" value="openrouter/auto" />
-        <div class="model-name">Auto Routing</div>
-        <span class="model-tag tag-paid">PAID</span>
-        <div class="model-desc">OpenRouter picks the best model for the task. Faster, may charge.</div>
-      </label>
-
-      <label class="model-card" id="card-gemini-flash">
-        <input type="radio" name="model" value="google/gemini-2.0-flash-001" />
-        <div class="model-name">Gemini 2.0 Flash</div>
-        <span class="model-tag tag-free">FREE</span>
-        <div class="model-desc">Fast, reliable, free tier. Good quality cover letters.</div>
-      </label>
-
-      <label class="model-card" id="card-deepseek">
-        <input type="radio" name="model" value="deepseek/deepseek-r1:free" />
-        <div class="model-name">DeepSeek R1</div>
-        <span class="model-tag tag-free">FREE</span>
-        <div class="model-desc">Strong reasoning model, free. Slower but thorough.</div>
-      </label>
-
-      <label class="model-card" id="card-claude">
-        <input type="radio" name="model" value="anthropic/claude-3-haiku" />
-        <div class="model-name">Claude 3 Haiku</div>
-        <span class="model-tag tag-paid">PAID</span>
-        <div class="model-desc">Fast, excellent writing quality. Small cost per letter.</div>
-      </label>
-
-      <label class="model-card" id="card-custom">
-        <input type="radio" name="model" value="custom" />
-        <div class="model-name">Custom Model</div>
-        <span class="model-tag tag-custom">CUSTOM</span>
-        <div class="model-desc">Enter any OpenRouter model string manually.</div>
-      </label>
-    </div>
-
-    <div class="custom-model-wrap" id="custom-model-wrap">
-      <label style="margin-top:0">Custom Model String</label>
-      <input type="text" id="custom-model-input" placeholder="e.g. mistralai/mistral-7b-instruct" />
-      <p class="hint">Browse all models at <a href="https://openrouter.ai/models" target="_blank">openrouter.ai/models</a></p>
-    </div>
-  </div>
-
-  <!-- ── Default Style ── -->
-  <div class="card">
-    <div class="card-title">✍️ Default Cover Letter Style</div>
-    <div class="field">
-      <label>Style used when panel first opens</label>
-      <select id="default-type">
-        <option value="formal">Formal &amp; Polished (Recommended)</option>
-        <option value="storytelling">Story-Driven Narrative</option>
-        <option value="achievement">Achievement-Led (Quantified)</option>
-        <option value="concise">Concise &amp; Punchy</option>
-        <option value="startup">Startup Energy</option>
-      </select>
-    </div>
-  </div>
-
-  <!-- ── Portfolio ── -->
-  <div class="card">
-    <div class="card-title">📋 Portfolio</div>
-    <div class="portfolio-note">
-      ✦ Your complete portfolio is loaded from <code>src/portfolio.js</code> — work history, skills, certifications, and achievements. Edit that file any time to update what the AI knows about you. No changes to the extension needed.
-    </div>
-    <p style="color:#4ade80;font-size:12px;margin-top:10px">✓ Portfolio loaded from src/portfolio.js</p>
-  </div>
-
-  <div class="save-row">
-    <button class="btn-primary" id="save-btn">Save Settings</button>
-    <span id="save-status">✓ Saved!</span>
-  </div>
-</div>
-<script src="../config.js"></script>
-<script src="options.js"></script>
+  <script src="../shared/core.js"></script>
+  <script src="options.js"></script>
 </body>
 </html>

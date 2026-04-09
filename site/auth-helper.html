@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CoverCraft Auth Helper</title>
+  <style>
+    :root {
+      --bg: #07070d;
+      --panel: rgba(17, 17, 27, 0.92);
+      --border: rgba(255,255,255,0.08);
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #818cf8;
+      --ok: #86efac;
+      --error: #fca5a5;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at top left, rgba(99, 102, 241, 0.16), transparent 34%),
+        linear-gradient(180deg, #05050b 0%, #07070d 100%);
+      color: var(--text);
+      font: 14px/1.6 Inter, system-ui, sans-serif;
+      padding: 18px;
+    }
+    .shell {
+      width: min(420px, 100%);
+      padding: 22px;
+      border-radius: 24px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      box-shadow: 0 24px 70px rgba(0,0,0,0.45);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+      font: 800 24px/1 Syne, Inter, system-ui, sans-serif;
+      letter-spacing: -0.04em;
+    }
+    .mark { color: var(--accent); }
+    h1 {
+      margin: 0 0 10px;
+      font: 800 32px/.98 Syne, Inter, system-ui, sans-serif;
+      letter-spacing: -0.05em;
+    }
+    p {
+      margin: 0;
+      color: var(--muted);
+    }
+    .status {
+      min-height: 22px;
+      margin-top: 18px;
+      color: var(--muted);
+    }
+    .status[data-kind="ok"] { color: var(--ok); }
+    .status[data-kind="error"] { color: var(--error); }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="brand"><span class="mark">✦</span><span>CoverCraft</span></div>
+    <h1>Opening Google sign-in.</h1>
+    <p>This window will turn into the Google account chooser and return to CoverCraft automatically.</p>
+    <div class="status" id="status">Preparing secure sign-in…</div>
+  </div>
+  <script type="module" src="auth-helper.js"></script>
+</body>
+</html>

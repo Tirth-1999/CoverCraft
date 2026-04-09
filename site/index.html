@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CoverCraft | Faster applications from the job page</title>
+  <meta name="description" content="CoverCraft turns job pages into a faster workspace for cover letters, tailored resumes, and follow-up answers.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="bg-orb orb-a"></div>
+  <div class="bg-orb orb-b"></div>
+  <div class="noise"></div>
+
+  <header class="site-header">
+    <a class="brand" href="#top">
+      <span class="brand-mark">✦</span>
+      <span class="brand-text">CoverCraft</span>
+    </a>
+    <nav class="nav">
+      <a href="#flow">Flow</a>
+      <a href="#setup">Setup</a>
+      <a href="#surfaces">Product</a>
+      <a href="#faq">FAQ</a>
+      <a href="account.html">Account</a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <section class="hero section">
+      <div class="hero-copy reveal">
+        <div class="eyebrow eyebrow-hero">Chrome extension for faster applications</div>
+        <div class="hero-brand">
+          <span class="hero-brand-mark">✦</span>
+          <span class="hero-brand-line">CoverCraft</span>
+        </div>
+        <h1>Write better applications without leaving the job page.</h1>
+        <p class="lede">
+          Cover letters, tailored resumes, and follow-up answers stay in one clean workspace with the role, company, and profile already in context.
+        </p>
+      </div>
+
+      <div class="hero-media reveal">
+        <div class="window-shell">
+          <div class="window-bar">
+            <div class="window-dots" aria-hidden="true">
+              <span class="window-dot dot-red"></span>
+              <span class="window-dot dot-amber"></span>
+              <span class="window-dot dot-green"></span>
+            </div>
+            <div class="window-title">covercraft.app / live execution</div>
+          </div>
+          <div class="window-content">
+          <video class="demo-video" autoplay muted loop playsinline controls poster="../branding/extension-cover-letter.png">
+            <source src="../branding/Live_Execution.mp4" type="video/mp4">
+          </video>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head reveal">
+        <div class="eyebrow">Why CoverCraft</div>
+        <h2>The core pieces.</h2>
+      </div>
+      <div class="feature-grid">
+        <article class="card reveal system-card">
+          <h3>Content</h3>
+          <p>Create letters, tailored resumes, and follow-up answers in one flow.</p>
+        </article>
+        <article class="card reveal system-card">
+          <h3>Logged content</h3>
+          <p>Saved sessions stay useful when you come back to the same company.</p>
+        </article>
+        <article class="card reveal system-card">
+          <h3>Context</h3>
+          <p>Keep the company, role, and profile pinned while you work.</p>
+        </article>
+        <article class="card reveal system-card">
+          <h3>Smarter extraction</h3>
+          <p>Use AI and heuristics together on noisy job pages.</p>
+        </article>
+        <article class="card reveal system-card">
+          <h3>One control center</h3>
+          <p>Sessions, profile, and output stay easy to revisit.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="flow" class="section">
+      <div class="section-head reveal">
+        <div class="eyebrow">Flow</div>
+        <h2>From page to application.</h2>
+        <p>Follow the full sequence from the live job page to reusable output, saved sessions, and the next application.</p>
+      </div>
+      <div class="flow-grid">
+        <article class="flow-step reveal">
+          <span class="step-num">01</span>
+          <h3>Open a job page</h3>
+          <p>Launch CoverCraft where you are already applying.</p>
+        </article>
+        <article class="flow-step reveal">
+          <span class="step-num">02</span>
+          <h3>Lock the context</h3>
+          <p>Keep the company, role, and profile in view.</p>
+        </article>
+        <article class="flow-step reveal">
+          <span class="step-num">03</span>
+          <h3>Generate materials</h3>
+          <p>Create the letter, resume pass, and follow-up answers.</p>
+        </article>
+        <article class="flow-step reveal">
+          <span class="step-num">04</span>
+          <h3>Review the generated draft</h3>
+          <p>Refine the letter, resume pass, or answer while the role context stays pinned.</p>
+        </article>
+        <article class="flow-step reveal">
+          <span class="step-num">05</span>
+          <h3>Move into control center</h3>
+          <p>Open the reusable dashboard to revisit sessions, settings, profile state, and analytics.</p>
+        </article>
+        <article class="flow-step reveal">
+          <span class="step-num">06</span>
+          <h3>Export and reuse</h3>
+          <p>Keep the session ready for follow-ups, repeat companies, and the next application cycle.</p>
+        </article>
+      </div>
+    </section>
+
+      <section id="setup" class="section">
+        <div class="section-head reveal">
+          <div class="eyebrow">Setup</div>
+          <h2>Get CoverCraft ready.</h2>
+          <p>Connect the required services once and keep one profile ready so every new session starts faster.</p>
+        </div>
+        <div class="split alt">
+        <div id="install" class="panel reveal panel-centered">
+          <div class="eyebrow">Keys</div>
+          <h2>Connect the keys.</h2>
+          <p>Start with model access and research.</p>
+          <div class="import-list compact-list setup-import-list">
+            <div><strong>OpenRouter</strong> - connect a routed model stack.</div>
+            <div><strong>Groq</strong> - connect a fast hosted generation path.</div>
+            <div><strong>Tavily</strong> - connect company research.</div>
+          </div>
+        </div>
+        <div id="portfolio" class="panel reveal panel-centered">
+          <div class="eyebrow">Profile</div>
+          <h2>Keep profile ready.</h2>
+          <p>Import it directly or build it from a resume.</p>
+          <div class="import-list compact-list portfolio-import-list">
+            <div><strong>Upload JSON</strong> - replace the active profile.</div>
+            <div><strong>Upload PDF or JPEG</strong> - import from Settings.</div>
+            <div><strong>Resume Workspace</strong> - review a draft before applying it.</div>
+          </div>
+        </div>
+        </div>
+      </section>
+
+    <section id="surfaces" class="section">
+      <div class="section-head reveal showcase-head">
+        <div class="eyebrow">Product</div>
+        <h2>The product in real screens.</h2>
+      </div>
+      <div class="showcase-carousel">
+        <div class="showcase-nav reveal" aria-label="Product surfaces">
+          <button class="showcase-nav-btn is-active" type="button" data-showcase-target="popup" aria-pressed="true">Popup</button>
+          <button class="showcase-nav-btn" type="button" data-showcase-target="cover-letter" aria-pressed="false">Cover Letter</button>
+          <button class="showcase-nav-btn" type="button" data-showcase-target="question" aria-pressed="false">Q&amp;A</button>
+          <button class="showcase-nav-btn" type="button" data-showcase-target="resume" aria-pressed="false">Resume</button>
+          <button class="showcase-nav-btn" type="button" data-showcase-target="control-center" aria-pressed="false">Control Center</button>
+          <button class="showcase-nav-btn" type="button" data-showcase-target="sessions" aria-pressed="false">Sessions</button>
+          <button class="showcase-nav-btn" type="button" data-showcase-target="settings" aria-pressed="false">Settings</button>
+          <button class="showcase-nav-btn" type="button" data-showcase-target="profile" aria-pressed="false">Profile</button>
+          <button class="showcase-nav-btn" type="button" data-showcase-target="activity" aria-pressed="false">Activity</button>
+          <button class="showcase-nav-btn" type="button" data-showcase-target="companies" aria-pressed="false">Companies</button>
+          <button class="showcase-nav-btn" type="button" data-showcase-target="account" aria-pressed="false">Account</button>
+        </div>
+
+        <div class="showcase-carousel-shell reveal">
+          <div class="showcase-viewport" data-showcase-viewport tabindex="0" aria-label="CoverCraft product screens">
+            <div class="showcase-track">
+              <article class="panel showcase-slide showcase-shot showcase-shot--portrait showcase-shot--feature is-active" data-showcase-slide="popup">
+                <div class="showcase-shot-copy">
+                  <div class="eyebrow">Extension Popup</div>
+                  <h3>Launch CoverCraft from the browser bar.</h3>
+                  <p>Open the panel, jump to the dashboard, or head into settings and profile management from one compact starting point.</p>
+                </div>
+                <div class="showcase-shot-media">
+                  <div class="showcase-frame showcase-shot-frame showcase-frame-popup">
+                    <img src="../branding/Untitled.png" alt="CoverCraft extension popup">
+                  </div>
+                </div>
+              </article>
+
+              <article class="panel showcase-slide showcase-shot showcase-shot--portrait showcase-shot--feature" data-showcase-slide="cover-letter">
+                <div class="showcase-shot-copy">
+                  <div class="eyebrow">Job Page</div>
+                  <h3>Draft the cover letter without leaving the role.</h3>
+                  <p>The main writing surface stays attached to the job posting so context, generated output, and follow-up edits stay together.</p>
+                </div>
+                <div class="showcase-shot-media">
+                  <div class="showcase-frame showcase-shot-frame showcase-frame-extension">
+                    <img src="../branding/extension-cover-letter.png" alt="CoverCraft cover letter workspace">
+                  </div>
+                </div>
+              </article>
+
+              <article class="panel showcase-slide showcase-shot showcase-shot--portrait showcase-shot--feature" data-showcase-slide="question">
+                <div class="showcase-shot-copy">
+                  <div class="eyebrow">Job Page</div>
+                  <h3>Ask focused questions in the same session.</h3>
+                  <p>Users can interrogate the role, company context, or fit questions without switching surfaces or losing the saved session.</p>
+                </div>
+                <div class="showcase-shot-media">
+                  <div class="showcase-frame showcase-shot-frame showcase-frame-extension">
+                    <img src="../branding/extension-question.png" alt="CoverCraft ask view">
+                  </div>
+                </div>
+              </article>
+
+              <article class="panel showcase-slide showcase-shot showcase-shot--portrait showcase-shot--feature" data-showcase-slide="resume">
+                <div class="showcase-shot-copy">
+                  <div class="eyebrow">Job Page</div>
+                  <h3>Tailor the resume in a cleaner side-by-side flow.</h3>
+                  <p>Resume iteration stays in the same application session, ready for export and reuse once the role-specific edits look right.</p>
+                </div>
+                <div class="showcase-shot-media">
+                  <div class="showcase-frame showcase-shot-frame showcase-frame-extension">
+                    <img src="../branding/extension-resume.png" alt="CoverCraft resume workspace">
+                  </div>
+                </div>
+              </article>
+
+              <article class="panel showcase-slide showcase-shot showcase-shot--wide showcase-shot--hero" data-showcase-slide="control-center">
+                <div class="showcase-shot-copy">
+                  <div class="eyebrow">Control Center</div>
+                  <h3>Reusable command view for every session.</h3>
+                  <p>Move between saved work, settings, analytics, and profile state without losing job-page context.</p>
+                </div>
+                <div class="showcase-shot-media">
+                  <div class="showcase-frame showcase-shot-frame">
+                    <img src="../branding/dashboard-overview.jpeg" alt="CoverCraft dashboard overview">
+                  </div>
+                </div>
+              </article>
+
+              <article class="panel showcase-slide showcase-shot showcase-shot--wide showcase-shot--dense" data-showcase-slide="sessions">
+                <div class="showcase-shot-copy">
+                  <div class="eyebrow">Sessions</div>
+                  <h3>Reopen work without rebuilding the session.</h3>
+                  <p>Saved applications, generated artifacts, and context stay easy to revisit when the same company or role comes back around.</p>
+                </div>
+                <div class="showcase-shot-media">
+                  <div class="showcase-frame showcase-shot-frame">
+                    <img src="../branding/dashboard-sessions.jpeg" alt="CoverCraft sessions view">
+                  </div>
+                </div>
+              </article>
+
+              <article class="panel showcase-slide showcase-shot showcase-shot--wide showcase-shot--dense" data-showcase-slide="settings">
+                <div class="showcase-shot-copy">
+                  <div class="eyebrow">Settings</div>
+                  <h3>Manage providers, defaults, and setup.</h3>
+                  <p>Connection settings and workspace defaults live in one place so the system stays predictable before the next application run.</p>
+                </div>
+                <div class="showcase-shot-media">
+                  <div class="showcase-frame showcase-shot-frame">
+                    <img src="../branding/dashboard-settings.jpeg" alt="CoverCraft settings view">
+                  </div>
+                </div>
+              </article>
+
+              <article class="panel showcase-slide showcase-shot showcase-shot--wide showcase-shot--dense" data-showcase-slide="profile">
+                <div class="showcase-shot-copy">
+                  <div class="eyebrow">Profile</div>
+                  <h3>Keep identity and sync details ready to reuse.</h3>
+                  <p>The active profile stays aligned with resumes, letters, and exports so users do not have to re-enter core details each time.</p>
+                </div>
+                <div class="showcase-shot-media">
+                  <div class="showcase-frame showcase-shot-frame">
+                    <img src="../branding/dashboard-profile.jpeg" alt="CoverCraft profile view">
+                  </div>
+                </div>
+              </article>
+
+              <article class="panel showcase-slide showcase-shot showcase-shot--wide showcase-shot--chart" data-showcase-slide="activity">
+                <div class="showcase-shot-copy">
+                  <div class="eyebrow">Analytics</div>
+                  <h3>Track workflow activity over time.</h3>
+                  <p>The timeline view makes session volume and generation activity easier to scan without crowding the rest of the control center.</p>
+                </div>
+                <div class="showcase-shot-media">
+                  <div class="showcase-frame showcase-shot-frame">
+                    <img src="../branding/dashboard-activity-timeline.jpeg" alt="CoverCraft activity timeline">
+                  </div>
+                </div>
+              </article>
+
+              <article class="panel showcase-slide showcase-shot showcase-shot--wide showcase-shot--chart" data-showcase-slide="companies">
+                <div class="showcase-shot-copy">
+                  <div class="eyebrow">Analytics</div>
+                  <h3>See company patterns clearly.</h3>
+                  <p>Track where applications cluster so repeat targets become obvious faster.</p>
+                </div>
+                <div class="showcase-shot-media">
+                  <div class="showcase-frame showcase-shot-frame">
+                    <img src="../branding/dashboard-company-timeline.jpeg" alt="CoverCraft company timeline">
+                  </div>
+                </div>
+              </article>
+
+              <article class="panel showcase-slide showcase-shot showcase-shot--wide showcase-shot--dense showcase-shot--account" data-showcase-slide="account">
+                <div class="showcase-shot-copy">
+                  <div class="eyebrow">Account</div>
+                  <h3>Manage sign-in and sync from the website.</h3>
+                  <p>The account center keeps identity, sync status, and high-level usage in one place outside the extension surface itself.</p>
+                </div>
+                <div class="showcase-shot-media">
+                  <div class="showcase-frame showcase-shot-frame">
+                    <img src="../branding/website-account-overview.jpeg" alt="CoverCraft website account overview">
+                  </div>
+                </div>
+              </article>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="faq" class="section">
+      <div class="section-head reveal">
+        <div class="eyebrow">FAQ</div>
+        <h2>Common questions.</h2>
+      </div>
+      <div class="faq">
+        <button class="faq-item reveal" data-faq>
+          <span>Does CoverCraft still work after refresh?</span>
+          <span class="faq-icon">+</span>
+          <div class="faq-body">Yes. Sessions, output, and panel state can be restored after refresh.</div>
+        </button>
+        <button class="faq-item reveal" data-faq>
+          <span>Do I need to install Simplify?</span>
+          <span class="faq-icon">+</span>
+          <div class="faq-body">No. Manual open is the default. Auto-open is optional.</div>
+        </button>
+        <button class="faq-item reveal" data-faq>
+          <span>Where are my logs stored?</span>
+          <span class="faq-icon">+</span>
+          <div class="faq-body">Local-first by default, with optional Firebase sync for signed-in users.</div>
+        </button>
+        <button class="faq-item reveal" data-faq>
+          <span>How do I import my portfolio?</span>
+          <span class="faq-icon">+</span>
+          <div class="faq-body">Upload JSON, import a PDF or image resume, or review a draft in Resume Workspace.</div>
+        </button>
+        <button class="faq-item reveal" data-faq>
+          <span>Which providers do I need?</span>
+          <span class="faq-icon">+</span>
+          <div class="faq-body">Use OpenRouter or Groq for generation, and Tavily when you want company research in the same workflow.</div>
+        </button>
+        <button class="faq-item reveal" data-faq>
+          <span>What can I reuse later?</span>
+          <span class="faq-icon">+</span>
+          <div class="faq-body">Saved sessions, generated materials, research context, and profile-linked work can all stay useful for repeat applications.</div>
+        </button>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-top">
+      <div class="footer-brand-block">
+        <div class="footer-mark">CoverCraft</div>
+        <p class="footer-note">Turn job pages into a cleaner application workspace for generation, tailoring, and reuse.</p>
+      </div>
+      <div class="footer-grid">
+        <div class="footer-col">
+          <div class="footer-caption">Product</div>
+          <a href="#surfaces">Main surfaces</a>
+          <a href="#flow">Workflow</a>
+          <a href="account.html">Account center</a>
+        </div>
+        <div class="footer-col">
+          <div class="footer-caption">Setup</div>
+          <a href="#setup">API keys</a>
+          <a href="#faq">Common questions</a>
+          <a href="account.html">Profile management</a>
+        </div>
+        <div class="footer-col">
+          <div class="footer-caption">Core ideas</div>
+          <a href="#flow">Saved sessions</a>
+          <a href="#surfaces">Tailored resumes</a>
+          <a href="#surfaces">Follow-up answers</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>Built for faster repeat applications.</span>
+      <span>Local-first with optional sync.</span>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

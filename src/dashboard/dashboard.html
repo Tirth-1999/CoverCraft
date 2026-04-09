@@ -1,139 +1,1381 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>CoverCraft — Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CoverCraft Control Center</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
+    :root{
+      --bg:#07070d;
+      --panel:#0f0f18;
+      --panel-soft:#12121f;
+      --panel-muted:#151523;
+      --border:rgba(255,255,255,.08);
+      --border-strong:rgba(129,140,248,.24);
+      --text:#e2e8f0;
+      --muted:#94a3b8;
+      --faint:#64748b;
+      --accent:#818cf8;
+      --accent-2:#6366f1;
+      --accent-3:#8b5cf6;
+      --green:#4ade80;
+      --red:#f87171;
+      --amber:#fbbf24;
+    }
     *{box-sizing:border-box;margin:0;padding:0}
-    body{background:#07070d;color:#e2e8f0;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px;padding:32px 36px;min-width:900px}
-
-    /* ── Header ── */
-    .hdr{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:28px}
-    .hdr-left h1{font-size:22px;font-weight:800;color:#fff}
-    .hdr-left h1 span{color:#818cf8}
-    .hdr-left p{font-size:12px;color:#475569;margin-top:3px}
-    .toolbar{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
-    .btn{padding:7px 16px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid #2a2a3e;background:#14141f;color:#94a3b8;font-family:inherit;transition:all .14s}
-    .btn:hover{background:#1e1e2e;color:#e2e8f0}
-    .btn-green{border-color:#14532d;color:#4ade80}
-    .btn-green:hover{background:#0d1f16}
-    .btn-red{border-color:#7f1d1d;color:#f87171}
-    .btn-red:hover{background:#1f0d0d}
-
-    /* ── Stats ── */
-    .stats{display:flex;gap:12px;margin-bottom:28px;flex-wrap:wrap}
-    .stat{background:#0f0f18;border:1px solid #1e2035;border-radius:10px;padding:14px 20px;min-width:120px}
-    .stat-val{font-size:24px;font-weight:800;color:#818cf8}
-    .stat-lbl{font-size:10px;color:#475569;margin-top:3px;text-transform:uppercase;letter-spacing:.06em}
-
-    /* ── Tabs ── */
-    .tabs{display:flex;gap:3px;margin-bottom:20px;border-bottom:1px solid #1a1a28;padding-bottom:0}
-    .tab{padding:8px 18px;font-size:12px;font-weight:700;cursor:pointer;color:#475569;border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .13s;background:none;border-top:none;border-left:none;border-right:none;font-family:inherit}
-    .tab:hover{color:#94a3b8}
-    .tab.active{color:#818cf8;border-bottom-color:#818cf8}
+    html{
+      min-height:100%;
+      background:
+        radial-gradient(circle at top left, rgba(99,102,241,.14), transparent 30%),
+        radial-gradient(circle at top right, rgba(139,92,246,.1), transparent 28%),
+        linear-gradient(180deg,#05050b 0%,#07070d 34%,#05050b 100%);
+      overscroll-behavior-y:none;
+      scrollbar-gutter:stable;
+    }
+    body{
+      min-height:100vh;
+      min-width:980px;
+      font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,sans-serif;
+      color:var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(99,102,241,.14), transparent 30%),
+        radial-gradient(circle at top right, rgba(139,92,246,.1), transparent 28%),
+        linear-gradient(180deg,#05050b 0%,#07070d 34%,#05050b 100%);
+      padding:28px;
+    }
+    body::before{
+      content:"";
+      position:fixed;
+      inset:0;
+      pointer-events:none;
+      opacity:.07;
+      background-image:
+        linear-gradient(rgba(255,255,255,.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.02) 1px, transparent 1px);
+      background-size:48px 48px;
+      mask-image:linear-gradient(180deg, rgba(0,0,0,.45), transparent 85%);
+    }
+    .page{max-width:1180px;margin:0 auto;position:relative;z-index:1}
+    .topbar{
+      display:grid;
+      grid-template-columns:1fr auto 1fr;
+      align-items:center;
+      gap:12px;
+      margin-bottom:16px;
+    }
+    .surface-switch{
+      display:flex;
+      align-items:center;
+      flex-wrap:nowrap;
+      gap:8px;
+      padding:6px;
+      border-radius:999px;
+      background:rgba(255,255,255,.03);
+      border:1px solid var(--border);
+      width:max-content;
+      justify-self:center;
+      white-space:nowrap;
+    }
+    .topbar-link{
+      min-width:0;
+      justify-self:start;
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:10px 14px;
+      border-radius:999px;
+      border:1px solid rgba(129,140,248,.18);
+      background:rgba(129,140,248,.08);
+      color:#dbe4ff;
+      text-decoration:none;
+      font-size:12px;
+      font-weight:800;
+      font-family:Syne,Inter,system-ui,sans-serif;
+      transition:transform .15s ease, background .15s ease, border-color .15s ease;
+    }
+    .topbar-link:hover{
+      transform:translateY(-1px);
+      background:rgba(129,140,248,.12);
+      border-color:rgba(129,140,248,.24);
+    }
+    .topbar-right{
+      min-width:0;
+      justify-self:end;
+      display:flex;
+      align-items:center;
+      gap:10px;
+    }
+    .profile-chip{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      padding:8px 12px;
+      border-radius:999px;
+      border:1px solid var(--border);
+      background:rgba(255,255,255,.03);
+      min-width:220px;
+      max-width:320px;
+      cursor:pointer;
+      transition:transform .15s ease, background .15s ease, border-color .15s ease, box-shadow .15s ease;
+    }
+    .profile-chip:hover{
+      transform:translateY(-1px);
+      background:rgba(255,255,255,.05);
+      border-color:rgba(129,140,248,.22);
+      box-shadow:0 12px 28px rgba(10,10,18,.22);
+    }
+    .profile-chip:focus-visible{
+      outline:none;
+      border-color:rgba(129,140,248,.34);
+      box-shadow:0 0 0 3px rgba(129,140,248,.18);
+    }
+    .profile-avatar{
+      width:34px;
+      height:34px;
+      border-radius:999px;
+      overflow:hidden;
+      display:grid;
+      place-items:center;
+      background:rgba(129,140,248,.14);
+      border:1px solid rgba(129,140,248,.22);
+      color:#dbe4ff;
+      font-family:Syne,Inter,system-ui,sans-serif;
+      font-size:12px;
+      font-weight:800;
+      flex-shrink:0;
+    }
+    .profile-avatar img{
+      width:100%;
+      height:100%;
+      object-fit:cover;
+      display:block;
+    }
+    .profile-copy{
+      min-width:0;
+      display:flex;
+      flex-direction:column;
+      gap:2px;
+    }
+    .profile-name{
+      font-family:Syne,Inter,system-ui,sans-serif;
+      font-size:12px;
+      font-weight:800;
+      color:#fff;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .profile-sub{
+      font-size:11px;
+      color:var(--muted);
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .surface-btn,.tab,.btn{
+      font-family:Syne,Inter,system-ui,sans-serif;
+      font-weight:700;
+    }
+    .surface-btn{
+      border:none;
+      background:transparent;
+      color:var(--muted);
+      border-radius:999px;
+      padding:11px 18px;
+      font-size:12px;
+      cursor:pointer;
+      white-space:nowrap;
+    }
+    .surface-btn.active{
+      background:linear-gradient(135deg, rgba(99,102,241,.24), rgba(139,92,246,.2));
+      color:#fff;
+      box-shadow:0 10px 24px rgba(99,102,241,.12);
+    }
+    .toolbar{
+      display:flex;
+      justify-content:flex-end;
+      gap:8px;
+      margin-bottom:18px;
+      flex-wrap:wrap;
+    }
+    .surface-intro{
+      max-width:720px;
+      margin:0 auto 16px;
+      text-align:center;
+    }
+    .surface-intro h2{
+      font-family:Syne,Inter,system-ui,sans-serif;
+      font-size:24px;
+      letter-spacing:-.04em;
+      color:#fff;
+      margin-bottom:8px;
+    }
+    .surface-intro p{
+      color:var(--muted);
+      line-height:1.7;
+      font-size:13px;
+      max-width:720px;
+      margin:0 auto;
+    }
+    .compact-toolbar{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      align-items:center;
+      justify-content:flex-end;
+      margin:12px 0 16px;
+    }
+    .session-shell{
+      padding:18px;
+    }
+    .toolbar-meta{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      margin-bottom:14px;
+      flex-wrap:wrap;
+    }
+    .toolbar-status{
+      min-height:18px;
+      color:var(--muted);
+      font-size:12px;
+    }
+    .toolbar-status:empty{display:none}
+    .toolbar-status.error{color:#fca5a5}
+    .toolbar-status.ok{color:#86efac}
+    .toolbar-status.loading{color:#c7d2fe}
+    .btn{
+      border:none;
+      border-radius:999px;
+      padding:10px 14px;
+      font-size:12px;
+      cursor:pointer;
+      background:rgba(255,255,255,.05);
+      color:#dbe4f0;
+      border:1px solid var(--border);
+    }
+    .btn:hover{background:rgba(255,255,255,.09)}
+    .btn-green{background:rgba(16,185,129,.08);color:#86efac;border-color:rgba(16,185,129,.18)}
+    .btn-red{background:rgba(239,68,68,.08);color:#fca5a5;border-color:rgba(239,68,68,.18)}
+    .surface-panel{display:none}
+    .surface-panel.active{display:block}
+    .hero-copy{
+      margin-bottom:18px;
+      max-width:640px;
+      color:var(--muted);
+      line-height:1.6;
+      font-size:14px;
+    }
+    .stats{
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+      gap:12px;
+      margin-bottom:16px;
+    }
+    .stat{
+      background:rgba(255,255,255,.03);
+      border:1px solid var(--border);
+      border-radius:18px;
+      padding:16px;
+    }
+    .stat .num{
+      font-size:26px;
+      line-height:1;
+      font-weight:800;
+      color:#fff;
+      font-family:Syne,Inter,system-ui,sans-serif;
+    }
+    .stat .lbl{
+      margin-top:6px;
+      font-size:10px;
+      text-transform:uppercase;
+      letter-spacing:.08em;
+      color:var(--faint);
+      font-weight:700;
+    }
+    .overview-grid{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:12px;
+      align-items:stretch;
+    }
+    .analytics-grid{
+      display:grid;
+      grid-template-columns:1fr;
+      gap:12px;
+      margin-top:12px;
+    }
+    .panel{
+      background:linear-gradient(180deg, rgba(17,17,29,.96), rgba(11,11,19,.96));
+      border:1px solid var(--border);
+      border-radius:20px;
+      padding:18px;
+    }
+    .overview-grid > .panel{
+      display:flex;
+      flex-direction:column;
+      min-height:100%;
+    }
+    .panel-title{
+      font-family:Syne,Inter,system-ui,sans-serif;
+      font-size:18px;
+      letter-spacing:-.03em;
+      color:#fff;
+      margin-bottom:8px;
+    }
+    .panel-copy{
+      color:var(--muted);
+      line-height:1.65;
+      font-size:13px;
+    }
+    .metric-grid{
+      display:grid;
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      gap:10px;
+      margin-top:14px;
+    }
+    #dashboard-watchlist{
+      flex:1;
+      align-content:stretch;
+      grid-auto-rows:minmax(112px,1fr);
+    }
+    .metric{
+      background:rgba(255,255,255,.03);
+      border:1px solid rgba(255,255,255,.06);
+      border-radius:14px;
+      padding:12px;
+      display:flex;
+      flex-direction:column;
+      justify-content:flex-start;
+    }
+    .metric .k{
+      font-size:10px;
+      text-transform:uppercase;
+      letter-spacing:.08em;
+      color:var(--faint);
+      font-weight:700;
+    }
+    .metric .v{
+      margin-top:5px;
+      font-size:13px;
+      color:#e2e8f0;
+      line-height:1.5;
+    }
+    .chart-shell{
+      margin-top:14px;
+      background:rgba(255,255,255,.03);
+      border:1px solid rgba(255,255,255,.06);
+      border-radius:16px;
+      padding:16px;
+    }
+    .chart-head{
+      display:flex;
+      justify-content:space-between;
+      gap:12px;
+      align-items:flex-start;
+      margin-bottom:14px;
+      flex-wrap:wrap;
+    }
+    .chart-badge{
+      border-radius:999px;
+      padding:7px 10px;
+      font-size:11px;
+      color:#dbe4f0;
+      border:1px solid rgba(255,255,255,.08);
+      background:rgba(255,255,255,.04);
+      white-space:nowrap;
+    }
+    .chart-svg{
+      display:block;
+      width:100%;
+      height:auto;
+    }
+    .chart-controls{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:14px;
+      flex-wrap:wrap;
+      margin-bottom:16px;
+    }
+    .chart-legend{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      row-gap:10px;
+      flex-wrap:wrap;
+    }
+    .legend-btn{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:7px 10px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.08);
+      background:rgba(255,255,255,.04);
+      color:#dbe4f0;
+      font-size:11px;
+      font-weight:700;
+      letter-spacing:.02em;
+      cursor:pointer;
+      transition:opacity .15s ease, transform .15s ease, border-color .15s ease;
+    }
+    .legend-btn:hover{
+      transform:translateY(-1px);
+      border-color:rgba(129,140,248,.24);
+    }
+    .legend-btn.inactive{
+      opacity:.48;
+    }
+    .legend-swatch{
+      width:10px;
+      height:10px;
+      border-radius:999px;
+      flex-shrink:0;
+    }
+    .chart-toggle{
+      border-radius:999px;
+      padding:8px 11px;
+      border:1px solid rgba(129,140,248,.16);
+      background:rgba(129,140,248,.08);
+      color:#dbe4ff;
+      font-size:11px;
+      font-weight:700;
+      cursor:pointer;
+      transition:background .15s ease, border-color .15s ease, transform .15s ease;
+    }
+    .chart-toggle:hover{
+      transform:translateY(-1px);
+      background:rgba(129,140,248,.12);
+      border-color:rgba(129,140,248,.24);
+    }
+    .chart-toggle.inactive{
+      background:rgba(255,255,255,.04);
+      border-color:rgba(255,255,255,.08);
+      color:#a3b1c6;
+    }
+    .chart-stage{
+      position:relative;
+      min-height:360px;
+      padding:18px 10px 0;
+      border-radius:14px;
+      background:
+        linear-gradient(180deg, rgba(7,7,13,.34), rgba(7,7,13,.16)),
+        rgba(255,255,255,.015);
+      border:1px solid rgba(255,255,255,.04);
+      overflow:hidden;
+    }
+    .chart-hint{
+      margin-top:10px;
+      font-size:11px;
+      color:var(--faint);
+      letter-spacing:.04em;
+      text-transform:uppercase;
+      font-weight:700;
+    }
+    .chart-tooltip{
+      position:absolute;
+      z-index:3;
+      min-width:176px;
+      max-width:220px;
+      padding:10px 12px;
+      border-radius:12px;
+      background:rgba(10,10,18,.96);
+      border:1px solid rgba(129,140,248,.18);
+      box-shadow:0 18px 40px rgba(0,0,0,.32);
+      color:#e2e8f0;
+      pointer-events:none;
+      opacity:0;
+      transform:translateY(6px);
+      transition:opacity .12s ease, transform .12s ease;
+    }
+    .chart-tooltip.show{
+      opacity:1;
+      transform:translateY(0);
+    }
+    .chart-tooltip-title{
+      font-size:12px;
+      font-weight:700;
+      color:#fff;
+      margin-bottom:8px;
+    }
+    .chart-tooltip-row{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      font-size:11px;
+      color:#cbd5e1;
+      margin-top:5px;
+    }
+    .chart-tooltip-row strong{
+      color:#fff;
+    }
+    .chart-empty{
+      margin-top:12px;
+      padding:16px;
+      border-radius:14px;
+      border:1px dashed rgba(255,255,255,.08);
+      background:rgba(255,255,255,.02);
+      color:var(--muted);
+      font-size:13px;
+      line-height:1.6;
+    }
+    .tabs{
+      display:flex;
+      justify-content:center;
+      gap:8px;
+      padding:6px;
+      border-radius:999px;
+      background:rgba(255,255,255,.03);
+      border:1px solid var(--border);
+      width:max-content;
+      margin:0 auto 14px;
+      flex-wrap:wrap;
+    }
+    .tab{
+      border:none;
+      border-radius:999px;
+      padding:10px 16px;
+      background:transparent;
+      color:var(--muted);
+      font-size:12px;
+      cursor:pointer;
+    }
+    .tab.active{
+      background:linear-gradient(135deg, rgba(99,102,241,.24), rgba(139,92,246,.2));
+      color:#fff;
+      box-shadow:0 10px 24px rgba(99,102,241,.12);
+    }
+    .session-command-bar{
+      display:grid;
+      grid-template-columns:auto auto minmax(240px,1fr) auto;
+      align-items:center;
+      gap:10px;
+      width:100%;
+    }
+    .session-command-bar .tabs{
+      margin:0;
+      justify-self:center;
+    }
+    .icon-btn{
+      width:42px;
+      height:42px;
+      min-width:42px;
+      padding:0;
+      border-radius:999px;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      font-size:16px;
+      line-height:1;
+    }
+    .icon-btn.loading{
+      border-color:rgba(129,140,248,.34);
+      background:rgba(129,140,248,.12);
+      box-shadow:0 0 0 1px rgba(129,140,248,.08), 0 0 18px rgba(129,140,248,.16) inset;
+    }
+    .refresh-icon{
+      display:inline-block;
+      transform-origin:center;
+    }
+    .icon-btn.loading .refresh-icon{
+      animation:refresh-spin .9s linear infinite;
+    }
+    .export-btn{
+      white-space:nowrap;
+      padding-inline:16px;
+    }
     .tab-panel{display:none}
     .tab-panel.active{display:block}
-
-    /* ── Empty state ── */
-    .empty{text-align:center;padding:60px;color:#334155}
-    .empty-icon{font-size:36px;margin-bottom:10px}
-    .empty-text{font-size:14px;font-weight:600}
-    .empty-sub{font-size:12px;margin-top:4px;color:#1e293b}
-
-    /* ── Log cards ── */
-    .log-card{background:#0f0f18;border:1px solid #1e2035;border-radius:12px;margin-bottom:12px;overflow:hidden;transition:border-color .15s}
-    .log-card:hover{border-color:#2a2a4e}
-    .log-hdr{display:flex;align-items:center;gap:12px;padding:13px 16px;cursor:pointer;background:#11111c;transition:background .12s;user-select:none}
-    .log-hdr:hover{background:#16162a}
-    .log-num{font-size:11px;font-weight:700;color:#6366f1;background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.2);padding:2px 8px;border-radius:20px;white-space:nowrap;flex-shrink:0}
-    .log-meta{flex:1;min-width:0}
-    .log-title{font-size:13px;font-weight:700;color:#e2e8f0}
-    .log-url{font-size:10px;color:#334155;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:500px}
-    .log-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
-    .kind-pill{font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px}
-    .pill-pipeline{background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.25);color:#818cf8}
-    .pill-extract{background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.25);color:#fbbf24}
-    .style-pill{font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(139,92,246,0.12);border:1px solid rgba(139,92,246,0.25);color:#a78bfa}
-    .time-str{font-size:11px;color:#334155;white-space:nowrap}
-    .chev{font-size:11px;color:#334155;transition:transform .18s;flex-shrink:0}
-    .chev.open{transform:rotate(90deg)}
-    .log-body{display:none;border-top:1px solid #1a1a28}
-    .log-body.open{display:block}
-
-    /* ── Step blocks inside card ── */
-    .step{border-top:1px solid #1a1a28}
-    .step:first-child{border-top:none}
-    .step-hdr{display:flex;align-items:flex-start;gap:11px;padding:12px 16px;cursor:pointer;transition:background .1s}
-    .step-hdr:hover{background:rgba(255,255,255,.015)}
-    .step-icon{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;margin-top:1px}
-    .si1{background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.3)}
-    .si2{background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.3)}
-    .si3{background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3)}
-    .si4{background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.3)}
-    .step-info{flex:1}
-    .step-lbl{font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.07em}
-    .step-sum{font-size:12px;color:#475569;margin-top:2px}
-    .badges{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
-    .badge{font-size:10px;padding:2px 6px;border-radius:3px;font-weight:600}
-    .b-blue{background:rgba(59,130,246,.1);color:#60a5fa}
-    .b-ind{background:rgba(99,102,241,.1);color:#818cf8}
-    .b-amb{background:rgba(245,158,11,.1);color:#fbbf24}
-    .b-grn{background:rgba(16,185,129,.1);color:#34d399}
-    .b-red{background:rgba(239,68,68,.1);color:#f87171}
-    .b-gray{background:rgba(148,163,184,.07);color:#94a3b8}
-    .schev{font-size:10px;color:#1e293b;margin-top:3px;transition:transform .15s;flex-shrink:0}
-    .schev.open{transform:rotate(90deg)}
-    .step-body{display:none;padding:4px 16px 16px 55px}
-    .step-body.open{display:block}
-
-    /* ── Content inside steps ── */
-    .sec{margin-top:12px}
-    .sec-lbl{font-size:10px;font-weight:700;color:#4338ca;letter-spacing:.08em;text-transform:uppercase;margin-bottom:5px;display:flex;align-items:center;gap:6px}
-    .cp{font-size:10px;color:#334155;background:#0f0f18;border:1px solid #1e2035;padding:2px 9px;border-radius:4px;cursor:pointer;margin-left:auto;font-family:inherit}
-    .cp:hover{color:#64748b}
-    .cp.ok{color:#34d399}
-    pre.code{background:#040408;border:1px solid #161620;border-radius:6px;padding:10px 12px;font-family:'Cascadia Code','Fira Code',Consolas,monospace;font-size:11px;color:#cbd5e1;white-space:pre-wrap;word-break:break-word;max-height:300px;overflow-y:auto;line-height:1.6;margin:0}
-    table.kv{width:100%;border-collapse:collapse;background:#040408;border:1px solid #161620;border-radius:6px;overflow:hidden}
-    table.kv td{padding:5px 10px;font-size:12px;border-bottom:1px solid #161620;vertical-align:top}
-    table.kv td:first-child{color:#475569;font-weight:600;white-space:nowrap;width:130px}
-    table.kv td:last-child{color:#cbd5e1}
-    table.kv tr:last-child td{border-bottom:none}
-    .pills{display:flex;flex-wrap:wrap;gap:4px}
-    .pill{font-size:10px;padding:2px 8px;border-radius:20px;background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.2);color:#818cf8}
-    .src-card{background:#040408;border:1px solid #161620;border-radius:5px;padding:9px 11px;margin-bottom:6px}
-    .src-title{font-size:11px;font-weight:700;color:#818cf8;margin-bottom:2px}
-    .src-url{font-size:10px;color:#334155;margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .src-snip{font-size:11px;color:#94a3b8;line-height:1.5}
-    .src-tag{font-size:9px;color:#334155;margin-top:3px;font-style:italic}
-    .err-box{background:rgba(239,68,68,.05);border:1px solid rgba(239,68,68,.2);border-radius:5px;padding:9px 12px;color:#f87171;font-size:12px;line-height:1.5}
-    .skip-box{background:rgba(148,163,184,.04);border:1px solid #1e2035;border-radius:5px;padding:9px 12px;color:#475569;font-size:12px}
+    .panel-head{
+      display:flex;
+      align-items:flex-end;
+      justify-content:space-between;
+      gap:12px;
+      margin-bottom:12px;
+    }
+    .label{
+      font-size:12px;
+      font-weight:700;
+      text-transform:uppercase;
+      letter-spacing:.08em;
+      color:#c7d2fe;
+    }
+    .hint{
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.55;
+      max-width:560px;
+    }
+    .list{display:flex;flex-direction:column;gap:10px}
+    .card{
+      background:linear-gradient(180deg, rgba(17,17,29,.96), rgba(11,11,19,.96));
+      border:1px solid var(--border);
+      border-radius:18px;
+      overflow:hidden;
+    }
+    .card-header{
+      display:flex;
+      align-items:center;
+      gap:14px;
+      padding:15px 18px;
+      cursor:pointer;
+      user-select:none;
+    }
+    .card-header:hover{background:rgba(255,255,255,.015)}
+    .card-left{min-width:0;flex:1}
+    .header-actions{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+      flex-shrink:0;
+      width:max-content;
+      margin-left:auto;
+    }
+    .chev{margin-left:12px}
+    .session-title{
+      font-size:15px;
+      font-weight:700;
+      color:#fff;
+      line-height:1.35;
+      font-family:Inter,system-ui,sans-serif;
+    }
+    .session-sub{
+      font-size:12px;
+      color:var(--muted);
+      margin-top:4px;
+      line-height:1.5;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      max-width:640px;
+    }
+    .session-meta{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      margin-top:9px;
+    }
+    .pill{
+      font-size:10px;
+      font-weight:700;
+      padding:4px 8px;
+      border-radius:999px;
+      border:1px solid rgba(129,140,248,.18);
+      background:rgba(129,140,248,.1);
+      color:#c7d2fe;
+    }
+    .pill.gray{background:rgba(148,163,184,.08);border-color:rgba(148,163,184,.12);color:#a3b1c6}
+    .chev{color:#64748b;font-size:12px;transition:transform .18s ease;flex-shrink:0}
+    .card.open .chev{transform:rotate(90deg)}
+    .card-body{
+      display:none;
+      border-top:1px solid rgba(255,255,255,.06);
+      padding:16px 18px 18px;
+    }
+    .card.open .card-body{display:block}
+    .body-grid{
+      display:grid;
+      grid-template-columns:1.05fr .95fr;
+      gap:14px;
+      align-items:stretch;
+    }
+    .section-stack{
+      display:grid;
+      gap:10px;
+      align-content:start;
+    }
+    .section{
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      padding:14px;
+      background:rgba(255,255,255,.03);
+      border:1px solid rgba(255,255,255,.06);
+      border-radius:14px;
+      min-width:0;
+      height:100%;
+    }
+    .section h3{
+      font-size:11px;
+      font-weight:700;
+      letter-spacing:.1em;
+      text-transform:uppercase;
+      color:#818cf8;
+      font-family:Inter,system-ui,sans-serif;
+    }
+    .context-summary{
+      display:grid;
+      gap:8px;
+    }
+    .context-summary .panel-copy{
+      max-width:none;
+    }
+    .context-summary .context-grid{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+    }
+    .context-summary .context-grid .pill{
+      background:rgba(16,185,129,.08);
+      border-color:rgba(16,185,129,.18);
+      color:#bbf7d0;
+    }
+    .context-summary pre{
+      margin:0;
+      max-height:180px;
+      background:#0a0a14;
+      color:#dbe4f0;
+    }
+    .copy-row{display:flex;gap:8px;flex-wrap:wrap}
+    .copy-row.centered{justify-content:center}
+    .copy-row.centered .btn{min-width:160px}
+    .section-note{
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.6;
+    }
+    .prompt-shell{
+      display:grid;
+      gap:10px;
+    }
+    .prompt-shell textarea{
+      min-height:180px;
+      max-height:260px;
+      resize:vertical;
+    }
+    textarea,pre{
+      width:100%;
+      background:#090913;
+      border:1px solid rgba(255,255,255,.06);
+      border-radius:12px;
+      color:#dbe4f0;
+      padding:12px;
+      font:13px/1.65 Inter,system-ui,-apple-system,BlinkMacSystemFont,sans-serif;
+      white-space:pre-wrap;
+      word-break:break-word;
+      overflow:auto;
+      max-height:220px;
+    }
+    textarea{resize:vertical;min-height:160px}
+    .mini-grid{
+      display:grid;
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      gap:8px;
+    }
+    .source{
+      padding:10px 12px;
+      border-radius:12px;
+      background:#090913;
+      border:1px solid rgba(255,255,255,.06);
+      margin-bottom:8px;
+    }
+    .source:last-child{margin-bottom:0}
+    .source .title{font-size:12px;font-weight:600;color:#fff;line-height:1.4}
+    .source .url{font-size:10px;color:var(--faint);margin-top:4px;word-break:break-all}
+    .source .snippet{font-size:11px;color:#a3b1c6;margin-top:6px;line-height:1.5}
+    .empty{
+      padding:52px 24px;
+      border-radius:18px;
+      background:rgba(255,255,255,.03);
+      border:1px solid var(--border);
+      color:var(--muted);
+      text-align:center;
+    }
+    .show-more{display:flex;justify-content:center;margin-top:12px}
+    .settings-grid{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:12px;
+    }
+    .settings-grid > *{
+      min-width:0;
+    }
+    .settings-shell{padding:20px}
+    .portfolio-grid{
+      display:grid;
+      grid-template-columns:1fr;
+      gap:16px;
+      align-items:start;
+    }
+    .portfolio-current-shell{
+      display:grid;
+      gap:12px;
+    }
+    .portfolio-current-shell textarea.settings-editor{
+      min-height:360px;
+    }
+    .portfolio-meta-row{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:12px;
+      flex-wrap:wrap;
+    }
+    .portfolio-import-actions{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+    .portfolio-import-actions .btn{
+      flex:1 1 240px;
+      justify-content:center;
+    }
+    .portfolio-import-note{
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.6;
+    }
+    .portfolio-draft-wrap{
+      display:grid;
+      gap:12px;
+      padding:14px;
+      border-radius:16px;
+      background:rgba(255,255,255,.03);
+      border:1px solid rgba(255,255,255,.06);
+    }
+    .portfolio-draft-wrap.hidden{display:none}
+    .portfolio-draft-wrap textarea.settings-editor{
+      min-height:300px;
+    }
+    .field{display:flex;flex-direction:column;gap:6px}
+    .field label{
+      font-size:12px;
+      font-weight:600;
+      color:#dbe4f0;
+    }
+    input[type="text"],input[type="password"],select,textarea.settings-editor{
+      width:100%;
+      background:rgba(255,255,255,.05);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:12px;
+      color:#e2e8f0;
+      padding:11px 13px;
+      font-size:13px;
+      font-family:Inter,system-ui,sans-serif;
+      outline:none;
+    }
+    textarea.settings-editor{
+      min-height:240px;
+      resize:vertical;
+      font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;
+    }
+    #portfolio-editor.settings-editor{min-height:420px}
+    input.mono{font:12px ui-monospace,SFMono-Regular,Menlo,monospace}
+    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .row > *{flex:1}
+    .check{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      color:#dbe4f0;
+      font-size:12px;
+      margin-top:4px;
+    }
+    .check input{accent-color:#818cf8}
+    .chips{display:flex;flex-wrap:wrap;gap:8px}
+    .chip{
+      font-size:10px;
+      font-weight:700;
+      padding:4px 8px;
+      border-radius:999px;
+      background:rgba(255,255,255,.05);
+      border:1px solid rgba(255,255,255,.08);
+      color:#dbe4f0;
+    }
+    .chip.warn{background:rgba(251,191,36,.08);border-color:rgba(251,191,36,.18);color:#fcd34d}
+    .chip.err{background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.18);color:#fca5a5}
+    .source-box{
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      padding:16px;
+      border-radius:16px;
+      background:rgba(255,255,255,.03);
+      border:1px solid rgba(255,255,255,.06);
+    }
+    .source-box h3{
+      font-size:16px;
+      line-height:1.3;
+      color:#fff;
+      font-family:Syne,Inter,system-ui,sans-serif;
+      letter-spacing:-.02em;
+    }
+    .source-box p{
+      color:var(--muted);
+      line-height:1.65;
+      font-size:13px;
+    }
+    #surface-profile .settings-grid{
+      align-items:stretch;
+    }
+    #surface-profile .settings-grid > .panel{
+      height:100%;
+    }
+    #surface-profile .panel{
+      display:flex;
+      flex-direction:column;
+      gap:12px;
+    }
+    #surface-profile .panel-title{
+      margin-bottom:0;
+    }
+    #surface-profile .chips{
+      margin-top:2px;
+    }
+    .status{min-height:18px;font-size:12px}
+    .status.error{color:#fca5a5}
+    .status.ok{color:#86efac}
+    .status.loading{color:#c7d2fe}
+    .status-progress{
+      height:6px;
+      width:100%;
+      margin-top:8px;
+      border-radius:999px;
+      background:rgba(255,255,255,.06);
+      overflow:hidden;
+    }
+    .status-progress.hidden{display:none}
+    .status-progress span{
+      display:block;
+      height:100%;
+      width:0;
+      background:linear-gradient(90deg,#6366f1,#22c55e);
+      transition:width .22s ease;
+    }
+    .confirm-toast{
+      position:fixed;
+      left:50%;
+      bottom:18px;
+      transform:translate(-50%,110px);
+      opacity:0;
+      pointer-events:none;
+      z-index:40;
+      min-width:220px;
+      padding:12px 16px;
+      border-radius:999px;
+      border:1px solid rgba(16,185,129,.22);
+      background:linear-gradient(180deg,rgba(6,24,16,.96),rgba(7,18,14,.94));
+      box-shadow:0 0 0 1px rgba(16,185,129,.08),0 18px 40px rgba(3,14,10,.42),0 0 34px rgba(34,197,94,.18);
+      color:#dcfce7;
+      font-size:12px;
+      font-weight:800;
+      text-align:center;
+      transition:transform .3s cubic-bezier(.2,.8,.2,1),opacity .3s ease;
+      overflow:hidden;
+    }
+    .confirm-toast::before{
+      content:"";
+      position:absolute;
+      inset:auto 10% -18px 10%;
+      height:32px;
+      border-radius:999px;
+      background:radial-gradient(circle,rgba(74,222,128,.42),rgba(74,222,128,0));
+      filter:blur(14px);
+    }
+    .confirm-toast.show{
+      transform:translate(-50%,0);
+      opacity:1;
+    }
+    .preview-block{
+      margin-top:14px;
+      padding:14px;
+      border-radius:14px;
+      background:rgba(255,255,255,.03);
+      border:1px solid rgba(255,255,255,.06);
+    }
+    .preview-meta{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      margin-top:8px;
+    }
+    .preview-text{
+      margin-top:12px;
+      min-height:180px;
+      max-height:280px;
+      resize:vertical;
+    }
+    .workspace-modal{
+      position:fixed;
+      inset:0;
+      z-index:30;
+      background:rgba(4,4,10,.72);
+      backdrop-filter:blur(10px);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:22px;
+    }
+    .workspace-modal.hidden{display:none}
+    .workspace-dialog{
+      width:min(1280px, calc(100vw - 44px));
+      height:min(860px, calc(100vh - 44px));
+      background:linear-gradient(180deg, rgba(17,17,29,.98), rgba(11,11,19,.98));
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:22px;
+      box-shadow:0 28px 80px rgba(0,0,0,.45);
+      display:flex;
+      flex-direction:column;
+      overflow:hidden;
+    }
+    .workspace-dialog-head{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:16px;
+      padding:16px 18px 14px;
+      border-bottom:1px solid rgba(255,255,255,.06);
+      background:rgba(255,255,255,.02);
+    }
+    .workspace-dialog-copy{
+      max-width:780px;
+      color:var(--muted);
+      line-height:1.6;
+      font-size:12px;
+      margin-top:6px;
+    }
+    .workspace-frame{
+      width:100%;
+      flex:1;
+      border:none;
+      background:transparent;
+    }
+    .hidden{display:none}
+    @keyframes refresh-spin{
+      from{transform:rotate(0deg)}
+      to{transform:rotate(360deg)}
+    }
+    @media (max-width: 1024px){
+      body{min-width:0;padding:18px}
+      .stats,.overview-grid,.analytics-grid,.settings-grid,.body-grid,.portfolio-grid{grid-template-columns:1fr}
+      .session-sub{max-width:none;white-space:normal}
+      .row{flex-direction:column;align-items:stretch}
+      .session-command-bar{grid-template-columns:1fr;justify-items:stretch}
+      .session-command-bar .tabs{width:100%}
+    }
+    @media (max-width: 720px){
+      .tabs,.surface-switch,.compact-toolbar,.topbar{width:100%}
+      .surface-btn,.tab{flex:1}
+      .toolbar{justify-content:flex-start}
+      .topbar{grid-template-columns:1fr}
+      .topbar-link,.topbar-right{justify-self:center}
+      .profile-chip{min-width:0;width:100%;max-width:none}
+    }
   </style>
 </head>
 <body>
-  <div class="hdr">
-    <div class="hdr-left">
-      <h1>CoverCraft <span>Dashboard</span></h1>
-      <p>Every scrape, extraction, research and generation logged here in real time</p>
+  <div class="page">
+    <div class="topbar">
+      <a class="topbar-link" id="dashboard-website-link" href="#">Open Website ↗</a>
+      <div class="surface-switch" role="tablist" aria-label="Control center sections">
+        <button class="surface-btn active" data-surface="dashboard">Dashboard</button>
+        <button class="surface-btn" data-surface="sessions">Sessions</button>
+        <button class="surface-btn" data-surface="settings">Settings</button>
+        <button class="surface-btn" data-surface="profile">Profile</button>
+      </div>
+      <div class="topbar-right">
+        <div class="profile-chip" id="topbar-profile-chip" role="button" tabindex="0" aria-label="Open Profile">
+          <div class="profile-avatar" id="topbar-profile-avatar">G</div>
+          <div class="profile-copy">
+            <div class="profile-name" id="topbar-profile-name">Guest</div>
+            <div class="profile-sub" id="topbar-profile-sub">Not signed in</div>
+          </div>
+        </div>
+      </div>
     </div>
-    <div class="toolbar">
-      <button class="btn" id="refresh-btn">↻ Refresh</button>
-      <button class="btn btn-green" id="export-btn">↓ Export Full Report (Excel)</button>
-      <button class="btn btn-red" id="clear-btn">🗑 Clear All</button>
+
+    <section class="surface-panel active" id="surface-dashboard">
+      <div class="surface-intro">
+        <h2>CoverCraft Dashboard</h2>
+        <p>A compact overview of activity, reuse, and saved time. This surface can grow into richer KPIs and trend views without changing the navigation again.</p>
+      </div>
+      <article class="panel">
+      <div class="stats" id="stats"></div>
+      <div class="overview-grid">
+        <article class="panel">
+          <div class="panel-title">Current Snapshot</div>
+          <div class="panel-copy">Track how many sessions exist, how many cover letters and Q&amp;A replies were generated, and how often cached company research is reused instead of calling Tavily again.</div>
+          <div class="metric-grid" id="dashboard-summary"></div>
+        </article>
+        <article class="panel">
+          <div class="panel-title">What To Watch</div>
+          <div class="panel-copy">These are the levers that will matter most as usage grows. The structure is here now so richer reporting can slot in later without changing the page again.</div>
+          <div class="metric-grid" id="dashboard-watchlist"></div>
+        </article>
+      </div>
+      <div class="analytics-grid">
+        <article class="panel">
+          <div class="panel-title">Activity Timeline</div>
+          <div class="panel-copy">A daily view of how many sessions, cover letters, and Q&amp;A replies are being created so usage spikes are visible at a glance.</div>
+          <div id="dashboard-activity-chart"></div>
+        </article>
+        <article class="panel">
+          <div class="panel-title">Company Timeline</div>
+          <div class="panel-copy">Track how many unique companies appear each day and how often total session volume concentrates around the same hiring targets.</div>
+          <div id="dashboard-company-chart"></div>
+        </article>
+      </div>
+      </article>
+    </section>
+
+    <section class="surface-panel" id="surface-sessions">
+      <div class="surface-intro">
+        <h2>CoverCraft Sessions</h2>
+        <p>Review saved letters, reply history, and company research from one compact control surface without stretching the page vertically.</p>
+      </div>
+      <article class="panel session-shell">
+        <div class="toolbar-meta">
+          <div id="session-action-status" class="toolbar-status"></div>
+          <div class="session-command-bar">
+            <button class="btn icon-btn" id="refresh-btn" title="Refresh" aria-label="Refresh sessions"><span class="refresh-icon">↻</span></button>
+            <button class="btn btn-green export-btn" id="export-btn">Export Excel</button>
+            <div class="tabs" role="tablist" aria-label="Session sections">
+              <button class="tab" data-tab="letters">Cover Letters</button>
+              <button class="tab" data-tab="qa">Q&amp;A Replies</button>
+              <button class="tab" data-tab="resume">Resume</button>
+              <button class="tab" data-tab="research">Research</button>
+            </div>
+            <button class="btn btn-red export-btn" id="clear-btn" title="Clear all data">Delete All</button>
+          </div>
+        </div>
+
+        <div class="tab-panel" id="tab-letters">
+          <div class="panel-head">
+            <div>
+              <div class="label">Cover Letters</div>
+              <div class="hint">The newest generated letters, ready to copy, download, or reopen in context. Only the latest 10 are shown here by default.</div>
+            </div>
+            <div class="hint" id="letters-count"></div>
+          </div>
+          <div class="list" id="letters"></div>
+        </div>
+
+        <div class="tab-panel" id="tab-qa">
+          <div class="panel-head">
+            <div>
+              <div class="label">Q&amp;A Replies</div>
+              <div class="hint">Follow-up answers drafted from the cached job context and your saved portfolio. Only the latest 10 are shown here by default.</div>
+            </div>
+            <div class="hint" id="qa-count"></div>
+          </div>
+          <div class="list" id="qa"></div>
+        </div>
+
+        <div class="tab-panel" id="tab-resume">
+          <div class="panel-head">
+            <div>
+              <div class="label">Resume</div>
+              <div class="hint">Tailored resume drafts, ready to review, copy, download, or reopen in the original session context.</div>
+            </div>
+            <div class="hint" id="resume-count"></div>
+          </div>
+          <div class="list" id="resume"></div>
+        </div>
+
+        <div class="tab-panel" id="tab-research">
+          <div class="panel-head">
+            <div>
+              <div class="label">Research</div>
+              <div class="hint">Cached company research and the source set behind it. Reuse helps save Tavily calls on repeat companies. Only the latest 10 are shown here by default.</div>
+            </div>
+            <div class="hint" id="research-count"></div>
+          </div>
+          <div class="list" id="research"></div>
+        </div>
+      </article>
+    </section>
+
+    <section class="surface-panel" id="surface-settings">
+      <div class="surface-intro">
+        <h2>CoverCraft Settings</h2>
+        <p>Manage API keys, runtime defaults, trigger behavior, and portfolio import here without leaving the control center.</p>
+      </div>
+      <article class="panel settings-shell">
+      <div class="settings-grid">
+        <article class="panel">
+          <div class="panel-title">API Keys</div>
+          <div class="field">
+            <label for="openrouter-key">OpenRouter API Key</label>
+            <div class="row">
+              <input type="password" id="openrouter-key" class="mono" placeholder="sk-or-v1-…">
+              <button class="btn" id="test-openrouter-btn">Test</button>
+            </div>
+            <div class="hint">Optional when using Groq. Required for OpenRouter free-routing, Gemma, Nemotron, MiniMax, and Tavily-backed generation fallback.</div>
+            <div id="openrouter-status" class="status"></div>
+          </div>
+          <div class="field" style="margin-top:14px">
+            <label for="groq-key">Groq API Key</label>
+            <div class="row">
+              <input type="password" id="groq-key" class="mono" placeholder="gsk-…">
+              <button class="btn" id="test-groq-btn">Test</button>
+            </div>
+            <div class="hint">Use Groq for free hosted chat models when you do not want to depend on OpenRouter routing.</div>
+            <div id="groq-status" class="status"></div>
+          </div>
+          <div class="field" style="margin-top:14px">
+            <label for="tavily-key">Tavily API Key</label>
+            <div class="row">
+              <input type="password" id="tavily-key" class="mono" placeholder="tvly-dev-…">
+              <button class="btn" id="test-tavily-btn">Test</button>
+            </div>
+            <div class="hint">Required for company research and cache building.</div>
+            <div id="tavily-status" class="status"></div>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-title">Runtime Defaults</div>
+          <div class="field">
+            <label for="model-select">Default model</label>
+            <select id="model-select">
+              <optgroup label="OpenRouter">
+              <option value="openrouter/free">Free Routing</option>
+              <option value="google/gemma-3-12b-it:free">Google Gemma 3 12B</option>
+              <option value="meta-llama/llama-3.3-70b-instruct:free">Meta Llama 3.3 70B</option>
+              <option value="nvidia/nemotron-3-super-120b-a12b:free">NVIDIA Nemotron 3 Super 120B</option>
+              <option value="minimax/minimax-m2.5:free">MiniMax M2.5</option>
+              </optgroup>
+              <optgroup label="Groq">
+              <option value="groq/llama-3.1-8b-instant">Groq Llama 3.1 8B Instant</option>
+              <option value="groq/llama-3.3-70b-versatile">Groq Llama 3.3 70B Versatile</option>
+              <option value="groq/meta-llama/llama-4-scout-17b-16e-instruct">Groq Llama 4 Scout 17B</option>
+              <option value="groq/moonshotai/kimi-k2-instruct">Groq Kimi K2 Instruct</option>
+              <option value="groq/moonshotai/kimi-k2-instruct-0905">Groq Kimi K2 Instruct 0905</option>
+              <option value="groq/openai/gpt-oss-120b">Groq GPT-OSS 120B</option>
+              <option value="groq/openai/gpt-oss-20b">Groq GPT-OSS 20B</option>
+              <option value="groq/qwen/qwen3-32b">Groq Qwen3 32B</option>
+              </optgroup>
+              <option value="custom">Custom Model</option>
+            </select>
+          </div>
+          <div class="field" style="margin-top:12px">
+            <label for="custom-model-input">Custom model string</label>
+            <input type="text" id="custom-model-input" placeholder="openrouter model id">
+          </div>
+          <div class="field" style="margin-top:12px">
+            <label for="default-type">Default cover letter style</label>
+            <select id="default-type">
+              <option value="formal">Formal &amp; Polished</option>
+              <option value="storytelling">Story-Driven</option>
+              <option value="achievement">Achievement-Led</option>
+              <option value="concise">Concise &amp; Punchy</option>
+              <option value="startup">Startup Energy</option>
+            </select>
+          </div>
+          <div class="field" style="margin-top:12px">
+            <label for="trigger-mode">Trigger mode</label>
+            <select id="trigger-mode">
+              <option value="manual">Manual only</option>
+              <option value="auto_simplify">Auto-open when Simplify appears</option>
+            </select>
+          </div>
+          <div class="row" style="margin-top:14px">
+            <button class="btn btn-green" id="save-btn">Save Runtime Settings</button>
+            <div id="save-status" class="status"></div>
+          </div>
+        </article>
+
+        <article class="panel" style="grid-column:1 / -1">
+          <div class="panel-title">Portfolio Import</div>
+          <div class="portfolio-grid">
+            <div class="portfolio-current-shell">
+              <div class="field">
+                <label for="portfolio-editor">Current portfolio JSON</label>
+                <textarea id="portfolio-editor" class="settings-editor portfolio-current" readonly placeholder="Current portfolio JSON will appear here."></textarea>
+              </div>
+              <div class="portfolio-meta-row">
+                <div class="panel-copy" id="portfolio-source-text">Loading current portfolio…</div>
+                <div class="chips" id="portfolio-validation"></div>
+              </div>
+              <div class="portfolio-import-actions">
+                <button class="btn" id="upload-json-btn">Upload JSON</button>
+                <button class="btn btn-green" id="open-resume-workspace-btn">Open Resume Import</button>
+              </div>
+              <div class="portfolio-import-note">Upload JSON to replace the current portfolio directly. Open the resume import workspace when you want CoverCraft to extract text, generate the replacement portfolio JSON, and then ask you to confirm it.</div>
+              <div id="portfolio-status" class="status"></div>
+              <div id="portfolio-progress" class="status-progress hidden"><span id="portfolio-progress-fill"></span></div>
+              <div id="portfolio-draft-wrap" class="portfolio-draft-wrap hidden">
+                <div class="field">
+                  <label for="portfolio-draft-editor">Imported portfolio preview</label>
+                  <textarea id="portfolio-draft-editor" class="settings-editor" readonly placeholder="Imported JSON preview will appear here before replacement."></textarea>
+                </div>
+                <div class="portfolio-meta-row">
+                  <div class="panel-copy" id="portfolio-draft-source">Review the imported portfolio JSON before replacing the current one.</div>
+                  <div class="chips" id="portfolio-draft-validation"></div>
+                </div>
+                <div class="portfolio-import-actions">
+                  <button class="btn" id="discard-portfolio-btn">Keep Current Portfolio</button>
+                  <button class="btn btn-green" id="replace-portfolio-btn">Replace Current Portfolio</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <input type="file" id="json-input" class="hidden" accept=".json,application/json">
+        </article>
+      </div>
+      </article>
+    </section>
+
+    <section class="surface-panel" id="surface-profile">
+      <div class="surface-intro">
+        <h2>CoverCraft Profile</h2>
+        <p>Manage your Google sign-in, cloud sync, and active identity here. This surface keeps account state separate from runtime defaults.</p>
+      </div>
+      <article class="panel settings-shell">
+        <div class="settings-grid">
+          <article class="panel">
+            <div class="panel-title">Google Cloud Account</div>
+            <div class="panel-copy" id="cloud-auth-summary">Checking cloud status…</div>
+            <div class="chips" id="cloud-auth-chips" style="margin-top:10px"></div>
+            <div class="check" style="margin-top:16px">
+              <input type="checkbox" id="cloud-sync-enabled">
+              <label for="cloud-sync-enabled">Enable cloud sync for sessions and portfolio</label>
+            </div>
+            <div class="hint" style="margin-top:8px">API keys stay local. Signed-in users can sync sessions, research, cover letters, and the active portfolio to Firebase.</div>
+            <div class="row" style="margin-top:14px">
+              <button class="btn btn-green" id="cloud-sign-in-btn">Sign In With Google</button>
+              <button class="btn" id="cloud-sync-btn">Sync Now</button>
+              <button class="btn btn-red" id="cloud-sign-out-btn">Sign Out</button>
+            </div>
+            <div id="cloud-auth-status" class="status" style="margin-top:8px"></div>
+          </article>
+          <article class="panel">
+            <div class="panel-title">Active Identity</div>
+            <div class="source-box">
+              <h3 id="profile-owner-name">Guest</h3>
+              <p id="profile-owner-sub">Sign in with Google to back up your work and keep your identity in sync across devices.</p>
+              <div class="chips" id="profile-owner-chips"></div>
+            </div>
+            <div class="source-box" style="margin-top:14px">
+              <h3>Connected Portfolio</h3>
+              <p id="profile-portfolio-copy">Current portfolio details will appear here after settings load.</p>
+            </div>
+          </article>
+        </div>
+      </article>
+    </section>
+  </div>
+
+  <div id="resume-workspace-modal" class="workspace-modal hidden">
+    <div class="workspace-dialog">
+      <div class="workspace-dialog-head">
+        <div class="workspace-dialog-copy">Choose a PDF or Word resume, extract the text, and let CoverCraft convert it into a portfolio JSON preview. Use the workspace action to send the extracted text back here, then decide whether to replace the current portfolio.</div>
+        <button class="btn" id="close-resume-workspace-btn">Close</button>
+      </div>
+      <iframe id="resume-workspace-frame" class="workspace-frame" src="../tools/ocr-sandbox.html" title="Resume Import"></iframe>
     </div>
   </div>
 
-  <div class="stats" id="stats"></div>
+  <div id="confirm-toast" class="confirm-toast" aria-live="polite">Confirmed</div>
 
-  <div class="tabs">
-    <button class="tab active" data-tab="all">All Activity</button>
-    <button class="tab" data-tab="pipeline">Pipelines</button>
-    <button class="tab" data-tab="extract">Extractions</button>
-  </div>
-
-  <div class="tab-panel active" id="tab-all"></div>
-  <div class="tab-panel" id="tab-pipeline"></div>
-  <div class="tab-panel" id="tab-extract"></div>
-
+  <script src="../shared/core.js"></script>
+  <script src="../shared/pdf.js"></script>
   <script src="xlsxgen.js"></script>
   <script src="dashboard.js"></script>
 </body>

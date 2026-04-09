@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CoverCraft Resume Workspace</title>
+  <style>
+    :root{
+      --bg:#07070d;
+      --panel:#0f0f18;
+      --panel-soft:rgba(255,255,255,.04);
+      --border:rgba(255,255,255,.08);
+      --text:#e2e8f0;
+      --muted:#94a3b8;
+      --accent:#818cf8;
+      --green:#4ade80;
+      --red:#fca5a5;
+    }
+    *{box-sizing:border-box}
+    html,body{
+      margin:0;
+      height:100%;
+      background:transparent;
+      color:var(--text);
+      font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,sans-serif;
+    }
+    body{
+      min-height:100vh;
+      overflow:hidden;
+    }
+    .app{
+      display:grid;
+      grid-template-columns:320px minmax(0,1fr);
+      gap:12px;
+      padding:12px;
+      min-height:100vh;
+      height:100vh;
+      overflow:hidden;
+    }
+    .panel{
+      background:linear-gradient(180deg, rgba(17,17,29,.96), rgba(11,11,19,.96));
+      border:1px solid var(--border);
+      border-radius:18px;
+      overflow:hidden;
+    }
+    .side{
+      padding:14px;
+      display:grid;
+      gap:12px;
+      align-content:start;
+      position:sticky;
+      top:12px;
+      max-height:calc(100vh - 24px);
+      overflow:auto;
+    }
+    .title{
+      font-size:24px;
+      line-height:1.02;
+      letter-spacing:-.04em;
+      font-family:Syne,Inter,system-ui,sans-serif;
+      font-weight:800;
+    }
+    .copy{
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.65;
+    }
+    .dropzone{
+      padding:14px;
+      border-radius:16px;
+      border:1px dashed rgba(129,140,248,.42);
+      background:rgba(255,255,255,.03);
+      display:grid;
+      gap:10px;
+      text-align:center;
+    }
+    .dropzone.dragover{
+      background:rgba(99,102,241,.1);
+      border-color:rgba(129,140,248,.7);
+    }
+    .btn{
+      appearance:none;
+      border:1px solid var(--border);
+      background:rgba(255,255,255,.05);
+      color:#fff;
+      border-radius:12px;
+      padding:10px 12px;
+      font-size:12px;
+      font-weight:700;
+      cursor:pointer;
+    }
+    .btn:hover{background:rgba(255,255,255,.08)}
+    .btn:disabled{opacity:.45;cursor:not-allowed}
+    .btn.primary{
+      background:linear-gradient(135deg,#6366f1,#8b5cf6);
+      border-color:transparent;
+    }
+    .btn.green{
+      background:rgba(16,185,129,.12);
+      border-color:rgba(16,185,129,.24);
+      color:#bbf7d0;
+    }
+    .stack{display:grid;gap:8px}
+    .status{
+      min-height:44px;
+      padding:10px 12px;
+      border-radius:14px;
+      background:rgba(255,255,255,.03);
+      border:1px solid rgba(255,255,255,.06);
+      font-size:12px;
+      line-height:1.55;
+      color:var(--muted);
+    }
+    .status.ok{background:rgba(16,185,129,.08);border-color:rgba(16,185,129,.18);color:#d1fae5}
+    .status.error{background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.18);color:#fee2e2}
+    .status.loading{background:rgba(99,102,241,.08);border-color:rgba(129,140,248,.2);color:#dbe4ff}
+    .progress{display:grid;gap:6px}
+    .progress-bar{
+      height:8px;
+      border-radius:999px;
+      background:rgba(255,255,255,.06);
+      overflow:hidden;
+    }
+    .progress-fill{
+      height:100%;
+      width:0;
+      background:linear-gradient(90deg,#22c55e,#86efac);
+      transition:width .18s ease;
+    }
+    .progress-label{font-size:11px;color:var(--muted)}
+    .meta{display:grid;gap:8px}
+    .meta-line{
+      display:flex;
+      justify-content:space-between;
+      gap:12px;
+      font-size:12px;
+      color:var(--muted);
+    }
+    .meta-line strong{
+      color:#fff;
+      font-weight:700;
+      text-align:right;
+      word-break:break-word;
+    }
+    .main{
+      padding:14px;
+      display:grid;
+      gap:12px;
+      min-height:0;
+      max-height:calc(100vh - 24px);
+      overflow:auto;
+      align-content:start;
+    }
+    .preview-head,.text-head{
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:12px;
+    }
+    .badge{
+      font-size:11px;
+      color:var(--muted);
+      padding:6px 8px;
+      border-radius:999px;
+      background:rgba(255,255,255,.05);
+      border:1px solid rgba(255,255,255,.08);
+    }
+    .canvas-grid{
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+      gap:10px;
+    }
+    .page-card{
+      padding:10px;
+      border-radius:16px;
+      background:rgba(255,255,255,.03);
+      border:1px solid rgba(255,255,255,.06);
+      display:grid;
+      gap:8px;
+    }
+    .page-card h3{
+      margin:0;
+      font-size:12px;
+      color:var(--muted);
+    }
+    canvas,.preview-image{
+      width:100%;
+      height:auto;
+      border-radius:12px;
+      border:1px solid rgba(255,255,255,.06);
+      background:#fff;
+      display:block;
+    }
+    textarea{
+      width:100%;
+      min-height:320px;
+      resize:vertical;
+      background:#090913;
+      border:1px solid rgba(255,255,255,.06);
+      border-radius:14px;
+      color:#dbe4f0;
+      padding:12px;
+      font:12px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace;
+    }
+    .hidden{display:none}
+    input[type="file"]{display:none}
+    @media (max-width:1080px){
+      .app{grid-template-columns:1fr}
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="panel side">
+      <div class="title">Resume Workspace</div>
+      <div class="copy">
+        Load a PDF or Word document, review the preview, and send the extracted text back so CoverCraft can build a portfolio JSON preview for confirmation.
+      </div>
+
+      <div id="dropzone" class="dropzone">
+        <div class="copy" style="color:#fff">Drop a PDF or DOCX here</div>
+        <div class="copy">CoverCraft reads embedded text from the file and converts it into portfolio JSON.</div>
+        <label class="btn primary" for="file-input">Choose File</label>
+        <input id="file-input" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+      </div>
+
+      <div class="stack">
+        <button id="send-btn" class="btn primary" type="button" disabled>Use This Text</button>
+        <button id="copy-btn" class="btn" type="button" disabled>Copy extracted text</button>
+        <button id="clear-btn" class="btn" type="button">Clear file</button>
+      </div>
+
+      <div id="status" class="status">Load a PDF or DOCX to extract text.</div>
+
+      <div class="progress">
+        <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
+        <div id="progress-label" class="progress-label">Idle</div>
+      </div>
+
+      <div class="meta">
+        <div class="meta-line"><span>File</span><strong id="meta-file">No file loaded</strong></div>
+        <div class="meta-line"><span>Pages</span><strong id="meta-pages">0</strong></div>
+        <div class="meta-line"><span>Words</span><strong id="meta-words">0</strong></div>
+        <div class="meta-line"><span>Type</span><strong id="meta-type">—</strong></div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <section class="panel" style="padding:14px;display:grid;gap:10px">
+        <div class="preview-head">
+          <div>
+            <div style="font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#c7d2fe;">Document preview</div>
+            <div class="copy">Rendered pages so you can verify the file before importing the extracted text.</div>
+          </div>
+          <div id="preview-badge" class="badge">No preview yet</div>
+        </div>
+        <div id="canvas-grid" class="canvas-grid">
+          <div class="copy">No resume file loaded yet.</div>
+        </div>
+      </section>
+
+      <section class="panel" style="padding:14px;display:grid;gap:10px">
+        <div class="text-head">
+          <div>
+            <div style="font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#c7d2fe;">Extracted text</div>
+            <div class="copy">This is the text CoverCraft will use to generate the portfolio JSON for replacement.</div>
+          </div>
+          <div id="text-badge" class="badge">0 chars</div>
+        </div>
+        <textarea id="extracted-text" placeholder="Extracted text will appear here." spellcheck="false"></textarea>
+      </section>
+    </main>
+  </div>
+
+  <script src="../../vendor/mammoth.browser.min.js"></script>
+  <script type="module">
+    import * as pdfjsLib from '../../vendor/pdf.min.mjs';
+
+    pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('../../vendor/pdf.worker.min.mjs', window.location.href).href;
+
+    var RESUME_WORKSPACE_SOURCE = 'COVERCRAFT_RESUME_WORKSPACE';
+    var state = {
+      file: null,
+      kind: '',
+      pdf: null,
+      extractedText: '',
+      busy: false
+    };
+
+    var els = {
+      fileInput: document.getElementById('file-input'),
+      dropzone: document.getElementById('dropzone'),
+      sendBtn: document.getElementById('send-btn'),
+      copyBtn: document.getElementById('copy-btn'),
+      clearBtn: document.getElementById('clear-btn'),
+      status: document.getElementById('status'),
+      progressFill: document.getElementById('progress-fill'),
+      progressLabel: document.getElementById('progress-label'),
+      metaFile: document.getElementById('meta-file'),
+      metaPages: document.getElementById('meta-pages'),
+      metaWords: document.getElementById('meta-words'),
+      metaType: document.getElementById('meta-type'),
+      previewBadge: document.getElementById('preview-badge'),
+      canvasGrid: document.getElementById('canvas-grid'),
+      extractedText: document.getElementById('extracted-text'),
+      textBadge: document.getElementById('text-badge')
+    };
+
+    function wordCount(text) {
+      return String(text || '').trim().split(/\s+/).filter(Boolean).length;
+    }
+
+    function extname(name) {
+      var match = String(name || '').toLowerCase().match(/\.([a-z0-9]+)$/);
+      return match ? match[1] : '';
+    }
+
+    function detectKind(file) {
+      var type = String(file && file.type || '').toLowerCase();
+      var ext = extname(file && file.name);
+      if (type === 'application/pdf' || ext === 'pdf') return 'pdf';
+      if (type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || ext === 'docx') return 'docx';
+      return '';
+    }
+
+    function setStatus(kind, message) {
+      els.status.className = 'status' + (kind ? ' ' + kind : '');
+      els.status.textContent = message;
+    }
+
+    function setProgress(percent, label) {
+      var safe = Math.max(0, Math.min(100, Number(percent) || 0));
+      els.progressFill.style.width = safe + '%';
+      els.progressLabel.textContent = label || 'Idle';
+    }
+
+    function refreshButtons() {
+      var hasText = !!String(state.extractedText || '').trim();
+      els.sendBtn.disabled = state.busy || !hasText;
+      els.copyBtn.disabled = state.busy || !hasText;
+      els.clearBtn.disabled = state.busy || !state.file;
+    }
+
+    function setBusy(busy) {
+      state.busy = !!busy;
+      els.fileInput.disabled = state.busy;
+      refreshButtons();
+    }
+
+    function resetPreview() {
+      els.canvasGrid.innerHTML = '<div class="copy">No resume file loaded yet.</div>';
+      els.previewBadge.textContent = 'No preview yet';
+    }
+
+    function resetText() {
+      state.extractedText = '';
+      els.extractedText.value = '';
+      els.textBadge.textContent = '0 chars';
+      els.metaWords.textContent = '0';
+      refreshButtons();
+    }
+
+    function clearWorkspace(keepStatus) {
+      state.file = null;
+      state.kind = '';
+      state.pdf = null;
+      els.fileInput.value = '';
+      els.metaFile.textContent = 'No file loaded';
+      els.metaPages.textContent = '0';
+      els.metaType.textContent = '—';
+      resetPreview();
+      resetText();
+      setProgress(0, 'Idle');
+      if (!keepStatus) setStatus('', 'Load a PDF or DOCX to extract text.');
+      refreshButtons();
+    }
+
+    function normalizeText(text) {
+      return String(text || '')
+        .replace(/\r\n/g, '\n')
+        .replace(/\r/g, '\n')
+        .replace(/[ \t]{2,}/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+    }
+
+    function combineTextItems(items) {
+      var chunks = [];
+      var current = [];
+      items.forEach(function(item) {
+        var text = String(item.str || '').trim();
+        if (!text) {
+          if (item.hasEOL && current.length) {
+            chunks.push(current.join(' '));
+            current = [];
+          }
+          return;
+        }
+        current.push(text);
+        if (item.hasEOL) {
+          chunks.push(current.join(' '));
+          current = [];
+        }
+      });
+      if (current.length) chunks.push(current.join(' '));
+      return normalizeText(chunks.join('\n'));
+    }
+
+    async function renderPdfPreview(pdfDoc) {
+      els.canvasGrid.innerHTML = '';
+      var pageCount = pdfDoc.numPages;
+      var limit = Math.min(pageCount, 4);
+      for (var i = 1; i <= limit; i++) {
+        var page = await pdfDoc.getPage(i);
+        var viewport = page.getViewport({ scale: 1.2 });
+        var canvas = document.createElement('canvas');
+        var context = canvas.getContext('2d', { alpha: false });
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        await page.render({ canvasContext: context, viewport: viewport }).promise;
+
+        var card = document.createElement('div');
+        card.className = 'page-card';
+        var heading = document.createElement('h3');
+        heading.textContent = 'Page ' + i + ' of ' + pageCount;
+        card.appendChild(heading);
+        card.appendChild(canvas);
+        els.canvasGrid.appendChild(card);
+      }
+      if (pageCount > limit) {
+        var note = document.createElement('div');
+        note.className = 'copy';
+        note.textContent = 'Showing the first ' + limit + ' pages only.';
+        els.canvasGrid.appendChild(note);
+      }
+      els.previewBadge.textContent = pageCount + ' page' + (pageCount === 1 ? '' : 's');
+    }
+
+    async function extractPdfText(pdfDoc) {
+      var pages = [];
+      for (var i = 1; i <= pdfDoc.numPages; i++) {
+        setProgress((i - 1) / Math.max(1, pdfDoc.numPages) * 80, 'Extracting page ' + i + ' of ' + pdfDoc.numPages);
+        var page = await pdfDoc.getPage(i);
+        var content = await page.getTextContent({ normalizeWhitespace: true });
+        var pageText = combineTextItems(content.items || []);
+        if (pageText) pages.push(pageText);
+      }
+      return normalizeText(pages.join('\n\n'));
+    }
+
+    async function loadPdf(file) {
+      setStatus('loading', 'Reading the PDF and extracting its embedded text...');
+      setProgress(6, 'Opening PDF');
+      var buffer = await file.arrayBuffer();
+      var pdfDoc = await pdfjsLib.getDocument({ data: buffer }).promise;
+      state.pdf = pdfDoc;
+      els.metaPages.textContent = String(pdfDoc.numPages);
+      await renderPdfPreview(pdfDoc);
+      var text = await extractPdfText(pdfDoc);
+      state.extractedText = text;
+      els.extractedText.value = text;
+      els.textBadge.textContent = text.length + ' chars';
+      els.metaWords.textContent = String(wordCount(text));
+      if (text) setStatus('', 'Text extracted. Review it, then use it for your portfolio import.');
+      else setStatus('error', 'No embedded text was found. Export a text-based PDF or use the original DOCX.');
+      setProgress(100, 'Ready');
+    }
+
+    async function loadDocx(file) {
+      if (!window.mammoth || !window.mammoth.extractRawText) {
+        throw new Error('DOCX extraction is unavailable in this workspace.');
+      }
+      setStatus('loading', 'Reading the Word document and extracting text...');
+      setProgress(10, 'Opening DOCX');
+      els.previewBadge.textContent = 'Word document';
+      els.canvasGrid.innerHTML = '<div class="copy">Word documents do not render page previews here. The extracted text below is the source of truth.</div>';
+      var buffer = await file.arrayBuffer();
+      var result = await window.mammoth.extractRawText({ arrayBuffer: buffer });
+      var text = normalizeText(result && result.value || '');
+      state.extractedText = text;
+      els.extractedText.value = text;
+      els.textBadge.textContent = text.length + ' chars';
+      els.metaWords.textContent = String(wordCount(text));
+      els.metaPages.textContent = '1';
+      if (text) setStatus('', 'Text extracted. Review it, then use it for your portfolio import.');
+      else setStatus('error', 'No readable text was found in this Word document.');
+      setProgress(100, 'Ready');
+    }
+
+    async function handleFile(file) {
+      if (!file) return;
+      var kind = detectKind(file);
+      if (!kind) {
+        clearWorkspace(true);
+        setStatus('error', 'Please choose a PDF or DOCX file.');
+        return;
+      }
+
+      state.file = file;
+      state.kind = kind;
+      els.metaFile.textContent = file.name || 'Selected file';
+      els.metaType.textContent = kind.toUpperCase();
+      resetText();
+      resetPreview();
+      setBusy(true);
+
+      try {
+        if (kind === 'pdf') await loadPdf(file);
+        else await loadDocx(file);
+      } catch (error) {
+        resetText();
+        setProgress(0, 'Idle');
+        resetPreview();
+        setStatus('error', (error && error.message) || 'Could not extract text from this file.');
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    function copyExtractedText() {
+      if (!state.extractedText) return;
+      navigator.clipboard.writeText(state.extractedText).then(function() {
+        var original = els.copyBtn.textContent;
+        els.copyBtn.textContent = 'Copied';
+        setTimeout(function() { els.copyBtn.textContent = original; }, 1400);
+      });
+    }
+
+    function sendExtractedText() {
+      if (!state.extractedText) return;
+      window.parent.postMessage({
+        type: RESUME_WORKSPACE_SOURCE,
+        payload: {
+          extractedText: state.extractedText,
+          source: state.kind === 'pdf' ? 'resume_workspace_pdf' : 'resume_workspace_docx',
+          fileName: state.file && state.file.name || ''
+        }
+      }, '*');
+      setStatus('ok', 'Text sent back to CoverCraft. Return to Settings to confirm the portfolio replacement.');
+      setProgress(100, 'Sent');
+    }
+
+    els.fileInput.addEventListener('change', function(event) {
+      var input = event && event.target ? event.target : null;
+      var file = input && input.files ? input.files[0] : null;
+      if (!file) return;
+      handleFile(file);
+      if (input) input.value = '';
+    });
+
+    els.dropzone.addEventListener('dragover', function(event) {
+      event.preventDefault();
+      els.dropzone.classList.add('dragover');
+    });
+    els.dropzone.addEventListener('dragleave', function() {
+      els.dropzone.classList.remove('dragover');
+    });
+    els.dropzone.addEventListener('drop', function(event) {
+      event.preventDefault();
+      els.dropzone.classList.remove('dragover');
+      var file = event.dataTransfer && event.dataTransfer.files ? event.dataTransfer.files[0] : null;
+      if (file) handleFile(file);
+    });
+
+    els.sendBtn.addEventListener('click', sendExtractedText);
+    els.copyBtn.addEventListener('click', copyExtractedText);
+    els.clearBtn.addEventListener('click', function() {
+      clearWorkspace(false);
+    });
+
+    clearWorkspace(false);
+    setBusy(false);
+  </script>
+</body>
+</html>
