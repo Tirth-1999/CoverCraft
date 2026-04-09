@@ -4,6 +4,24 @@ CoverCraft is a Chrome extension for faster job applications.
 
 It turns a live job page into a reusable workspace where you can generate a tailored cover letter, ask focused follow-up questions, keep profile context ready, and move into a reusable control center without breaking flow.
 
+## Product Preview
+
+### Extension popup
+
+![CoverCraft popup](branding/Untitled.png)
+
+### Cover letter on the job page
+
+![CoverCraft cover letter flow](branding/extension-cover-letter.png)
+
+### Reusable control center
+
+![CoverCraft dashboard overview](branding/dashboard-overview.jpeg)
+
+### Account and sync surface
+
+![CoverCraft account overview](branding/website-account-overview.jpeg)
+
 ## Why CoverCraft
 
 Most job applications break your momentum.
@@ -22,6 +40,18 @@ With CoverCraft, you can:
 - manage settings, sync, and account state from one control center
 
 ## Core Product Flow
+
+```mermaid
+flowchart LR
+    A["Open job page"] --> B["Launch CoverCraft"]
+    B --> C["Lock role and profile context"]
+    C --> D["Generate cover letter"]
+    C --> E["Ask Q&A follow-ups"]
+    D --> F["Save reusable session"]
+    E --> F
+    F --> G["Reopen from control center"]
+    G --> H["Manage settings, profile, and sync"]
+```
 
 1. Open a job page
 2. Launch CoverCraft on that page
