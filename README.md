@@ -71,6 +71,23 @@ This repo contains:
 
 ## Quick Start
 
+### Download the ZIP
+
+For a direct install package, use:
+
+- `site/downloads/CoverCraft-extension.zip`
+
+The public ZIP is built from the files Chrome needs to run CoverCraft. It includes the extension manifest, icons, runtime scripts, dashboard/options/popup pages, vendor libraries, defaults/examples, and lightweight internal site pages. It intentionally excludes `.git`, local-only keys, local portfolio data, the hosted download folder, demo pages, and large audio/video media.
+
+To install from the ZIP:
+
+1. Download `CoverCraft-extension.zip`
+2. Unzip it locally
+3. Open `chrome://extensions`
+4. Enable `Developer mode`
+5. Click `Load unpacked`
+6. Select the unzipped CoverCraft folder
+
 ### Load the extension
 
 1. Open `chrome://extensions`

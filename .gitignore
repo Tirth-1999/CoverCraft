@@ -29,6 +29,8 @@ dist/
 build/
 *.zip
 *.crx
+!site/downloads/
+!site/downloads/CoverCraft-extension.zip
 
 # ─── Optional local demo/media files ─────────────────────────────────────────
 site/demo-job.html
