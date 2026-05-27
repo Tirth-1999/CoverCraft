@@ -4379,6 +4379,8 @@ chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
           type: 'CLOUD_STATUS_UPDATE',
           cloud: await getCloudStatus(),
           syncResult: syncResult
+        }, function() {
+          void chrome.runtime.lastError;
         });
       } catch (err) {
         await clearPendingCloudAuthFlow();
@@ -4395,6 +4397,8 @@ chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
             cloud: cloudStatus,
             storage: storageStatus,
             error: errorMessage
+          }, function() {
+            void chrome.runtime.lastError;
           });
         }
       }
