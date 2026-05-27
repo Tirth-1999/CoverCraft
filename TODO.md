@@ -1,0 +1,57 @@
+# TODO
+
+## Post-Approval Checklist
+
+Complete these steps after the Chrome Web Store listing is approved and the published extension ID is available.
+
+### Extension Identity
+
+- Get the final published Chrome Web Store extension ID.
+- Confirm the published install uses the same permanent ID across machines.
+- Decide whether to add a manifest `key` field for stable local development IDs.
+
+### Google OAuth And Firebase
+
+- Add the published redirect URI to Google Cloud OAuth:
+  - `https://<PUBLISHED_EXTENSION_ID>.chromiumapp.org/firebase`
+- Confirm the correct Google OAuth client ID is present in local [src/firebase.js](/Users/tirthcshah/Desktop/Tirth%20Shah/Projects/CoverCraft/src/firebase.js).
+- Recheck Firebase Auth settings and authorized domains.
+- Verify Firestore rules are deployed for signed-in user isolation.
+
+### Production Validation
+
+- Install the published extension from the Chrome Web Store.
+- Test Google sign-in from the published build.
+- Test cloud sync from the published build.
+- Test popup, dashboard, settings, and account flows from the published build.
+- Verify generation still works with user-supplied OpenRouter, Groq, and Tavily keys.
+
+### Release Follow-Up
+
+- If auth or config changes are needed, bump the extension version.
+- Rebuild the Chrome Web Store zip if any production-facing file changes.
+- Upload the next package update only after published-auth testing is complete.
+
+### Store And Launch Follow-Up
+
+- Confirm the public Chrome Web Store listing is live and reachable.
+- Recheck store screenshots, privacy policy URL, support email, and website links on the live listing.
+- Watch for any Chrome Web Store reviewer notes, policy warnings, or follow-up requests after approval.
+- Verify install, uninstall, impressions, users, and ratings begin appearing in store analytics.
+- Track first-user feedback and note any onboarding confusion around API keys, sign-in, or setup.
+- Remove any review-only instructions or temporary operational notes if they are no longer needed.
+
+### Post-Launch Product Checks
+
+- Verify the hosted site still matches the extension messaging after launch.
+- Test the privacy page, sitemap, robots file, and security.txt from the production domain.
+- Confirm analytics events are arriving in Umami, Clarity, and Google Analytics.
+- Check that download/export flows still work on the published build.
+- Review whether `<all_urls>` and current permissions remain necessary for the next version, or can be narrowed later.
+
+### Website
+
+- Confirm the public privacy policy is live:
+  - `https://cover-craft.app/privacy.html`
+- Confirm `robots.txt`, `sitemap.xml`, and `/.well-known/security.txt` resolve correctly on production.
+- Verify analytics is receiving traffic after launch.

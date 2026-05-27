@@ -1,6 +1,9 @@
 (function() {
   'use strict';
 
+  if (window.__covercraftContentLoaded) return;
+  window.__covercraftContentLoaded = true;
+
   var Core = window.CoverCraftCore;
   var injected = false;
   var shadow = null;
@@ -9,13 +12,30 @@
   var currentOwner = null;
   var currentCloud = null;
   var currentSettings = null;
+  var currentModelHealth = {};
+  var GROQ_BASE_LIMITS = {
+    'groq/llama-3.1-8b-instant': { tpm: '6K', rpd: '14.4K' },
+    'groq/llama-3.3-70b-versatile': { tpm: '12K', rpd: '1K' },
+    'groq/openai/gpt-oss-120b': { tpm: '8K', rpd: '1K' },
+    'groq/openai/gpt-oss-20b': { tpm: '8K', rpd: '1K' },
+    'groq/meta-llama/llama-4-scout-17b-16e-instruct': { tpm: '30K', rpd: '1K' },
+    'groq/qwen/qwen3-32b': { tpm: '6K', rpd: '1K' },
+    'groq/compound-mini': { tpm: '70K', rpd: '250' },
+    'groq/compound': { tpm: '70K', rpd: '250' }
+  };
   var currentPortfolio = null;
   var currentPortfolioSource = '';
   var triggerObserver = null;
   var sessionProgressPollTimer = null;
+  var modelHealthTickTimer = null;
   var titleHintDirty = false;
   var companyHintDirty = false;
+  var lastAiView = 'generate';
   var generateViewState = {
+    kind: '',
+    message: ''
+  };
+  var manualViewState = {
     kind: '',
     message: ''
   };
@@ -196,19 +216,21 @@
           '</div>',
           '<div id="cc-header-actions">',
             '<button id="cc-scrape-btn" class="cc-sm-btn" title="Scrape page and refresh context">Scrape</button>',
+            '<button id="cc-settings-btn" class="cc-sm-btn cc-icon-btn" title="Open settings" aria-label="Open settings">⚙</button>',
+            '<button id="cc-model-health-refresh-btn" class="cc-sm-btn cc-icon-btn" title="Refresh model availability" aria-label="Refresh model availability">↻</button>',
             '<button id="cc-min-btn" title="Minimize">−</button>',
             '<button id="cc-close-btn" title="Close">✕</button>',
           '</div>',
         '</div>',
 
-        '<div class="cc-mode-bar" role="tablist" aria-label="CoverCraft modes">',
-          '<button class="cc-mode active" data-view="generate" type="button">Cover Letter</button>',
-          '<button class="cc-mode" data-view="ask" type="button">Question</button>',
-          '<button class="cc-mode" data-view="resume" type="button">Resume</button>',
-        '</div>',
-
         '<div id="cc-body">',
           '<textarea id="cc-raw-text" style="display:none"></textarea>',
+
+          '<div class="cc-mode-bar cc-ai-tabs" role="tablist" aria-label="AI tools">',
+            '<button class="cc-mode active" data-view="generate" type="button">Cover Letter</button>',
+            '<button class="cc-mode" data-view="ask" type="button">Question</button>',
+            '<button class="cc-mode" data-view="resume" type="button">Resume</button>',
+          '</div>',
 
           '<div class="cc-row2">',
             '<div class="cc-field">',
@@ -235,14 +257,15 @@
                 '<optgroup label="Groq">',
                 '<option value="groq/llama-3.1-8b-instant">Groq Llama 3.1 8B Instant</option>',
                 '<option value="groq/llama-3.3-70b-versatile">Groq Llama 3.3 70B Versatile</option>',
-                '<option value="groq/meta-llama/llama-4-scout-17b-16e-instruct">Groq Llama 4 Scout 17B</option>',
-                '<option value="groq/moonshotai/kimi-k2-instruct">Groq Kimi K2 Instruct</option>',
-                '<option value="groq/moonshotai/kimi-k2-instruct-0905">Groq Kimi K2 Instruct 0905</option>',
                 '<option value="groq/openai/gpt-oss-120b">Groq GPT-OSS 120B</option>',
                 '<option value="groq/openai/gpt-oss-20b">Groq GPT-OSS 20B</option>',
+                '<option value="groq/meta-llama/llama-4-scout-17b-16e-instruct">Groq Llama 4 Scout 17B Preview</option>',
                 '<option value="groq/qwen/qwen3-32b">Groq Qwen3 32B</option>',
+                '<option value="groq/compound-mini">Groq Compound Mini</option>',
+                '<option value="groq/compound">Groq Compound</option>',
                 '</optgroup>',
               '</select>',
+              '<div id="cc-model-health" class="cc-model-health" title="Model availability"></div>',
             '</div>',
 
             '<div class="cc-field">',
@@ -260,15 +283,25 @@
               '<span class="cc-btn-label">Generate Cover Letter</span>',
               '<span class="cc-btn-progress"><span class="cc-btn-progress-fill"></span></span>',
             '</button>',
-            '<div id="cc-generate-status" class="cc-inline-status">Generate uses the current page text, company context, and your active profile to draft a role-specific letter.</div>',
 
             '<div id="cc-output-wrap" class="cc-card cc-hidden">',
-              '<div class="cc-card-head">Latest Cover Letter</div>',
-              '<textarea id="cc-output" class="cc-output" rows="12" readonly></textarea>',
+              '<div class="cc-card-head">Latest Cover Letter (Editable)</div>',
+              '<textarea id="cc-output" class="cc-output" rows="12" spellcheck="true" aria-label="Editable generated cover letter"></textarea>',
               '<div class="cc-action-row">',
                 '<button id="cc-copy-btn" class="cc-action-btn" disabled>⎘ Copy</button>',
                 '<button id="cc-pdf-btn" class="cc-action-btn cc-pdf-btn" disabled>⬇ Download PDF</button>',
               '</div>',
+            '</div>',
+          '</section>',
+
+          '<section class="cc-view" id="cc-view-manual">',
+            '<div class="cc-card">',
+              '<div class="cc-card-head">Manual Cover Letter</div>',
+              '<textarea id="cc-manual-text" class="cc-output cc-manual-text" rows="12" spellcheck="true" placeholder="Dear Hiring Manager,&#10;&#10;Paste or write your cover letter here..."></textarea>',
+              '<button id="cc-manual-save-btn" class="cc-btn-primary" type="button">',
+                '<span class="cc-btn-label">Download Manual Letter</span>',
+                '<span class="cc-btn-progress"><span class="cc-btn-progress-fill"></span></span>',
+              '</button>',
             '</div>',
           '</section>',
 
@@ -280,7 +313,6 @@
                 '<span class="cc-btn-label">Answer Question</span>',
                 '<span class="cc-btn-progress"><span class="cc-btn-progress-fill"></span></span>',
               '</button>',
-              '<div id="cc-ask-status" class="cc-inline-status">Ask uses the saved job context and latest generated materials to answer follow-up questions with more specificity.</div>',
             '</div>',
             '<div id="cc-answer-wrap" class="cc-card cc-hidden">',
               '<div class="cc-card-head">Latest Answer</div>',
@@ -294,7 +326,7 @@
           '<section class="cc-view" id="cc-view-resume">',
             '<div class="cc-card">',
               '<div class="cc-card-head">Resume Mode</div>',
-              '<div class="cc-note">Use the active profile, the current job identity, and the same page context to prepare Overleaf-ready LaTeX for this role while keeping the template structure locked.</div>',
+              '<div class="cc-note cc-hidden"></div>',
               '<div class="cc-resume-grid">',
                 '<div class="cc-mini-stat">',
                   '<span class="cc-mini-stat-k">Profile</span>',
@@ -321,7 +353,6 @@
                   '<strong id="cc-resume-company">Not loaded</strong>',
                 '</div>',
               '</div>',
-              '<div id="cc-resume-status" class="cc-inline-status">Resume tailoring uses the current page context and builds Overleaf-ready LaTeX from your active profile.</div>',
               '<button id="cc-resume-btn" class="cc-btn-primary" type="button">',
                 '<span class="cc-btn-label">Tailor Resume</span>',
                 '<span class="cc-btn-progress"><span class="cc-btn-progress-fill"></span></span>',
@@ -342,7 +373,10 @@
         '<div id="cc-footer">',
           '<div class="cc-foot-links">',
             '<button class="cc-foot-btn" id="cc-foot-dash">Dashboard</button>',
-            '<button class="cc-foot-btn" id="cc-foot-settings">Settings</button>',
+            '<div class="cc-footer-mode-switch" role="tablist" aria-label="CoverCraft workspace mode">',
+              '<button class="cc-primary-mode active" data-primary-mode="ai" type="button">AI</button>',
+              '<button class="cc-primary-mode" data-primary-mode="manual" type="button">Manual</button>',
+            '</div>',
           '</div>',
           '<button class="cc-foot-profile" id="cc-foot-profile" title="Profile" aria-label="Open Profile">',
             '<span class="cc-foot-profile-avatar" id="cc-foot-profile-avatar">G</span>',
@@ -366,9 +400,15 @@
       '#cc-header-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end}',
       '#cc-header-actions button{all:unset;height:24px;min-width:24px;padding:0 8px;border-radius:7px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);color:#94a3b8;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;display:flex;align-items:center;justify-content:center;box-sizing:border-box}',
       '#cc-header-actions button:hover{background:rgba(255,255,255,.09);color:#fff}',
-      '.cc-mode-bar{display:flex;gap:8px;padding:10px 12px 0;background:#0c0c15}',
-      '.cc-mode-bar .cc-mode{flex:1;min-width:0;display:flex;align-items:center;justify-content:center;padding:9px 12px;border-radius:999px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);color:#64748b;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap;box-sizing:border-box}',
+      '.cc-icon-btn{width:26px;min-width:26px;padding:0 !important;font-size:15px !important;line-height:1}',
+      '#cc-settings-btn{font-size:16px !important}',
+      '.cc-footer-mode-switch{display:flex;gap:4px;flex:1.45 1 0;min-width:0;padding:3px;border-radius:999px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);box-sizing:border-box}',
+      '.cc-primary-mode{all:unset;flex:1;min-width:0;display:flex;align-items:center;justify-content:center;padding:4px 8px;border-radius:999px;background:transparent;border:1px solid transparent;color:#64748b;font-size:10.5px;font-weight:850;cursor:pointer;white-space:nowrap;box-sizing:border-box}',
+      '.cc-primary-mode.active{background:linear-gradient(135deg,rgba(99,102,241,.32),rgba(139,92,246,.22));border-color:rgba(129,140,248,.28);color:#fff}',
+      '.cc-mode-bar{display:flex;gap:8px;padding:0 0 2px;background:transparent}',
+      '.cc-mode-bar .cc-mode{flex:1;min-width:0;display:flex;align-items:center;justify-content:center;padding:9px 8px;border-radius:999px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);color:#64748b;font-size:10.5px;font-weight:800;cursor:pointer;white-space:nowrap;box-sizing:border-box}',
       '.cc-mode-bar .cc-mode.active{background:rgba(99,102,241,.18);color:#c7d2fe}',
+      '.cc-ai-tabs.cc-hidden{display:none !important}',
       '.cc-sm-btn{all:unset;padding:0 9px;height:24px;border-radius:7px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);color:#94a3b8;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;display:flex;align-items:center;justify-content:center;box-sizing:border-box;transition:background .18s ease,border-color .18s ease,color .18s ease,transform .18s ease}',
       '.cc-sm-btn:hover{background:rgba(255,255,255,.09);color:#fff}',
       '.cc-sm-btn[data-state="loading"]{background:rgba(16,185,129,.12);border-color:rgba(16,185,129,.34);color:#86efac}',
@@ -382,6 +422,18 @@
       '.cc-input::placeholder,.cc-question::placeholder{color:#475569}',
       '.cc-select{padding-right:28px;cursor:pointer;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'10\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%23818cf8\' stroke-width=\'2.5\'%3E%3Cpath d=\'m6 9 6 6 6-6\'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center}',
       '.cc-select option{background:#0f0f18;color:#e2e8f0}',
+      '.cc-model-health{height:6px;color:#64748b;padding:0;display:block}',
+      '.cc-model-health.ok{color:#86efac}',
+      '.cc-model-health.warn{color:#facc15}',
+      '.cc-model-health.error{color:#fca5a5}',
+      '.cc-model-health.wait{color:#fcd34d}',
+      '.cc-model-health-line{display:none}',
+      '.cc-model-health-dot{font-size:9px;line-height:1}',
+      '.cc-model-health-text{min-width:0;overflow:hidden;text-overflow:ellipsis}',
+      '.cc-model-health-meter{width:100%;height:6px;border-radius:999px;overflow:hidden;background:rgba(148,163,184,.16)}',
+      '.cc-model-health-meter-fill{display:block;height:100%;width:0;background:#10b981;transition:width .25s ease,background .25s ease}',
+      '.cc-model-health.warn .cc-model-health-meter-fill,.cc-model-health.wait .cc-model-health-meter-fill{background:#f59e0b}',
+      '.cc-model-health.error .cc-model-health-meter-fill{background:#ef4444}',
       '.cc-view{display:none;flex-direction:column;gap:10px;min-height:0}',
       '.cc-view.active{display:flex}',
       '.cc-btn-primary{all:unset;position:relative;display:flex;width:100%;min-height:44px;box-sizing:border-box;padding:10px 12px;border-radius:11px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;font-size:12px;font-weight:800;text-align:center;cursor:pointer;box-shadow:0 14px 30px rgba(99,102,241,.22);overflow:hidden;align-items:center;justify-content:center}',
@@ -402,19 +454,16 @@
       '.cc-mini-stat{display:flex;flex-direction:column;gap:4px;padding:9px 10px;border-radius:10px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.06)}',
       '.cc-mini-stat-k{font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em}',
       '.cc-mini-stat strong{font-size:12px;font-weight:700;color:#e2e8f0;line-height:1.45;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
-      '.cc-inline-status{padding:9px 10px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);color:#94a3b8;font-size:11px;line-height:1.55}',
-      '.cc-inline-status.loading{background:rgba(99,102,241,.08);border-color:rgba(129,140,248,.2);color:#dbe4ff}',
-      '.cc-inline-status.ok{background:rgba(16,185,129,.08);border-color:rgba(16,185,129,.18);color:#d1fae5}',
-      '.cc-inline-status.error{background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.18);color:#fee2e2}',
-      '.cc-output{resize:none;min-height:110px;max-height:360px;overflow:auto;scrollbar-width:none;-ms-overflow-style:none}',
+      '.cc-output{resize:vertical;min-height:110px;max-height:360px;overflow:auto;scrollbar-width:none;-ms-overflow-style:none}',
+      '.cc-manual-text{min-height:220px}',
       '.cc-question{min-height:90px}',
       '.cc-action-row{display:flex;gap:8px;justify-content:center;align-items:center}',
       '.cc-action-btn{all:unset;flex:1;display:flex;align-items:center;justify-content:center;padding:8px 10px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);color:#cbd5e1;font-size:11px;font-weight:700;text-align:center;cursor:pointer}',
       '.cc-action-btn:disabled{opacity:.45;cursor:not-allowed}',
       '.cc-pdf-btn{background:rgba(16,185,129,.08);border-color:rgba(16,185,129,.2);color:#6ee7b7}',
       '#cc-footer{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;background:#10101a;border-top:1px solid rgba(255,255,255,.06)}',
-      '.cc-foot-links{display:flex;gap:8px;align-items:center;min-width:0}',
-      '.cc-foot-btn{all:unset;flex:0 0 132px;padding:7px 14px;border-radius:999px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);color:#94a3b8;font-size:11px;font-weight:700;text-align:center;cursor:pointer;box-sizing:border-box;display:flex;align-items:center;justify-content:center}',
+      '.cc-foot-links{display:flex;gap:8px;align-items:center;min-width:0;flex:1}',
+      '.cc-foot-btn{all:unset;flex:.85 1 0;min-width:0;padding:7px 12px;border-radius:999px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);color:#94a3b8;font-size:11px;font-weight:700;text-align:center;cursor:pointer;box-sizing:border-box;display:flex;align-items:center;justify-content:center}',
       '.cc-foot-btn:hover{color:#fff;background:rgba(255,255,255,.08)}',
       '.cc-foot-profile{all:unset;display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:999px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);cursor:pointer;flex-shrink:0;transition:transform .18s ease,background .18s ease,border-color .18s ease}',
       '.cc-foot-profile:hover{transform:translateY(-1px);background:rgba(255,255,255,.08);border-color:rgba(129,140,248,.26)}',
@@ -432,7 +481,7 @@
       ':host(.cc-minimized:hover) .cc-star,:host(.cc-minimized:focus-within) .cc-star{color:#c7d2fe}',
       ':host(.cc-minimized) .cc-title{display:none}',
       ':host(.cc-minimized) #cc-panel{overflow:hidden}',
-      '@media (max-width: 640px){#cc-panel{width:min(92vw,392px)}.cc-row2,.cc-resume-grid{grid-template-columns:1fr}.cc-mode-bar{padding-top:9px}}'
+      '@media (max-width: 640px){#cc-panel{width:min(92vw,392px)}.cc-row2,.cc-resume-grid{grid-template-columns:1fr}.cc-mode-bar{padding-top:0}}'
     ].join('\n');
     return style;
   }
@@ -474,6 +523,10 @@
     if (id === 'cc-generate-btn') {
       stopSessionProgressPolling();
       setButtonState(id, { label: 'Generate Cover Letter', progress: 0, disabled: false });
+      return;
+    }
+    if (id === 'cc-manual-save-btn') {
+      setButtonState(id, { label: 'Download Manual Letter', progress: 0, disabled: false });
       return;
     }
     if (id === 'cc-ask-btn') {
@@ -525,27 +578,176 @@
     return text || fallback || 'Something went wrong.';
   }
 
+  function formatHealthTimestamp(value) {
+    if (!value) return '';
+    try {
+      return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function renderModelHealth() {
+    var el = $id('cc-model-health');
+    var select = $id('cc-model-select');
+    if (!el || !select) return;
+    scheduleModelHealthTicker();
+    var model = select.value || 'openrouter/free';
+    var health = Core.lookupModelHealth(currentModelHealth, model);
+    updateModelOptionAvailability();
+    el.className = 'cc-model-health';
+    el.innerHTML = '';
+    function setHealthContent(availability, text) {
+      el.title = text || 'Model availability';
+      var meter = document.createElement('div');
+      var fill = document.createElement('span');
+      meter.className = 'cc-model-health-meter';
+      fill.className = 'cc-model-health-meter-fill';
+      fill.style.width = (availability.percent == null ? 0 : availability.percent) + '%';
+      meter.appendChild(fill);
+      el.appendChild(meter);
+    }
+    if (!health) {
+      setHealthContent(Core.modelAvailability(null), 'No provider telemetry recorded yet.');
+      return;
+    }
+    var availability = Core.modelAvailability(health);
+    var waitMs = health.blockedUntil ? health.blockedUntil - Date.now() : 0;
+    var rate = health.rateLimit || {};
+    var parts = [];
+    var checkedAt = formatHealthTimestamp(health.checkedAt);
+    if (availability.percent != null) parts.push(availability.percent + '% ' + (availability.source || 'capacity') + ' available');
+    if (checkedAt) parts.push('checked ' + checkedAt);
+    if (rate.remainingTokens) parts.push(rate.remainingTokens + ' TPM left');
+    if (rate.limitTokens) parts.push(rate.limitTokens + ' TPM limit');
+    if (rate.remainingRequests) parts.push(rate.remainingRequests + ' daily requests left');
+    if (rate.resetTokens) parts.push('resets in ' + rate.resetTokens);
+    if (health.totalTokens) parts.push('actual ' + health.totalTokens + ' tokens');
+    if (health.estimatedTokens) parts.push('last request ~' + health.estimatedTokens + ' tokens');
+    if (health.ok) {
+      el.classList.add(availability.tone);
+      setHealthContent(availability, (availability.status === 'limited' ? 'Low capacity: ' : 'Available: ') + (parts.length ? parts.join(' · ') : 'Last request succeeded.'));
+      return;
+    }
+    el.classList.add(availability.tone);
+    setHealthContent(availability, (waitMs > 0 ? 'Wait ' + formatHealthWait(waitMs) : 'Unavailable' + (health.status ? ' (' + health.status + ')' : '')) + ': ' + (parts.join(' · ') || (health.error || 'No provider headers returned.')));
+  }
+
+  function hasActiveModelCooldown() {
+    var now = Date.now();
+    return Object.keys(currentModelHealth || {}).some(function(model) {
+      var health = currentModelHealth[model];
+      return health && health.blockedUntil && health.blockedUntil > now && (health.status === 429 || health.status === 413);
+    });
+  }
+
+  function scheduleModelHealthTicker() {
+    if (modelHealthTickTimer || !hasActiveModelCooldown()) return;
+    modelHealthTickTimer = window.setTimeout(function() {
+      modelHealthTickTimer = null;
+      refreshModelHealth();
+    }, nextModelCooldownDelay());
+  }
+
+  function formatHealthWait(ms) {
+    if (!ms || ms <= 0) return '';
+    var seconds = Math.ceil(ms / 1000);
+    return seconds < 60 ? seconds + 's' : Math.ceil(seconds / 60) + 'm';
+  }
+
+  function nextModelCooldownDelay() {
+    var now = Date.now();
+    var next = Object.keys(currentModelHealth || {}).reduce(function(min, model) {
+      var health = currentModelHealth[model];
+      if (!health || !health.blockedUntil || health.blockedUntil <= now || (health.status !== 429 && health.status !== 413)) return min;
+      return Math.min(min, health.blockedUntil - now);
+    }, 60000);
+    return Math.max(1000, Math.min(next + 250, 60000));
+  }
+
+  function cleanModelOptionLabel(option) {
+    return String(option.dataset.baseLabel || option.textContent || '')
+      .replace(/^[🟢🟡🔴⚪]\s+/u, '')
+      .replace(/\s+\(wait .*?\)$/i, '')
+      .replace(/\s+\(unavailable\)$/i, '');
+  }
+
+  function updateModelOptionAvailability() {
+    var select = $id('cc-model-select');
+    if (!select) return;
+    Array.prototype.slice.call(select.options).forEach(function(option) {
+      option.dataset.baseLabel = cleanModelOptionLabel(option);
+      var health = Core.lookupModelHealth(currentModelHealth, option.value);
+      var availability = Core.modelAvailability(health);
+      var waitMs = health && health.blockedUntil ? health.blockedUntil - Date.now() : 0;
+      var unavailable = availability.status === 'unavailable';
+      var suffix = unavailable && waitMs > 0 ? ' (wait ' + formatHealthWait(waitMs) + ')' : (unavailable ? ' (unavailable)' : '');
+      option.disabled = unavailable && option.value !== select.value;
+      option.textContent = (availability.dot ? availability.dot + ' ' : '') + option.dataset.baseLabel + suffix;
+      option.title = health && health.error ? health.error : availability.label;
+    });
+  }
+
+  function refreshModelHealth() {
+    safeMsg({ type: 'GET_SETTINGS' }, function(response) {
+      if (!response || response.error) return;
+      currentModelHealth = response.modelHealth || currentModelHealth || {};
+      renderModelHealth();
+    });
+  }
+
+  function refreshModelHealthFromHeader() {
+    var button = $id('cc-model-health-refresh-btn');
+    if (button) {
+      button.disabled = true;
+      button.textContent = '⟳';
+    }
+    safeMsg({ type: 'GET_SETTINGS' }, function(response) {
+      if (response && response.modelHealth) currentModelHealth = response.modelHealth;
+      renderModelHealth();
+      if (!button) return;
+      window.setTimeout(function() {
+        if (!$id('cc-model-health-refresh-btn')) return;
+        button.disabled = false;
+        button.textContent = '↻';
+      }, 350);
+    });
+  }
+
   function setGenerateStatus(kind, message) {
     var el = $id('cc-generate-status');
     if (!el) return;
+    showElement('cc-generate-status', !!(kind && message));
     el.className = 'cc-inline-status' + (kind ? ' ' + kind : '');
-    el.textContent = message || 'Generate uses the current page text, company context, and your active profile to draft a role-specific letter.';
+    el.textContent = message || '';
     generateViewState.kind = kind || '';
     generateViewState.message = el.textContent;
+  }
+
+  function setManualStatus(kind, message) {
+    var el = $id('cc-manual-status');
+    if (!el) return;
+    showElement('cc-manual-status', !!(kind && message));
+    el.className = 'cc-inline-status' + (kind ? ' ' + kind : '');
+    el.textContent = message || '';
+    manualViewState.kind = kind || '';
+    manualViewState.message = el.textContent;
   }
 
   function setAskStatus(kind, message) {
     var el = $id('cc-ask-status');
     if (!el) return;
+    showElement('cc-ask-status', !!(kind && message));
     el.className = 'cc-inline-status' + (kind ? ' ' + kind : '');
-    el.textContent = message || 'Ask uses the saved job context and latest generated materials to answer follow-up questions with more specificity.';
+    el.textContent = message || '';
     askViewState.kind = kind || '';
     askViewState.message = el.textContent;
   }
 
   function startGenerateProgress() {
     hideOutput();
-    setGenerateStatus('loading', 'Checking job details, company context, and your active profile before generation starts. Requested model: ' + (($id('cc-model-select') && $id('cc-model-select').value) || 'openrouter/free') + '.');
+    refreshModelHealth();
+    setGenerateStatus('', '');
     resetActionButton('cc-generate-btn');
     setButtonState('cc-generate-btn', { label: 'Step 1 · Job Details', progress: 20, kind: 'loading', disabled: true });
     startSessionProgressPolling('cc-generate-btn', 'generate');
@@ -554,7 +756,7 @@
   function completeGenerateProgress(success, message, detailMessage) {
     stopSessionProgressPolling();
     if (success) {
-      setGenerateStatus('ok', 'Cover letter ready. Review, copy, or download the latest draft.');
+      setGenerateStatus('', '');
       setButtonState('cc-generate-btn', { label: message || 'Cover Letter Ready', progress: 100, kind: 'success', disabled: false });
       window.setTimeout(function() {
         resetActionButton('cc-generate-btn');
@@ -565,8 +767,22 @@
     flashButtonState('cc-generate-btn', message || 'Generation Failed', 'error', 2400);
   }
 
+  function completeManualProgress(success, message, detailMessage) {
+    if (success) {
+      showElement('cc-manual-status', false);
+      setButtonState('cc-manual-save-btn', { label: message || 'Manual Letter Ready', progress: 100, kind: 'success', disabled: false });
+      window.setTimeout(function() {
+        resetActionButton('cc-manual-save-btn');
+      }, 1600);
+      return;
+    }
+    setManualStatus('error', detailedFailureMessage(detailMessage || message, 'Manual cover letter save failed.'));
+    flashButtonState('cc-manual-save-btn', message || 'Save Failed', 'error', 2200);
+  }
+
   function startAskProgress() {
-    setAskStatus('loading', 'Loading the saved role context so the reply stays grounded in the active session. Requested model: ' + (($id('cc-model-select') && $id('cc-model-select').value) || 'openrouter/free') + '.');
+    refreshModelHealth();
+    setAskStatus('', '');
     resetActionButton('cc-ask-btn');
     setButtonState('cc-ask-btn', { label: 'Step 1 · Loading Context', progress: 20, kind: 'loading', disabled: true });
     startSessionProgressPolling('cc-ask-btn', 'ask');
@@ -587,6 +803,7 @@
   }
 
   function startResumeProgress() {
+    refreshModelHealth();
     resetActionButton('cc-resume-btn');
     hideResumeDraft();
     setResumeStatus('loading', 'Preparing resume context for this job…');
@@ -639,8 +856,9 @@
   function setResumeStatus(kind, message) {
     var el = $id('cc-resume-status');
     if (!el) return;
+    showElement('cc-resume-status', !!(kind && message));
     el.className = 'cc-inline-status' + (kind ? ' ' + kind : '');
-    el.textContent = message || 'Resume tailoring uses the current page context and builds Overleaf-ready LaTeX from your active profile.';
+    el.textContent = message || '';
     resumeViewState.kind = kind || '';
     resumeViewState.message = el.textContent;
   }
@@ -791,6 +1009,13 @@
   }
 
   function switchView(view) {
+    var isManual = view === 'manual';
+    if (!isManual) lastAiView = view || lastAiView || 'generate';
+    shadow.querySelectorAll('.cc-primary-mode').forEach(function(button) {
+      button.classList.toggle('active', button.getAttribute('data-primary-mode') === (isManual ? 'manual' : 'ai'));
+    });
+    var aiTabs = shadow.querySelector('.cc-ai-tabs');
+    if (aiTabs) aiTabs.classList.toggle('cc-hidden', isManual);
     shadow.querySelectorAll('.cc-mode').forEach(function(button) {
       button.classList.toggle('active', button.getAttribute('data-view') === view);
     });
@@ -799,15 +1024,6 @@
     });
     if (view === 'resume') {
       renderResumeSummary();
-      if (!resumeViewState.message) {
-        setResumeStatus('', 'Resume tailoring uses the current page context and builds Overleaf-ready LaTeX from your active profile.');
-      }
-    }
-    if (view === 'generate' && !generateViewState.message) {
-      setGenerateStatus('', 'Generate uses the current page text, company context, and your active profile to draft a role-specific letter.');
-    }
-    if (view === 'ask' && !askViewState.message) {
-      setAskStatus('', 'Ask uses the saved job context and latest generated materials to answer follow-up questions with more specificity.');
     }
     persistPanelState({ activeView: view });
   }
@@ -830,6 +1046,7 @@
     if ($id('cc-company-hint')) $id('cc-company-hint').value = session.job && session.job.companyName || '';
     resetHintDirtyState();
     if ($id('cc-output')) $id('cc-output').value = session.latestArtifact && session.latestArtifact.text || '';
+    if ($id('cc-manual-text') && session.latestArtifact && session.latestArtifact.source === 'manual') $id('cc-manual-text').value = session.latestArtifact.text || '';
     if ($id('cc-question')) $id('cc-question').value = '';
     if ($id('cc-answer')) $id('cc-answer').value = session.chat && session.chat[0] ? session.chat[0].answer : '';
     if ($id('cc-raw-text')) $id('cc-raw-text').value = session.scrape && session.scrape.preview ? session.scrape.preview : '';
@@ -843,6 +1060,7 @@
     } else {
       hideOutput();
     }
+    refreshManualActions();
     if (session.chat && session.chat[0] && session.chat[0].answer) {
       revealAnswer(session.chat[0].answer);
     } else {
@@ -860,8 +1078,9 @@
       resetHintDirtyState();
       hideOutput();
       hideAnswer();
-      setGenerateStatus('', 'Generate uses the current page text, company context, and your active profile to draft a role-specific letter.');
-      setAskStatus('', 'Ask uses the saved job context and latest generated materials to answer follow-up questions with more specificity.');
+      setGenerateStatus('', '');
+      setManualStatus('', '');
+      setAskStatus('', '');
       switchView('generate');
       return;
     }
@@ -876,9 +1095,10 @@
     hideOutput();
     hideAnswer();
     hideResumeDraft();
-    setGenerateStatus('', 'Generate uses the current page text, company context, and your active profile to draft a role-specific letter.');
-    setAskStatus('', 'Ask uses the saved job context and latest generated materials to answer follow-up questions with more specificity.');
-    setResumeStatus('', 'Resume tailoring uses the current page context and builds Overleaf-ready LaTeX from your active profile.');
+    setGenerateStatus('', '');
+    setManualStatus('', '');
+    setAskStatus('', '');
+    setResumeStatus('', '');
     renderResumeSummary();
     switchView('generate');
   }
@@ -900,7 +1120,13 @@
 
   function applyPosition(position) {
     if (!host) return;
-    host.style.right = position.right + 'px';
+    if (typeof position.left === 'number') {
+      host.style.left = position.left + 'px';
+      host.style.right = 'auto';
+    } else {
+      host.style.left = 'auto';
+      host.style.right = position.right + 'px';
+    }
     host.style.bottom = position.bottom + 'px';
   }
 
@@ -932,10 +1158,29 @@
     fitTextarea('cc-output', 160, 360);
     if ($id('cc-copy-btn')) $id('cc-copy-btn').disabled = !text;
     if ($id('cc-pdf-btn')) $id('cc-pdf-btn').disabled = !text;
+    if (text) showElement('cc-generate-status', false);
     showElement('cc-output-wrap', !!text);
     window.requestAnimationFrame(function() {
       placeExpandedPanel(true);
     });
+  }
+
+  function refreshOutputActions() {
+    var text = ($id('cc-output') && $id('cc-output').value || '').trim();
+    if ($id('cc-copy-btn')) $id('cc-copy-btn').disabled = !text;
+    if ($id('cc-pdf-btn')) $id('cc-pdf-btn').disabled = !text;
+    fitTextarea('cc-output', 160, 360);
+    if (text) showElement('cc-generate-status', false);
+  }
+
+  function refreshManualActions() {
+    var text = ($id('cc-manual-text') && $id('cc-manual-text').value || '').trim();
+    fitTextarea('cc-manual-text', 220, 360);
+    if (text) {
+      showElement('cc-manual-status', false);
+    } else {
+      showElement('cc-manual-status', false);
+    }
   }
 
   function hideOutput() {
@@ -943,6 +1188,7 @@
     if ($id('cc-copy-btn')) $id('cc-copy-btn').disabled = true;
     if ($id('cc-pdf-btn')) $id('cc-pdf-btn').disabled = true;
     showElement('cc-output-wrap', false);
+    showElement('cc-generate-status', false);
   }
 
   function revealAnswer(text) {
@@ -989,13 +1235,14 @@
   }
 
   function saveDisplaySettings() {
+    renderModelHealth();
     syncSet({
       model: $id('cc-model-select').value,
       coverLetterType: $id('cc-style-select').value
     });
   }
 
-  function refreshContext(callback, feedbackButtonId, includeResearch) {
+  function refreshContext(callback, feedbackButtonId, includeResearch, forceNewSession) {
     var rawText = ensureScrape();
     var inferred = inferIdentityHints();
     var manualHints = currentManualHints();
@@ -1025,7 +1272,9 @@
         companyHint: manualHints.companyHint,
         coverLetterType: $id('cc-style-select').value,
         model: $id('cc-model-select').value,
-        includeResearch: !!includeResearch
+        includeResearch: !!includeResearch,
+        forceNewSession: !!forceNewSession,
+        refreshNonce: forceNewSession ? String(Date.now()) : ''
       }
     }, function(response) {
       if (feedbackButton && $id(feedbackId)) {
@@ -1047,6 +1296,11 @@
         return;
       }
       hydrateSession(response.session);
+      if (forceNewSession) {
+        hideOutput();
+        hideAnswer();
+        hideResumeDraft();
+      }
       if (typeof callback === 'function') callback(response.session);
     });
   }
@@ -1078,7 +1332,8 @@
           titleHint: manualHints.titleHint,
           companyHint: manualHints.companyHint,
           coverLetterType: $id('cc-style-select').value,
-          model: $id('cc-model-select').value
+          model: $id('cc-model-select').value,
+          sessionId: currentSession && currentSession.id || ''
         }
       }, function(response) {
         if (!ctxOk() || chrome.runtime.lastError) {
@@ -1086,12 +1341,14 @@
           return;
         }
         if (!response || response.error) {
+          refreshModelHealth();
           completeGenerateProgress(false, shortFailureLabel(response && response.error, 'Generation Failed'), response && response.error);
           return;
         }
         currentOwner = response.owner || currentOwner;
         hydrateSession(response.session);
         revealOutput(response.coverLetter || '');
+        refreshModelHealth();
         completeGenerateProgress(true, 'Cover Letter Ready');
       });
     }
@@ -1116,7 +1373,8 @@
         titleHint: manualHints.titleHint,
         companyHint: manualHints.companyHint,
         coverLetterType: $id('cc-style-select').value,
-        model: $id('cc-model-select').value
+        model: $id('cc-model-select').value,
+        sessionId: currentSession && currentSession.id || ''
       }
     }, function(response) {
       if (!ctxOk() || chrome.runtime.lastError) {
@@ -1124,6 +1382,7 @@
         return;
       }
       if (!response || response.error) {
+        refreshModelHealth();
         completeGenerateProgress(false, shortFailureLabel(response && response.error, 'Refresh Failed'), response && response.error);
         return;
       }
@@ -1133,6 +1392,67 @@
         return;
       }
       sendPipeline();
+    });
+  }
+
+  function runManualCoverLetter() {
+    var text = ($id('cc-manual-text') && $id('cc-manual-text').value || '').trim();
+    var rawText = ensureScrape();
+    var inferred = inferIdentityHints();
+    if (!text) {
+      completeManualProgress(false, 'Paste Letter Text', 'Paste or write the full cover letter before creating the manual artifact.');
+      return;
+    }
+    if (text.split(/\s+/).filter(Boolean).length < 40) {
+      completeManualProgress(false, 'Too Short', 'Manual cover letter looks too short. Paste the full letter text before saving.');
+      return;
+    }
+
+    var titleHint = ($id('cc-title-hint').value || '').trim() || inferred.titleHint;
+    var companyHint = ($id('cc-company-hint').value || '').trim() || inferred.companyHint;
+    resetActionButton('cc-manual-save-btn');
+    setManualStatus('loading', 'Saving manual cover letter to this session. No AI request is being made.');
+    setButtonState('cc-manual-save-btn', { label: 'Saving Manual Letter', progress: 45, kind: 'loading', disabled: true });
+
+    safeMsg({
+      type: 'SAVE_MANUAL_COVER_LETTER',
+      payload: {
+        pageUrl: window.location.href,
+        rawPageText: rawText,
+        pageTitle: inferred.pageTitle,
+        titleHint: titleHint,
+        companyHint: companyHint,
+        coverLetterText: text
+      }
+    }, function(response) {
+      if (!ctxOk() || chrome.runtime.lastError) {
+        completeManualProgress(false, 'Connection Failed');
+        return;
+      }
+      if (!response || response.error) {
+        completeManualProgress(false, shortFailureLabel(response && response.error, 'Save Failed'), response && response.error);
+        return;
+      }
+      currentOwner = response.owner || currentOwner;
+      hydrateSession(response.session);
+      if ($id('cc-manual-text')) $id('cc-manual-text').value = response.coverLetter || text;
+      refreshManualActions();
+      completeManualProgress(true, 'Manual Letter Ready');
+      var artifact = response.artifact || getCurrentOutputArtifact();
+      var payload = CoverCraftPdf.buildCoverLetterPdfDownload({
+        text: response.coverLetter || text,
+        jobTitle: ($id('cc-title-hint').value || (artifact && artifact.jobTitle) || 'Cover Letter'),
+        company: ($id('cc-company-hint').value || (artifact && artifact.company) || ''),
+        owner: currentOwner || (artifact && artifact.owner) || {}
+      });
+      if (!payload) return;
+      safeMsg({
+        type: 'DOWNLOAD_PDF_DATA_URL',
+        payload: {
+          dataUrl: payload.dataUrl,
+          fileName: payload.fileName
+        }
+      });
     });
   }
 
@@ -1158,11 +1478,13 @@
           return;
         }
         if (!response || response.error) {
+          refreshModelHealth();
           completeAskProgress(false, shortFailureLabel(response && response.error, 'Answer Failed'), response && response.error);
           return;
         }
         hydrateSession(response.session);
         revealAnswer(response.answer || '');
+        refreshModelHealth();
         switchView('ask');
         completeAskProgress(true, 'Answer Ready');
       });
@@ -1216,6 +1538,7 @@
           return;
         }
         if (response.error) {
+          refreshModelHealth();
           setResumeStatus('error', response.error);
           completeResumeProgress(false, shortFailureLabel(response.error, 'Resume Failed'));
           return;
@@ -1227,6 +1550,7 @@
           response.latexSource || '';
         if (latexText) {
           revealResumeDraft(latexText);
+          refreshModelHealth();
           setResumeStatus('ok', formatResumeCompletionStatus(artifact));
           completeResumeProgress(true, 'LaTeX Ready');
           switchView('resume');
@@ -1297,14 +1621,29 @@
       });
     });
 
-    bindShadow('cc-scrape-btn', 'click', function() { refreshContext(); });
+    shadow.querySelectorAll('.cc-primary-mode').forEach(function(button) {
+      button.addEventListener('click', function() {
+        var mode = button.getAttribute('data-primary-mode');
+        switchView(mode === 'manual' ? 'manual' : (lastAiView || 'generate'));
+      });
+    });
+
+    bindShadow('cc-scrape-btn', 'click', function() {
+      refreshModelHealth();
+      refreshContext(null, 'cc-scrape-btn', false, true);
+    });
+    bindShadow('cc-settings-btn', 'click', function() { safeMsg({ type: 'OPEN_SETTINGS' }); });
+    bindShadow('cc-model-health-refresh-btn', 'click', refreshModelHealthFromHeader);
     bindShadow('cc-generate-btn', 'click', runGenerate);
+    bindShadow('cc-manual-save-btn', 'click', runManualCoverLetter);
     bindShadow('cc-ask-btn', 'click', runAsk);
     bindShadow('cc-resume-btn', 'click', runResume);
     bindShadow('cc-model-select', 'change', saveDisplaySettings);
     bindShadow('cc-style-select', 'change', saveDisplaySettings);
     bindShadow('cc-title-hint', 'input', function() { titleHintDirty = true; });
     bindShadow('cc-company-hint', 'input', function() { companyHintDirty = true; });
+    bindShadow('cc-output', 'input', refreshOutputActions);
+    bindShadow('cc-manual-text', 'input', refreshManualActions);
 
     bindShadow('cc-copy-btn', 'click', function() {
       var text = ($id('cc-output').value || '').trim();
@@ -1435,10 +1774,6 @@
       safeMsg({ type: 'OPEN_DASHBOARD' });
     });
 
-    bindShadow('cc-foot-settings', 'click', function() {
-      safeMsg({ type: 'OPEN_SETTINGS' });
-    });
-
     bindShadow('cc-foot-profile', 'click', function() {
       safeMsg({ type: 'OPEN_PROFILE' });
     });
@@ -1473,8 +1808,10 @@
       currentSettings = response && response.settings || null;
       currentOwner = response && response.portfolio && response.portfolio.owner || currentOwner;
       currentCloud = response && response.cloud || null;
+      currentModelHealth = response && response.modelHealth || {};
       if ($id('cc-model-select') && currentSettings && currentSettings.model) $id('cc-model-select').value = currentSettings.model;
       if ($id('cc-style-select') && currentSettings && currentSettings.coverLetterType) $id('cc-style-select').value = currentSettings.coverLetterType;
+      renderModelHealth();
       renderFooterProfile();
       renderResumeSummary();
     });
@@ -1560,6 +1897,14 @@
       injectPanel(response && response.session || null, true);
     });
   });
+
+  try {
+    chrome.runtime.onMessage.addListener(function(message) {
+      if (!message || message.type !== 'MODEL_HEALTH_UPDATE') return;
+      currentModelHealth = message.modelHealth || {};
+      renderModelHealth();
+    });
+  } catch (_) {}
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', maybeAutoInject);

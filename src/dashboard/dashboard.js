@@ -14,7 +14,35 @@ var lastPortfolioSource = 'local_file';
 var dashboardRefreshTimer = null;
 var dashboardRefreshInFlight = false;
 var expandedCards = {};
+var currentModelUsageLog = [];
 var dashboardChartState = {};
+var currentModelHealth = {};
+var modelHealthTickTimer = null;
+var KNOWN_MODELS = [
+  'openrouter/free',
+  'google/gemma-3-12b-it:free',
+  'meta-llama/llama-3.3-70b-instruct:free',
+  'nvidia/nemotron-3-super-120b-a12b:free',
+  'minimax/minimax-m2.5:free',
+  'groq/llama-3.1-8b-instant',
+  'groq/llama-3.3-70b-versatile',
+  'groq/openai/gpt-oss-120b',
+  'groq/openai/gpt-oss-20b',
+  'groq/meta-llama/llama-4-scout-17b-16e-instruct',
+  'groq/qwen/qwen3-32b',
+  'groq/compound-mini',
+  'groq/compound'
+];
+var GROQ_BASE_LIMITS = {
+  'groq/llama-3.1-8b-instant': { tpm: '6K', rpd: '14.4K' },
+  'groq/llama-3.3-70b-versatile': { tpm: '12K', rpd: '1K' },
+  'groq/openai/gpt-oss-120b': { tpm: '8K', rpd: '1K' },
+  'groq/openai/gpt-oss-20b': { tpm: '8K', rpd: '1K' },
+  'groq/meta-llama/llama-4-scout-17b-16e-instruct': { tpm: '30K', rpd: '1K' },
+  'groq/qwen/qwen3-32b': { tpm: '6K', rpd: '1K' },
+  'groq/compound-mini': { tpm: '70K', rpd: '250' },
+  'groq/compound': { tpm: '70K', rpd: '250' }
+};
 
 function mk(tag, cls, text) {
   var el = document.createElement(tag);
@@ -191,7 +219,234 @@ function selectedOpenRouterTestModel() {
 
 function selectedGroqTestModel() {
   var model = selectedModel();
+  if (model === 'groq/compound' || model === 'groq/compound-mini') return model;
   return isGroqModel(model) ? model.replace(/^groq\//, '') : 'llama-3.1-8b-instant';
+}
+
+function buildGroqTestBody(model) {
+  var body = {
+    model: model,
+    messages: [{ role: 'user', content: 'Reply with exactly OK' }],
+    max_completion_tokens: 10,
+    top_p: 1,
+    stream: false,
+    stop: null
+  };
+  if (model === 'groq/compound' || model === 'groq/compound-mini') {
+    body.compound_custom = {
+      tools: {
+        enabled_tools: ['web_search', 'code_interpreter', 'visit_website']
+      }
+    };
+  }
+  return body;
+}
+
+function collectRateLimitHeaders(response) {
+  return {
+    retryAfter: response.headers.get('retry-after') || '',
+    limitRequests: response.headers.get('x-ratelimit-limit-requests') || '',
+    limitTokens: response.headers.get('x-ratelimit-limit-tokens') || '',
+    remainingRequests: response.headers.get('x-ratelimit-remaining-requests') || '',
+    remainingTokens: response.headers.get('x-ratelimit-remaining-tokens') || '',
+    resetRequests: response.headers.get('x-ratelimit-reset-requests') || '',
+    resetTokens: response.headers.get('x-ratelimit-reset-tokens') || ''
+  };
+}
+
+function formatTimeLeft(ms) {
+  if (!ms || ms <= 0) return '';
+  var seconds = Math.ceil(ms / 1000);
+  if (seconds < 60) return seconds + 's';
+  return Math.ceil(seconds / 60) + 'm';
+}
+
+function formatHealthTimestamp(value) {
+  if (!value) return '';
+  try {
+    return new Date(value).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  } catch (_) {
+    return '';
+  }
+}
+
+function modelLabel(model) {
+  var select = document.getElementById('model-select');
+  if (!select) return model;
+  var option = Array.prototype.slice.call(select.options).find(function(item) { return item.value === model; });
+  return option ? option.textContent.replace(/^[🟢🟡🔴⚪]\s+/u, '').replace(/\s+\(wait .*?\)$/i, '') : model;
+}
+
+function updateModelOptionAvailability() {
+  var select = document.getElementById('model-select');
+  if (!select) return;
+  Array.prototype.slice.call(select.options).forEach(function(option) {
+    option.dataset.baseLabel = cleanModelOptionLabel(option);
+    var health = Core.lookupModelHealth(currentModelHealth, option.value);
+    var availability = Core.modelAvailability(health);
+    var waitMs = health && health.blockedUntil ? health.blockedUntil - Date.now() : 0;
+    var unavailable = availability.status === 'unavailable';
+    var suffix = unavailable && waitMs > 0 ? ' (wait ' + formatTimeLeft(waitMs) + ')' : (unavailable ? ' (unavailable)' : '');
+    option.disabled = unavailable && option.value !== select.value;
+    option.textContent = (availability.dot ? availability.dot + ' ' : '') + option.dataset.baseLabel + suffix;
+    option.title = health && health.error ? health.error : availability.label;
+  });
+}
+
+function cleanModelOptionLabel(option) {
+  return String(option.dataset.baseLabel || option.textContent || '')
+    .replace(/^[🟢🟡🔴⚪]\s+/u, '')
+    .replace(/\s+\(wait .*?\)$/i, '')
+    .replace(/\s+\(unavailable\)$/i, '');
+}
+
+function renderModelHealth() {
+  var list = document.getElementById('model-health-list');
+  if (!list) return;
+  scheduleModelHealthTicker();
+  var selected = selectedModel();
+  list.innerHTML = '';
+  var models = KNOWN_MODELS.filter(function(model) {
+    return /^groq\//.test(model) || model === selected || Core.lookupModelHealth(currentModelHealth, model);
+  });
+  if (models.indexOf(selected) === -1) models.unshift(selected);
+  models.forEach(function(model) {
+    var health = Core.lookupModelHealth(currentModelHealth, model);
+    var availability = Core.modelAvailability(health);
+    var rate = health && health.rateLimit || {};
+    var waitMs = health && health.blockedUntil ? health.blockedUntil - Date.now() : 0;
+    var row = mk('div', 'model-health-row');
+    var body = mk('div');
+    var title = mk('strong', '', modelLabel(model));
+    var detail = mk('span');
+    var badge = mk('div', 'model-health-badge');
+    var meter = mk('div', 'model-health-meter');
+    var meterFill = mk('span', 'model-health-meter-fill');
+    row.classList.add(availability.tone);
+    if (availability.percent != null) meterFill.style.width = availability.percent + '%';
+    meter.appendChild(meterFill);
+    if (!health) {
+      badge.textContent = 'Unknown';
+      detail.textContent = /^groq\//.test(model)
+        ? 'No previous provider status recorded for this model.'
+        : 'No previous provider status recorded. OpenRouter availability depends on route.';
+    } else if (waitMs > 0 && (health.status === 429 || health.status === 413)) {
+      badge.textContent = 'Wait ' + formatTimeLeft(waitMs);
+      detail.textContent = [
+        availability.percent != null ? availability.percent + '% ' + (availability.source || 'capacity') + ' available' : '',
+        formatHealthTimestamp(health.checkedAt) ? 'checked ' + formatHealthTimestamp(health.checkedAt) : '',
+        rate.remainingTokens ? rate.remainingTokens + ' TPM left' : '',
+        rate.limitTokens ? rate.limitTokens + ' TPM limit' : '',
+        rate.resetTokens ? 'reset ' + rate.resetTokens : '',
+        health.totalTokens ? 'actual ' + health.totalTokens + ' tokens' : '',
+        health.estimatedTokens ? 'last ~' + health.estimatedTokens + ' tokens' : ''
+      ].filter(Boolean).join(' · ') || (health.error || 'Provider asked us to wait.');
+    } else if (health.ok) {
+      badge.textContent = availability.label;
+      detail.textContent = [
+        availability.percent != null ? availability.percent + '% ' + (availability.source || 'capacity') + ' available' : '',
+        formatHealthTimestamp(health.checkedAt) ? 'checked ' + formatHealthTimestamp(health.checkedAt) : '',
+        rate.remainingTokens ? rate.remainingTokens + ' TPM left' : '',
+        rate.limitTokens ? rate.limitTokens + ' TPM limit' : '',
+        rate.remainingRequests ? rate.remainingRequests + ' daily requests left' : '',
+        health.totalTokens ? 'actual ' + health.totalTokens + ' tokens' : '',
+        health.estimatedTokens ? 'last ~' + health.estimatedTokens + ' tokens' : ''
+      ].filter(Boolean).join(' · ') || 'Last request succeeded.';
+    } else {
+      badge.textContent = health.status === 429 ? 'Limited' : (health.status === 413 ? 'Too large' : 'Error');
+      detail.textContent = [
+        availability.percent != null ? availability.percent + '% ' + (availability.source || 'capacity') + ' available' : '',
+        formatHealthTimestamp(health.checkedAt) ? 'checked ' + formatHealthTimestamp(health.checkedAt) : '',
+        rate.remainingTokens ? rate.remainingTokens + ' TPM left' : '',
+        rate.limitTokens ? rate.limitTokens + ' TPM limit' : '',
+        rate.resetTokens ? 'reset ' + rate.resetTokens : '',
+        health.totalTokens ? 'actual ' + health.totalTokens + ' tokens' : '',
+        health.error || ''
+      ].filter(Boolean).join(' · ') || 'Last request failed.';
+    }
+    body.appendChild(title);
+    body.appendChild(detail);
+    body.appendChild(meter);
+    row.appendChild(body);
+    row.appendChild(badge);
+    list.appendChild(row);
+  });
+  updateModelOptionAvailability();
+}
+
+function hasActiveModelCooldown() {
+  var now = Date.now();
+  return Object.keys(currentModelHealth || {}).some(function(model) {
+    var health = currentModelHealth[model];
+    return health && health.blockedUntil && health.blockedUntil > now && (health.status === 429 || health.status === 413);
+  });
+}
+
+function scheduleModelHealthTicker() {
+  if (modelHealthTickTimer || !hasActiveModelCooldown()) return;
+  modelHealthTickTimer = setTimeout(function() {
+    modelHealthTickTimer = null;
+    loadSettingsSurface();
+  }, nextModelCooldownDelay());
+}
+
+function nextModelCooldownDelay() {
+  var now = Date.now();
+  var next = Object.keys(currentModelHealth || {}).reduce(function(min, model) {
+    var health = currentModelHealth[model];
+    if (!health || !health.blockedUntil || health.blockedUntil <= now || (health.status !== 429 && health.status !== 413)) return min;
+    return Math.min(min, health.blockedUntil - now);
+  }, 60000);
+  return Math.max(1000, Math.min(next + 250, 60000));
+}
+
+function recordModelHealth(model, provider, apiModel, response, data, estimatedTokens) {
+  var rateLimit = collectRateLimitHeaders(response);
+  var modelTokenLimit = Core.numericHeaderValue(rateLimit.limitTokens);
+  var usageTokens = data && data.usage && data.usage.total_tokens || estimatedTokens || 0;
+  var actualOutputTokens = data && data.usage && data.usage.completion_tokens || 0;
+  var errorMessage = data && data.error && data.error.message || '';
+  chrome.runtime.sendMessage({
+    type: 'RECORD_MODEL_HEALTH',
+    payload: {
+      model: model,
+      provider: provider,
+      apiModel: apiModel,
+      ok: response.ok,
+      status: response.status,
+      error: errorMessage,
+      rateLimit: rateLimit,
+      limitKind: providerLimitKind(errorMessage, rateLimit),
+      estimatedTokens: estimatedTokens || 0,
+      estimatedInputTokens: 0,
+      estimatedOutputTokens: actualOutputTokens ? 0 : estimatedTokens || 0,
+      requestedOutputTokens: estimatedTokens || 0,
+      modelUsageTokens: usageTokens,
+      modelTokenLimit: modelTokenLimit || null,
+      modelUsagePercent: modelTokenLimit ? Math.round((usageTokens / modelTokenLimit) * 1000) / 10 : null,
+      usageSource: data && data.usage && data.usage.total_tokens ? 'provider' : 'estimate',
+      inputTokens: data && data.usage && data.usage.prompt_tokens || 0,
+      outputTokens: data && data.usage && data.usage.completion_tokens || 0,
+      totalTokens: data && data.usage && data.usage.total_tokens || 0
+    }
+  }, function(recorded) {
+    if (recorded && recorded.modelHealth) {
+      currentModelHealth = recorded.modelHealth;
+      renderModelHealth();
+    }
+  });
+}
+
+function providerLimitKind(message, rate) {
+  var text = String(message || '').toLowerCase();
+  rate = rate || {};
+  if (/tokens per day|daily token|daily.*token|token.*daily|tpd/.test(text)) return 'daily_tokens';
+  if (/requests per day|daily request|daily.*request|request.*daily|rpd/.test(text)) return 'daily_requests';
+  if (/tokens per minute|tpm/.test(text)) return 'minute_tokens';
+  if (/requests per minute|rpm/.test(text)) return 'minute_requests';
+  if (Core.numericHeaderValue(rate.remainingTokens) === 0 && Core.numericHeaderValue(rate.limitTokens) > 0) return 'minute_tokens';
+  if (Core.numericHeaderValue(rate.remainingRequests) === 0 && Core.numericHeaderValue(rate.limitRequests) > 0) return 'minute_requests';
+  return '';
 }
 
 function setCloudActionState(cloud) {
@@ -315,7 +570,14 @@ function renderProfileSurface() {
     : 'No active portfolio identity has been loaded yet. Upload JSON or open Resume Import from Settings.';
 }
 
-function renderCloudStatus(cloud) {
+function storageStatusSummary(storage) {
+  if (!storage) return '';
+  var used = storage.usedBytes >= 1024 * 1024 ? (Math.round(storage.usedBytes / 1024 / 102.4) / 10) + ' MB' : Math.round(storage.usedBytes / 1024) + ' KB';
+  var quota = storage.quotaBytes ? (storage.quotaBytes >= 1024 * 1024 ? (Math.round(storage.quotaBytes / 1024 / 102.4) / 10) + ' MB' : Math.round(storage.quotaBytes / 1024) + ' KB') : '';
+  return 'Local storage ' + storage.state + ': ' + used + (quota ? ' / ' + quota : '') + (storage.percentUsed != null ? ' (' + storage.percentUsed + '%)' : '') + (storage.writable ? '' : ' · write blocked');
+}
+
+function renderCloudStatus(cloud, storage) {
   lastCloudStatus = cloud || null;
   var summary = document.getElementById('cloud-auth-summary');
   var chips = document.getElementById('cloud-auth-chips');
@@ -324,7 +586,7 @@ function renderCloudStatus(cloud) {
   chips.innerHTML = '';
   if (!cloud || !cloud.configured) {
     summary.textContent = 'Account sign-in is not configured yet.';
-    chips.appendChild(chip('Helper missing', 'err'));
+    chips.appendChild(chip('Firebase config missing', 'err'));
     setCloudActionState(cloud || null);
     renderTopbarProfile(cloud || null);
     renderProfileSurface();
@@ -341,6 +603,7 @@ function renderCloudStatus(cloud) {
     chips.appendChild(chip('Signed out', 'warn'));
   }
   if (cloud.lastError) chips.appendChild(chip(limitText(cloud.lastError, 80), 'err'));
+  if (storage) chips.appendChild(chip(limitText(storageStatusSummary(storage), 90), storage.writable && storage.state !== 'full' ? '' : 'err'));
   setCloudActionState(cloud || null);
   renderTopbarProfile(cloud || null);
   renderProfileSurface();
@@ -352,20 +615,23 @@ function loadCloudStatus() {
       setStatus('cloud-auth-status', 'error', response && response.error || 'Could not load cloud status.');
       return;
     }
-    renderCloudStatus(response.cloud || null);
+    renderCloudStatus(response.cloud || null, response.storage || null);
   });
 }
 
 function signInToCloud() {
-  setStatus('cloud-auth-status', 'loading', 'Opening Google sign-in…');
+  var signInBtn = document.getElementById('cloud-sign-in-btn');
+  if (signInBtn) signInBtn.disabled = true;
+  setStatus('cloud-auth-status', 'loading', 'Opening Google sign-in...');
   chrome.runtime.sendMessage({ type: 'CLOUD_SIGN_IN' }, function(response) {
+    if (signInBtn) signInBtn.disabled = false;
     if (!response || response.error) {
       setStatus('cloud-auth-status', 'error', response && response.error || 'Google sign-in failed.');
       loadCloudStatus();
       return;
     }
-    renderCloudStatus(response.cloud || null);
-    setStatus('cloud-auth-status', 'ok', 'Signed in.');
+    renderCloudStatus(response.cloud || null, response.storage || null);
+    setStatus('cloud-auth-status', response.syncPending ? 'loading' : 'ok', response.syncPending ? 'Signed in. Syncing sessions and profile in the background...' : 'Signed in.');
     loadDashboard();
     loadSettingsSurface();
   });
@@ -378,7 +644,7 @@ function signOutOfCloud() {
       setStatus('cloud-auth-status', 'error', response && response.error || 'Could not sign out.');
       return;
     }
-    renderCloudStatus(response.cloud || null);
+    renderCloudStatus(response.cloud || null, response.storage || null);
     setStatus('cloud-auth-status', 'ok', 'Signed out.');
     loadDashboard();
     loadSettingsSurface();
@@ -404,7 +670,7 @@ function syncCloudNow() {
       loadCloudStatus();
       return;
     }
-    renderCloudStatus(response.cloud || null);
+    renderCloudStatus(response.cloud || null, response.storage || null);
     var count = response && response.result && typeof response.result.count === 'number' ? response.result.count : null;
     setStatus('cloud-auth-status', 'ok', count != null ? ('Synced ' + count + ' session' + (count === 1 ? '' : 's') + ' to Firebase.') : 'Synced to Firebase.');
     flashButtonSuccess(syncBtn, '✓ Synced', original);
@@ -622,6 +888,89 @@ function buildMetric(label, value) {
   el.appendChild(mk('div', 'k', label));
   el.appendChild(mk('div', 'v', value));
   return el;
+}
+
+function formatTokenCount(value) {
+  var num = Number(value) || 0;
+  return num ? num.toLocaleString() : '—';
+}
+
+function formatUsagePercent(value) {
+  if (value == null || value === '') return '—';
+  var num = Number(value) || 0;
+  return num.toFixed(num >= 10 ? 0 : 1) + '%';
+}
+
+function usageInputTokens(usage) {
+  return Number(usage && (usage.inputTokens || usage.estimatedInputTokens)) || 0;
+}
+
+function usageOutputTokens(usage) {
+  return Number(usage && (usage.outputTokens || usage.estimatedOutputTokens || usage.requestedOutputTokens)) || 0;
+}
+
+function usageTotalTokens(usage) {
+  usage = usage || {};
+  return Number(usage.totalTokens || usage.estimatedTokens) || (usageInputTokens(usage) + usageOutputTokens(usage));
+}
+
+function artifactTokenUsage(artifact) {
+  if (artifact && artifact.tokenUsage && Object.keys(artifact.tokenUsage).length && usageTotalTokens(artifact.tokenUsage) > 0) return artifact.tokenUsage;
+  if (!artifact || !artifact.model || !artifact.createdAt) return {};
+  var created = new Date(artifact.createdAt).getTime();
+  var artifactModel = String(artifact.model || '');
+  var artifactAliases = {};
+  Core.modelAliases(artifactModel).forEach(function(alias) {
+    artifactAliases[alias] = true;
+  });
+  artifactAliases[artifactModel.replace(/^groq\/groq\//, 'groq/')] = true;
+  artifactAliases[artifactModel.replace(/^groq\//, '')] = true;
+  var best = null;
+  (currentModelUsageLog || []).forEach(function(entry) {
+    if (!entry) return;
+    var entryAliases = Core.modelAliases(entry.model).concat(Core.modelAliases(entry.apiModel));
+    var matched = entryAliases.some(function(alias) {
+      return !!artifactAliases[alias];
+    });
+    var delta = Math.abs(Number(entry.checkedAt || 0) - created);
+    if (delta > 10 * 60 * 1000) return;
+    if (!matched && delta > 60 * 1000) return;
+    if (!best || (matched && !best.matched) || delta < best.delta) best = { entry: entry, delta: delta, matched: matched };
+  });
+  return best ? best.entry : {};
+}
+
+function researchStatusText(session) {
+  if (session && session.research && session.research.summary) {
+    return (session.research.sources && session.research.sources.length || 0) + ' sources · ' + fmtDate(session.research.fetchedAt || session.updatedAt);
+  }
+  return pipelineKind(session) ? (pipelineChipLabel(session) || 'In progress') : 'No cached research';
+}
+
+function sourceStatusText(session) {
+  var count = session && session.research && session.research.sources ? session.research.sources.length : 0;
+  return count ? count + ' saved sources' : 'No sources saved';
+}
+
+function collapsibleSection(title, content, subtitle, open) {
+  var details = document.createElement('details');
+  details.className = 'section section-collapsible';
+  if (open) details.open = true;
+  var summary = document.createElement('summary');
+  var label = mk('span', 'section-summary-title', title);
+  summary.appendChild(label);
+  if (subtitle) summary.appendChild(mk('span', 'section-summary-sub', subtitle));
+  details.appendChild(summary);
+  details.appendChild(content);
+  return details;
+}
+
+function collapseExistingSection(title, content, subtitle, open) {
+  if (content && content.firstElementChild && content.firstElementChild.tagName === 'H3') {
+    content.removeChild(content.firstElementChild);
+  }
+  content.classList.remove('section');
+  return collapsibleSection(title, content, subtitle, open);
 }
 
 function analyticsDayKey(iso) {
@@ -1332,17 +1681,137 @@ function buildPromptContextSection(session, artifact) {
   return section;
 }
 
+function buildRankPills(items, className) {
+  var wrap = mk('div', className || 'rank-pill-row');
+  (items || []).forEach(function(item) {
+    var label = typeof item === 'string' ? item : (item && item.term || item && item.text || '');
+    if (!label) return;
+    var suffix = item && typeof item.weight === 'number' ? ' · ' + item.weight : '';
+    wrap.appendChild(mk('span', 'rank-pill', label + suffix));
+  });
+  if (!wrap.children.length) wrap.appendChild(mk('span', 'rank-muted', 'No ranked signals saved for this draft.'));
+  return wrap;
+}
+
+function buildEvidenceCard(title, subtitle, score, reason, tags, bullets) {
+  var card = mk('div', 'rank-card');
+  var head = mk('div', 'rank-card-head');
+  var titleWrap = mk('div', 'rank-card-title-wrap');
+  titleWrap.appendChild(mk('div', 'rank-card-title', title || 'Untitled evidence'));
+  if (subtitle) titleWrap.appendChild(mk('div', 'rank-card-sub', subtitle));
+  head.appendChild(titleWrap);
+  head.appendChild(mk('div', 'rank-score', typeof score === 'number' ? score.toFixed(1) : '—'));
+  card.appendChild(head);
+  if (reason) card.appendChild(mk('div', 'rank-reason', reason));
+  if (tags && tags.length) card.appendChild(buildRankPills(tags.slice(0, 6), 'rank-pill-row compact'));
+  if (bullets && bullets.length) {
+    var list = mk('div', 'rank-bullet-list');
+    bullets.forEach(function(bullet) {
+      var text = typeof bullet === 'string' ? bullet : bullet.text;
+      if (!text) return;
+      var row = mk('div', 'rank-bullet');
+      row.appendChild(mk('div', 'rank-bullet-text', text));
+      if (typeof bullet.score === 'number') row.appendChild(mk('span', 'rank-bullet-score', bullet.score.toFixed(1)));
+      list.appendChild(row);
+    });
+    card.appendChild(list);
+  }
+  return card;
+}
+
+function buildRankedEvidenceSection(artifact) {
+  var ranking = artifact && artifact.rankingContext;
+  var section = mk('section', 'section rank-section');
+  section.appendChild(mk('h3', '', 'Ranked Evidence Matrix'));
+  section.appendChild(mk('div', 'section-note', 'Shows the evidence CoverCraft selected before generation: job signals, scores, matched requirements, and the exact bullets prioritized for the letter.'));
+
+  if (!ranking) {
+    section.appendChild(mk('div', 'rank-empty', 'No ranked matrix was saved for this older draft. Generate a new cover letter to see full ranking visibility.'));
+    return section;
+  }
+
+  var profile = ranking.rankProfile || {};
+  section.appendChild(mk('div', 'label', 'Top Job Signals'));
+  section.appendChild(buildRankPills(profile.topTerms || ranking.keywords || [], 'rank-pill-row'));
+
+  if (profile.requirementTerms && profile.requirementTerms.length) {
+    section.appendChild(mk('div', 'label', 'Requirement Signals'));
+    section.appendChild(buildRankPills(profile.requirementTerms, 'rank-pill-row compact'));
+  }
+
+  var experiences = ranking.experiences || [];
+  section.appendChild(mk('div', 'label', 'Ranked Experiences'));
+  var expStack = mk('div', 'rank-card-stack');
+  experiences.forEach(function(exp, index) {
+    expStack.appendChild(buildEvidenceCard(
+      (index + 1) + '. ' + (exp.role || 'Experience'),
+      [exp.company, exp.duration, exp.location].filter(Boolean).join(' · '),
+      exp.score,
+      exp.whySelected,
+      exp.matchedRequirements && exp.matchedRequirements.length ? exp.matchedRequirements : exp.matchedKeywords,
+      exp.bullets || []
+    ));
+  });
+  if (!experiences.length) expStack.appendChild(mk('div', 'rank-empty', 'No experience evidence ranked.'));
+  section.appendChild(expStack);
+
+  var projects = ranking.projects || [];
+  if (projects.length) {
+    section.appendChild(mk('div', 'label', 'Ranked Projects'));
+    var projectStack = mk('div', 'rank-card-stack');
+    projects.forEach(function(project, index) {
+      projectStack.appendChild(buildEvidenceCard(
+        (index + 1) + '. ' + (project.title || 'Project'),
+        (project.technologies || []).slice(0, 6).join(' · '),
+        project.score,
+        project.whySelected,
+        project.matchedKeywords || [],
+        project.description ? [{ text: project.description, score: project.score }] : []
+      ));
+    });
+    section.appendChild(projectStack);
+  }
+
+  var achievements = ranking.achievements || [];
+  if (achievements.length) {
+    section.appendChild(mk('div', 'label', 'Ranked Achievements'));
+    var achievementStack = mk('div', 'rank-card-stack');
+    achievements.forEach(function(item, index) {
+      achievementStack.appendChild(buildEvidenceCard(
+        (index + 1) + '. Achievement',
+        '',
+        item.score,
+        '',
+        item.matchedKeywords || [],
+        [{ text: item.text || '', score: item.score }]
+      ));
+    });
+    section.appendChild(achievementStack);
+  }
+
+  if (ranking.skills && ranking.skills.length) {
+    section.appendChild(mk('div', 'label', 'Ranked Skills'));
+    section.appendChild(buildRankPills(ranking.skills, 'rank-pill-row compact'));
+  }
+
+  return section;
+}
+
 function buildGenerationSnapshotSection(session, artifact) {
   var section = mk('section', 'section section-stack');
   section.appendChild(mk('h3', '', 'Generation Snapshot'));
   section.appendChild(mk('div', 'section-note', 'A compact summary of what was injected into the model for this letter, so the context stays auditable.'));
 
+  var usage = artifactTokenUsage(artifact);
   var grid = mk('div', 'context-grid');
   [
     session.job && session.job.jobTitle ? session.job.jobTitle : 'Untitled role',
     session.job && session.job.companyName ? session.job.companyName : 'Unknown company',
     artifact && artifact.style || session.latestStyle || 'formal',
     artifact && artifact.model || session.latestModel || '—',
+    'Input ' + formatTokenCount(usageInputTokens(usage)),
+    'Output ' + formatTokenCount(usageOutputTokens(usage)),
+    'Used ' + formatUsagePercent(usage.modelUsagePercent),
     artifact && artifact.owner && artifact.owner.name ? artifact.owner.name : 'Saved portfolio',
     session.scrape && session.scrape.wordCount ? session.scrape.wordCount + ' scraped words' : 'No scrape count'
   ].forEach(function(value) {
@@ -1355,6 +1824,7 @@ function buildGenerationSnapshotSection(session, artifact) {
     page: session.page || {},
     job: session.job || {},
     portfolioOwner: artifact && artifact.owner || {},
+    tokenUsage: usage,
     researchSummary: session.research && session.research.summary || '',
     researchSources: session.research && session.research.sources ? session.research.sources.length : 0,
     scrapePreview: session.scrape && session.scrape.preview || ''
@@ -1382,20 +1852,24 @@ function buildLetterCard(session, artifact) {
   }
   left.appendChild(meta);
   header.appendChild(left);
+  function currentLetterText() {
+    var output = card.querySelector('textarea[data-letter-output="true"]');
+    return output ? output.value : (artifact && artifact.text || '');
+  }
   if (artifact && artifact.text) {
     var actions = mk('div', 'header-actions');
     actions.classList.add('centered');
     var copyBtn = mk('button', 'btn', 'Copy');
     copyBtn.addEventListener('click', function(event) {
       event.stopPropagation();
-      copyText(artifact.text || '', copyBtn);
+      copyText(currentLetterText(), copyBtn);
     });
     actions.appendChild(copyBtn);
     var pdfBtn = mk('button', 'btn btn-green', 'Download PDF');
     pdfBtn.addEventListener('click', function(event) {
       event.stopPropagation();
       var payload = CoverCraftPdf.buildCoverLetterPdfDownload({
-        text: artifact.text,
+        text: currentLetterText(),
         jobTitle: session.job && session.job.jobTitle || 'Cover Letter',
         company: session.job && session.job.companyName || '',
         owner: artifact.owner || {}
@@ -1419,13 +1893,16 @@ function buildLetterCard(session, artifact) {
   var body = mk('div', 'card-body');
   var stack = mk('div', 'section-stack');
 
-  stack.appendChild(buildPromptContextSection(session, artifact));
+  stack.appendChild(collapseExistingSection('Prompt Context', buildPromptContextSection(session, artifact), 'Saved prompt payload', false));
+  stack.appendChild(collapseExistingSection('Ranked Evidence Matrix', buildRankedEvidenceSection(artifact), 'Evidence summary used for generation', false));
 
   var leftSection = mk('section', 'section');
   leftSection.appendChild(mk('h3', '', 'Cover Letter'));
   if (artifact && artifact.text) {
     var output = document.createElement('textarea');
-    output.readOnly = true;
+    output.dataset.letterOutput = 'true';
+    output.spellcheck = true;
+    output.setAttribute('aria-label', 'Editable saved cover letter');
     output.value = artifact.text;
     leftSection.appendChild(output);
   } else {
@@ -1436,22 +1913,25 @@ function buildLetterCard(session, artifact) {
   metricsWrap.appendChild(buildMetric('Words scraped', String(session.scrape && session.scrape.wordCount || 0)));
   metricsWrap.appendChild(buildMetric('Style', artifact && artifact.style || session.latestStyle || 'formal'));
   metricsWrap.appendChild(buildMetric('Model', artifact && artifact.model || session.latestModel || '—'));
+  var usage = artifactTokenUsage(artifact);
+  metricsWrap.appendChild(buildMetric('Input tokens', formatTokenCount(usageInputTokens(usage))));
+  metricsWrap.appendChild(buildMetric('Output tokens', formatTokenCount(usageOutputTokens(usage))));
+  metricsWrap.appendChild(buildMetric('Total tokens', formatTokenCount(usageTotalTokens(usage))));
+  metricsWrap.appendChild(buildMetric('TPM used', formatUsagePercent(usage.modelUsagePercent)));
   leftSection.appendChild(metricsWrap);
   stack.appendChild(leftSection);
 
   var rightSection = buildGenerationSnapshotSection(session, artifact);
-  stack.appendChild(rightSection);
+  stack.appendChild(collapseExistingSection('Generation Snapshot', rightSection, 'Job, prompt, research, and token context', false));
 
   var researchSection = mk('section', 'section');
-  researchSection.appendChild(mk('h3', '', 'Cached Research'));
   if (session.research && session.research.summary) researchSection.appendChild(mk('pre', '', session.research.summary));
   else researchSection.appendChild(mk('pre', '', 'No company research is cached yet.'));
-  stack.appendChild(researchSection);
+  stack.appendChild(collapseExistingSection('Cached Research', researchSection, researchStatusText(session), false));
 
   var sourcesSection = mk('section', 'section');
-  sourcesSection.appendChild(mk('h3', '', 'Sources'));
   sourcesSection.appendChild(buildSourceList(session));
-  stack.appendChild(sourcesSection);
+  stack.appendChild(collapseExistingSection('Sources', sourcesSection, sourceStatusText(session), false));
 
   var actionsSection = mk('section', 'section');
   actionsSection.appendChild(mk('h3', '', 'Session Actions'));
@@ -1706,10 +2186,22 @@ function exportExcel() {
   });
   sheets.push({ name: 'Sessions', rows: sessionRows });
 
-  var letterRows = [['Session', 'Created At', 'Style', 'Model', 'Words', 'Text']];
+  var letterRows = [['Session', 'Created At', 'Style', 'Model', 'Input Tokens', 'Output Tokens', 'Total Tokens', 'Model Used %', 'Words', 'Text']];
   sessions.forEach(function(session) {
     (session.artifacts || []).forEach(function(artifact) {
-      letterRows.push([session.title || '', fmtDate(artifact.createdAt), artifact.style || '', artifact.model || '', artifact.outputWords || 0, artifact.text || '']);
+      var usage = artifactTokenUsage(artifact);
+      letterRows.push([
+        session.title || '',
+        fmtDate(artifact.createdAt),
+        artifact.style || '',
+        artifact.model || '',
+        usageInputTokens(usage),
+        usageOutputTokens(usage),
+        usageTotalTokens(usage),
+        usage.modelUsagePercent == null ? '' : usage.modelUsagePercent,
+        artifact.outputWords || 0,
+        artifact.text || ''
+      ]);
     });
   });
   sheets.push({ name: 'Cover Letters', rows: letterRows });
@@ -1785,6 +2277,8 @@ function loadDashboard() {
       }
       setInlineStatus('session-action-status', '', '');
       sessions = response.sessions;
+      currentModelHealth = response.modelHealth || currentModelHealth || {};
+      currentModelUsageLog = Array.isArray(response.modelUsageLog) ? response.modelUsageLog : currentModelUsageLog;
       if (response.portfolio) {
         lastPortfolioOwner = response.portfolio.owner || lastPortfolioOwner;
         lastPortfolioSource = response.portfolio.source || lastPortfolioSource;
@@ -1812,16 +2306,18 @@ function loadSettingsSurface() {
     document.getElementById('default-type').value = settings.coverLetterType || 'formal';
     document.getElementById('trigger-mode').value = settings.triggerMode || 'manual';
     document.getElementById('cloud-sync-enabled').checked = !!settings.cloudSyncEnabled;
-    var knownModels = ['openrouter/free', 'google/gemma-3-12b-it:free', 'meta-llama/llama-3.3-70b-instruct:free', 'nvidia/nemotron-3-super-120b-a12b:free', 'minimax/minimax-m2.5:free', 'groq/llama-3.1-8b-instant', 'groq/llama-3.3-70b-versatile', 'groq/meta-llama/llama-4-scout-17b-16e-instruct', 'groq/moonshotai/kimi-k2-instruct', 'groq/moonshotai/kimi-k2-instruct-0905', 'groq/openai/gpt-oss-120b', 'groq/openai/gpt-oss-20b', 'groq/qwen/qwen3-32b'];
-    if (knownModels.indexOf(settings.model) !== -1) {
+    currentModelHealth = response && response.modelHealth || {};
+    currentModelUsageLog = Array.isArray(response && response.modelUsageLog) ? response.modelUsageLog : currentModelUsageLog;
+    if (KNOWN_MODELS.indexOf(settings.model) !== -1) {
       document.getElementById('model-select').value = settings.model;
       document.getElementById('custom-model-input').value = '';
     } else {
       document.getElementById('model-select').value = 'custom';
       document.getElementById('custom-model-input').value = settings.model || '';
     }
+    renderModelHealth();
     lastPortfolioOwner = response && response.portfolio && response.portfolio.owner ? response.portfolio.owner : lastPortfolioOwner;
-    renderCloudStatus(response && response.cloud || null);
+    renderCloudStatus(response && response.cloud || null, response && response.storage || null);
   });
   chrome.runtime.sendMessage({ type: 'GET_ACTIVE_PORTFOLIO' }, function(response) {
     if (!response) return;
@@ -1856,6 +2352,7 @@ async function testOpenRouter() {
       })
     });
     var data = await response.json();
+    recordModelHealth(testedModel, 'openrouter', testedModel, response, data, 10);
     if (data.choices && data.choices[0] && data.choices[0].message) setStatus('openrouter-status', 'ok', 'OpenRouter is working for ' + testedModel + '.');
     else throw new Error((data.error && data.error.message) || 'Unexpected response.');
   } catch (err) {
@@ -1878,13 +2375,10 @@ async function testGroq() {
         'Authorization': 'Bearer ' + key,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        model: testedModel,
-        messages: [{ role: 'user', content: 'Reply with exactly OK' }],
-        max_tokens: 10
-      })
+      body: JSON.stringify(buildGroqTestBody(testedModel))
     });
     var data = await response.json();
+    recordModelHealth(isGroqModel(selectedModel()) ? selectedModel() : 'groq/' + testedModel, 'groq', testedModel, response, data, 10);
     if (data.choices && data.choices[0] && data.choices[0].message) setStatus('groq-status', 'ok', 'Groq is working for ' + testedModel + '.');
     else throw new Error((data.error && data.error.message) || 'Unexpected response.');
   } catch (err) {
@@ -2006,6 +2500,8 @@ function initDashboardPage() {
   bindById('test-groq-btn', 'click', testGroq);
   bindById('test-tavily-btn', 'click', testTavily);
   bindById('save-btn', 'click', saveRuntimeSettings);
+  bindById('refresh-model-health-btn', 'click', loadSettingsSurface);
+  bindById('model-select', 'change', renderModelHealth);
   bindById('cloud-sign-in-btn', 'click', signInToCloud);
   bindById('cloud-sync-btn', 'click', syncCloudNow);
   bindById('cloud-sign-out-btn', 'click', signOutOfCloud);
@@ -2038,10 +2534,34 @@ function initDashboardPage() {
   });
   try {
     chrome.runtime.onMessage.addListener(function(message) {
-      if (!message || message.type !== 'SESSION_PIPELINE_UPDATE' || !message.session) return;
-      upsertSessionSnapshot(message.session);
-      renderDashboard();
-      setActiveSessionTab(activeSessionTab);
+      if (!message) return;
+      if (message.type === 'SESSION_PIPELINE_UPDATE' && message.session) {
+        upsertSessionSnapshot(message.session);
+        renderDashboard();
+        setActiveSessionTab(activeSessionTab);
+        return;
+      }
+      if (message.type === 'MODEL_HEALTH_UPDATE') {
+        currentModelHealth = message.modelHealth || {};
+        currentModelUsageLog = Array.isArray(message.modelUsageLog) ? message.modelUsageLog : currentModelUsageLog;
+        renderModelHealth();
+        renderDashboard();
+        setActiveSessionTab(activeSessionTab);
+        return;
+      }
+      if (message.type === 'CLOUD_STATUS_UPDATE') {
+        renderCloudStatus(message.cloud || null, message.storage || null);
+        if (message.error) {
+          setStatus('cloud-auth-status', 'error', message.error);
+          return;
+        }
+        if (message.syncResult) {
+          var count = typeof message.syncResult.count === 'number' ? message.syncResult.count : null;
+          setStatus('cloud-auth-status', 'ok', count != null ? ('Signed in. Synced ' + count + ' session' + (count === 1 ? '' : 's') + '.') : 'Signed in. Cloud sync complete.');
+          loadDashboard();
+          loadSettingsSurface();
+        }
+      }
     });
   } catch (_) {}
   window.addEventListener('message', handleWorkspaceMessage);
@@ -2053,6 +2573,7 @@ function initDashboardPage() {
   startDashboardAutoRefresh();
   loadSettingsSurface();
   loadCloudStatus();
+  if (window.location.hash === '#sessions') setActiveSurface('sessions');
   if (window.location.hash === '#settings') setActiveSurface('settings');
   if (window.location.hash === '#profile') setActiveSurface('profile');
 }

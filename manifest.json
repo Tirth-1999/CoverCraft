@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "CoverCraft",
-  "version": "2.1.1",
-  "version_name": "2.1.1",
+  "version": "3.0",
+  "version_name": "3.0",
   "description": "AI-powered Chrome extension for cover letters, tailored resumes, and follow-up questions",
   "icons": {
     "16":  "icons/icon16.png",
@@ -24,12 +24,7 @@
     "extension_pages": "script-src 'self'; object-src 'self'; frame-src 'self'; connect-src 'self' https://openrouter.ai https://api.groq.com https://api.tavily.com https://app.tavily.com https://firestore.googleapis.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com;",
     "sandbox": "sandbox allow-scripts allow-forms allow-popups allow-modals; script-src 'self' 'unsafe-inline' 'unsafe-eval'; child-src 'self';"
   },
-  "content_scripts": [{
-    "matches": ["<all_urls>"],
-    "js":      ["src/shared/core.js", "src/shared/pdf.js", "src/content/content.js"],
-    "run_at":  "document_idle"
-  }],
-  "permissions": ["activeTab", "downloads", "identity", "scripting", "storage", "tabs"],
+  "permissions": ["activeTab", "downloads", "identity", "scripting", "storage", "tabs", "unlimitedStorage"],
   "host_permissions": [
     "https://openrouter.ai/*",
     "https://api.groq.com/*",

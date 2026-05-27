@@ -38,6 +38,8 @@ faqItems.forEach((item) => {
 });
 
 initSectionNavigation();
+initHeaderDock();
+initMobileMenu();
 initShowcaseCarousel();
 
 function byId(id) {
@@ -106,6 +108,50 @@ function initSectionNavigation() {
   }
 }
 
+function initHeaderDock() {
+  const header = document.querySelector('.site-header');
+  if (!header) return;
+  let ticking = false;
+
+  function syncDockState() {
+    ticking = false;
+    header.classList.toggle('is-docked', window.scrollY > 18);
+  }
+
+  window.addEventListener('scroll', () => {
+    if (ticking) return;
+    ticking = true;
+    window.requestAnimationFrame(syncDockState);
+  }, { passive: true });
+
+  syncDockState();
+}
+
+function initMobileMenu() {
+  const header = document.querySelector('.site-header');
+  const toggle = document.querySelector('.menu-toggle');
+  const nav = document.querySelector('.nav');
+  if (!header || !toggle || !nav) return;
+
+  function setOpen(open) {
+    header.classList.toggle('is-menu-open', open);
+    toggle.setAttribute('aria-expanded', String(open));
+    toggle.setAttribute('aria-label', open ? 'Close navigation menu' : 'Open navigation menu');
+  }
+
+  toggle.addEventListener('click', () => {
+    setOpen(!header.classList.contains('is-menu-open'));
+  });
+
+  nav.addEventListener('click', (event) => {
+    if (event.target.closest('a')) setOpen(false);
+  });
+
+  window.addEventListener('resize', () => {
+    if (window.innerWidth > 720) setOpen(false);
+  });
+}
+
 function initShowcaseCarousel() {
   const viewport = document.querySelector('[data-showcase-viewport]');
   if (!viewport) return;
@@ -113,12 +159,14 @@ function initShowcaseCarousel() {
 
   const buttons = Array.from(document.querySelectorAll('[data-showcase-target]'));
   const slides = Array.from(viewport.querySelectorAll('[data-showcase-slide]'));
+  const prevButton = document.querySelector('[data-showcase-prev]');
+  const nextButton = document.querySelector('[data-showcase-next]');
   if (!buttons.length || !slides.length) return;
 
   let activeId = '';
   let animationFrame = null;
 
-  function syncActiveState(id, centerButton) {
+  function syncActiveState(id) {
     if (!id || id === activeId) return;
     activeId = id;
     let activeSlide = null;
@@ -127,9 +175,6 @@ function initShowcaseCarousel() {
       const isActive = button.dataset.showcaseTarget === id;
       button.classList.toggle('is-active', isActive);
       button.setAttribute('aria-pressed', String(isActive));
-      if (isActive && centerButton) {
-        button.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-      }
     });
 
     slides.forEach((slide) => {
@@ -139,17 +184,32 @@ function initShowcaseCarousel() {
     });
 
     if (carousel && activeSlide) {
-      const stageHeight = getComputedStyle(activeSlide).getPropertyValue('--showcase-stage-h').trim();
-      if (stageHeight) {
-        carousel.style.setProperty('--showcase-stage-height', stageHeight);
-      } else {
-        carousel.style.removeProperty('--showcase-stage-height');
-      }
+      carousel.dataset.activeShowcase = activeSlide.dataset.showcaseSlide || id;
     }
   }
 
   function slideForId(id) {
     return slides.find((slide) => slide.dataset.showcaseSlide === id) || null;
+  }
+
+  function scrollToSlide(slide, behavior) {
+    if (!slide) return;
+    viewport.scrollTo({
+      left: slide.offsetLeft,
+      behavior: behavior || 'smooth'
+    });
+  }
+
+  function keepPagePosition(pageY) {
+    window.requestAnimationFrame(() => {
+      if (Math.abs(window.scrollY - pageY) > 1) {
+        window.scrollTo({
+          top: pageY,
+          left: window.scrollX,
+          behavior: 'auto'
+        });
+      }
+    });
   }
 
   function syncFromScroll() {
@@ -169,7 +229,7 @@ function initShowcaseCarousel() {
       }
     });
 
-    syncActiveState(closestId, false);
+    syncActiveState(closestId);
   }
 
   function queueScrollSync() {
@@ -178,13 +238,36 @@ function initShowcaseCarousel() {
   }
 
   buttons.forEach((button) => {
-    button.addEventListener('click', () => {
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      const pageY = window.scrollY;
       const id = button.dataset.showcaseTarget;
       const slide = slideForId(id);
       if (!slide) return;
-      syncActiveState(id, true);
-      slide.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' });
+      syncActiveState(id);
+      scrollToSlide(slide, 'smooth');
+      keepPagePosition(pageY);
     });
+  });
+
+  function moveBy(direction) {
+    const pageY = window.scrollY;
+    const currentIndex = Math.max(slides.findIndex((slide) => slide.dataset.showcaseSlide === activeId), 0);
+    const nextIndex = (currentIndex + direction + slides.length) % slides.length;
+    const nextSlide = slides[nextIndex];
+    const nextId = nextSlide.dataset.showcaseSlide;
+    syncActiveState(nextId);
+    scrollToSlide(nextSlide, 'smooth');
+    keepPagePosition(pageY);
+  }
+
+  if (prevButton) prevButton.addEventListener('click', (event) => {
+    event.preventDefault();
+    moveBy(-1);
+  });
+  if (nextButton) nextButton.addEventListener('click', (event) => {
+    event.preventDefault();
+    moveBy(1);
   });
 
   viewport.addEventListener('scroll', queueScrollSync, { passive: true });
@@ -192,16 +275,20 @@ function initShowcaseCarousel() {
   viewport.addEventListener('keydown', (event) => {
     if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
     event.preventDefault();
-    const currentIndex = Math.max(slides.findIndex((slide) => slide.dataset.showcaseSlide === activeId), 0);
-    const direction = event.key === 'ArrowRight' ? 1 : -1;
-    const nextIndex = (currentIndex + direction + slides.length) % slides.length;
-    const nextSlide = slides[nextIndex];
-    const nextId = nextSlide.dataset.showcaseSlide;
-    syncActiveState(nextId, true);
-    nextSlide.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' });
+    moveBy(event.key === 'ArrowRight' ? 1 : -1);
   });
 
-  syncActiveState(buttons[0].dataset.showcaseTarget || slides[0].dataset.showcaseSlide, false);
+  const initialHashId = window.location.hash ? window.location.hash.slice(1) : '';
+  const initialId = slideForId(initialHashId)
+    ? initialHashId
+    : (buttons[0].dataset.showcaseTarget || slides[0].dataset.showcaseSlide);
+  syncActiveState(initialId);
+  const initialSlide = slideForId(initialId);
+  if (initialSlide && initialId !== slides[0].dataset.showcaseSlide) {
+    window.requestAnimationFrame(() => {
+      scrollToSlide(initialSlide, 'auto');
+    });
+  }
   queueScrollSync();
 }
 

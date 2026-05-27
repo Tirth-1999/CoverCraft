@@ -4,6 +4,33 @@ var MAX_IMPORTED_RESUME_TEXT = 16000;
 var MAX_IMPORT_PDF_BYTES = 5 * 1024 * 1024;
 var MAX_IMPORT_IMAGE_BYTES = 8 * 1024 * 1024;
 var MAX_IMAGE_DATA_URL_CHARS = Math.floor(1.8 * 1024 * 1024);
+var currentModelHealth = {};
+var modelHealthTickTimer = null;
+var KNOWN_MODELS = [
+  'openrouter/free',
+  'google/gemma-3-12b-it:free',
+  'meta-llama/llama-3.3-70b-instruct:free',
+  'nvidia/nemotron-3-super-120b-a12b:free',
+  'minimax/minimax-m2.5:free',
+  'groq/llama-3.1-8b-instant',
+  'groq/llama-3.3-70b-versatile',
+  'groq/openai/gpt-oss-120b',
+  'groq/openai/gpt-oss-20b',
+  'groq/meta-llama/llama-4-scout-17b-16e-instruct',
+  'groq/qwen/qwen3-32b',
+  'groq/compound-mini',
+  'groq/compound'
+];
+var GROQ_BASE_LIMITS = {
+  'groq/llama-3.1-8b-instant': { tpm: '6K', rpd: '14.4K' },
+  'groq/llama-3.3-70b-versatile': { tpm: '12K', rpd: '1K' },
+  'groq/openai/gpt-oss-120b': { tpm: '8K', rpd: '1K' },
+  'groq/openai/gpt-oss-20b': { tpm: '8K', rpd: '1K' },
+  'groq/meta-llama/llama-4-scout-17b-16e-instruct': { tpm: '30K', rpd: '1K' },
+  'groq/qwen/qwen3-32b': { tpm: '6K', rpd: '1K' },
+  'groq/compound-mini': { tpm: '70K', rpd: '250' },
+  'groq/compound': { tpm: '70K', rpd: '250' }
+};
 
 function setStatus(id, type, message) {
   var el = document.getElementById(id);
@@ -492,6 +519,214 @@ function bindById(id, eventName, handler) {
   return el;
 }
 
+function collectRateLimitHeaders(response) {
+  return {
+    retryAfter: response.headers.get('retry-after') || '',
+    limitRequests: response.headers.get('x-ratelimit-limit-requests') || '',
+    limitTokens: response.headers.get('x-ratelimit-limit-tokens') || '',
+    remainingRequests: response.headers.get('x-ratelimit-remaining-requests') || '',
+    remainingTokens: response.headers.get('x-ratelimit-remaining-tokens') || '',
+    resetRequests: response.headers.get('x-ratelimit-reset-requests') || '',
+    resetTokens: response.headers.get('x-ratelimit-reset-tokens') || ''
+  };
+}
+
+function formatTimeLeft(ms) {
+  if (!ms || ms <= 0) return '';
+  var seconds = Math.ceil(ms / 1000);
+  if (seconds < 60) return seconds + 's';
+  return Math.ceil(seconds / 60) + 'm';
+}
+
+function formatHealthTimestamp(value) {
+  if (!value) return '';
+  try {
+    return new Date(value).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  } catch (_) {
+    return '';
+  }
+}
+
+function modelLabel(model) {
+  var select = document.getElementById('model-select');
+  if (!select) return model;
+  var option = Array.prototype.slice.call(select.options).find(function(item) {
+    return item.value === model;
+  });
+  return option ? option.textContent.replace(/^[🟢🟡🔴⚪]\s+/u, '').replace(/\s+\(wait .*?\)$/i, '') : model;
+}
+
+function renderModelHealth() {
+  var list = document.getElementById('model-health-list');
+  if (!list) return;
+  scheduleModelHealthTicker();
+  var selected = selectedModel();
+  list.innerHTML = '';
+  var models = KNOWN_MODELS.filter(function(model) {
+    return /^groq\//.test(model) || model === selected || Core.lookupModelHealth(currentModelHealth, model);
+  });
+  if (models.indexOf(selected) === -1) models.unshift(selected);
+  models.forEach(function(model) {
+    var health = Core.lookupModelHealth(currentModelHealth, model);
+    var availability = Core.modelAvailability(health);
+    var row = document.createElement('div');
+    var badge = document.createElement('div');
+    var body = document.createElement('div');
+    var title = document.createElement('strong');
+    var detail = document.createElement('span');
+    var meter = document.createElement('div');
+    var meterFill = document.createElement('span');
+    var waitMs = health && health.blockedUntil ? health.blockedUntil - Date.now() : 0;
+    var rate = health && health.rateLimit || {};
+    row.className = 'model-health-row';
+    row.classList.add(availability.tone);
+    badge.className = 'model-health-badge';
+    meter.className = 'model-health-meter';
+    meterFill.className = 'model-health-meter-fill';
+    if (availability.percent != null) meterFill.style.width = availability.percent + '%';
+    meter.appendChild(meterFill);
+    title.textContent = modelLabel(model);
+    if (!health) {
+      badge.textContent = 'Unknown';
+      detail.textContent = /^groq\//.test(model)
+        ? 'No previous provider status recorded for this model.'
+        : 'No previous provider status recorded. OpenRouter availability depends on route.';
+    } else if (waitMs > 0 && (health.status === 429 || health.status === 413)) {
+      badge.textContent = 'Wait ' + formatTimeLeft(waitMs);
+      detail.textContent = [
+        availability.percent != null ? availability.percent + '% ' + (availability.source || 'capacity') + ' available' : '',
+        formatHealthTimestamp(health.checkedAt) ? 'checked ' + formatHealthTimestamp(health.checkedAt) : '',
+        rate.remainingTokens ? rate.remainingTokens + ' TPM left' : '',
+        rate.limitTokens ? rate.limitTokens + ' TPM limit' : '',
+        rate.resetTokens ? 'reset ' + rate.resetTokens : '',
+        health.totalTokens ? 'actual ' + health.totalTokens + ' tokens' : '',
+        health.estimatedTokens ? 'last ~' + health.estimatedTokens + ' tokens' : ''
+      ].filter(Boolean).join(' · ') || (health.error || 'Provider asked us to wait.');
+    } else if (health.ok) {
+      badge.textContent = availability.label;
+      detail.textContent = [
+        availability.percent != null ? availability.percent + '% ' + (availability.source || 'capacity') + ' available' : '',
+        formatHealthTimestamp(health.checkedAt) ? 'checked ' + formatHealthTimestamp(health.checkedAt) : '',
+        rate.remainingTokens ? rate.remainingTokens + ' TPM left' : '',
+        rate.limitTokens ? rate.limitTokens + ' TPM limit' : '',
+        rate.remainingRequests ? rate.remainingRequests + ' daily requests left' : '',
+        health.totalTokens ? 'actual ' + health.totalTokens + ' tokens' : '',
+        health.estimatedTokens ? 'last ~' + health.estimatedTokens + ' tokens' : ''
+      ].filter(Boolean).join(' · ') || 'Last request succeeded.';
+    } else {
+      badge.textContent = health.status === 429 ? 'Limited' : (health.status === 413 ? 'Too large' : 'Error');
+      detail.textContent = [
+        availability.percent != null ? availability.percent + '% ' + (availability.source || 'capacity') + ' available' : '',
+        formatHealthTimestamp(health.checkedAt) ? 'checked ' + formatHealthTimestamp(health.checkedAt) : '',
+        rate.remainingTokens ? rate.remainingTokens + ' TPM left' : '',
+        rate.limitTokens ? rate.limitTokens + ' TPM limit' : '',
+        rate.resetTokens ? 'reset ' + rate.resetTokens : '',
+        health.totalTokens ? 'actual ' + health.totalTokens + ' tokens' : '',
+        health.error || ''
+      ].filter(Boolean).join(' · ') || 'Last request failed.';
+    }
+    body.appendChild(title);
+    body.appendChild(detail);
+    body.appendChild(meter);
+    row.appendChild(body);
+    row.appendChild(badge);
+    list.appendChild(row);
+  });
+  updateModelOptionAvailability();
+}
+
+function hasActiveModelCooldown() {
+  var now = Date.now();
+  return Object.keys(currentModelHealth || {}).some(function(model) {
+    var health = currentModelHealth[model];
+    return health && health.blockedUntil && health.blockedUntil > now && (health.status === 429 || health.status === 413);
+  });
+}
+
+function scheduleModelHealthTicker() {
+  if (modelHealthTickTimer || !hasActiveModelCooldown()) return;
+  modelHealthTickTimer = setTimeout(function() {
+    modelHealthTickTimer = null;
+    loadSettings();
+  }, nextModelCooldownDelay());
+}
+
+function nextModelCooldownDelay() {
+  var now = Date.now();
+  var next = Object.keys(currentModelHealth || {}).reduce(function(min, model) {
+    var health = currentModelHealth[model];
+    if (!health || !health.blockedUntil || health.blockedUntil <= now || (health.status !== 429 && health.status !== 413)) return min;
+    return Math.min(min, health.blockedUntil - now);
+  }, 60000);
+  return Math.max(1000, Math.min(next + 250, 60000));
+}
+
+function cleanModelOptionLabel(option) {
+  return String(option.dataset.baseLabel || option.textContent || '')
+    .replace(/^[🟢🟡🔴⚪]\s+/u, '')
+    .replace(/\s+\(wait .*?\)$/i, '');
+}
+
+function updateModelOptionAvailability() {
+  var select = document.getElementById('model-select');
+  if (!select) return;
+  Array.prototype.slice.call(select.options).forEach(function(option) {
+    option.dataset.baseLabel = cleanModelOptionLabel(option);
+    option.disabled = false;
+    option.textContent = option.dataset.baseLabel;
+    option.title = '';
+  });
+}
+
+function recordModelHealth(model, provider, apiModel, response, data, estimatedTokens) {
+  var rateLimit = collectRateLimitHeaders(response);
+  var modelTokenLimit = Core.numericHeaderValue(rateLimit.limitTokens);
+  var usageTokens = data && data.usage && data.usage.total_tokens || estimatedTokens || 0;
+  var actualOutputTokens = data && data.usage && data.usage.completion_tokens || 0;
+  var errorMessage = data && data.error && data.error.message || '';
+  chrome.runtime.sendMessage({
+    type: 'RECORD_MODEL_HEALTH',
+    payload: {
+      model: model,
+      provider: provider,
+      apiModel: apiModel,
+      ok: response.ok,
+      status: response.status,
+      error: errorMessage,
+      rateLimit: rateLimit,
+      limitKind: providerLimitKind(errorMessage, rateLimit),
+      estimatedTokens: estimatedTokens || 0,
+      estimatedInputTokens: 0,
+      estimatedOutputTokens: actualOutputTokens ? 0 : estimatedTokens || 0,
+      requestedOutputTokens: estimatedTokens || 0,
+      modelUsageTokens: usageTokens,
+      modelTokenLimit: modelTokenLimit || null,
+      modelUsagePercent: modelTokenLimit ? Math.round((usageTokens / modelTokenLimit) * 1000) / 10 : null,
+      usageSource: data && data.usage && data.usage.total_tokens ? 'provider' : 'estimate',
+      inputTokens: data && data.usage && data.usage.prompt_tokens || 0,
+      outputTokens: data && data.usage && data.usage.completion_tokens || 0,
+      totalTokens: data && data.usage && data.usage.total_tokens || 0
+    }
+  }, function(recorded) {
+    if (recorded && recorded.modelHealth) {
+      currentModelHealth = recorded.modelHealth;
+      renderModelHealth();
+    }
+  });
+}
+
+function providerLimitKind(message, rate) {
+  var text = String(message || '').toLowerCase();
+  rate = rate || {};
+  if (/tokens per day|daily token|tpd/.test(text)) return 'daily_tokens';
+  if (/requests per day|daily request|rpd/.test(text)) return 'daily_requests';
+  if (/tokens per minute|tpm/.test(text)) return 'minute_tokens';
+  if (/requests per minute|rpm/.test(text)) return 'minute_requests';
+  if (Core.numericHeaderValue(rate.remainingTokens) === 0 && Core.numericHeaderValue(rate.limitTokens) > 0) return 'minute_tokens';
+  if (Core.numericHeaderValue(rate.remainingRequests) === 0 && Core.numericHeaderValue(rate.limitRequests) > 0) return 'minute_requests';
+  return '';
+}
+
 function selectedModel() {
   var model = document.getElementById('model-select').value;
   if (model === 'custom') {
@@ -511,7 +746,27 @@ function selectedOpenRouterTestModel() {
 
 function selectedGroqTestModel() {
   var model = selectedModel();
+  if (model === 'groq/compound' || model === 'groq/compound-mini') return model;
   return isGroqModel(model) ? model.replace(/^groq\//, '') : 'llama-3.1-8b-instant';
+}
+
+function buildGroqTestBody(model) {
+  var body = {
+    model: model,
+    messages: [{ role: 'user', content: 'Reply with exactly OK' }],
+    max_completion_tokens: 10,
+    top_p: 1,
+    stream: false,
+    stop: null
+  };
+  if (model === 'groq/compound' || model === 'groq/compound-mini') {
+    body.compound_custom = {
+      tools: {
+        enabled_tools: ['web_search', 'code_interpreter', 'visit_website']
+      }
+    };
+  }
+  return body;
 }
 
 function setCloudActionState(cloud) {
@@ -545,15 +800,16 @@ function loadSettings() {
     document.getElementById('default-type').value = settings.coverLetterType || 'formal';
     document.getElementById('trigger-mode').value = settings.triggerMode || 'manual';
     document.getElementById('cloud-sync-enabled').checked = !!settings.cloudSyncEnabled;
-    var models = ['openrouter/free', 'google/gemma-3-12b-it:free', 'meta-llama/llama-3.3-70b-instruct:free', 'nvidia/nemotron-3-super-120b-a12b:free', 'minimax/minimax-m2.5:free', 'groq/llama-3.1-8b-instant', 'groq/llama-3.3-70b-versatile', 'groq/meta-llama/llama-4-scout-17b-16e-instruct', 'groq/moonshotai/kimi-k2-instruct', 'groq/moonshotai/kimi-k2-instruct-0905', 'groq/openai/gpt-oss-120b', 'groq/openai/gpt-oss-20b', 'groq/qwen/qwen3-32b'];
-    if (models.indexOf(settings.model) !== -1) {
+    currentModelHealth = response && response.modelHealth || {};
+    if (KNOWN_MODELS.indexOf(settings.model) !== -1) {
       document.getElementById('model-select').value = settings.model;
       document.getElementById('custom-model-input').value = '';
     } else {
       document.getElementById('model-select').value = 'custom';
       document.getElementById('custom-model-input').value = settings.model || '';
     }
-    renderCloudStatus(response && response.cloud || null);
+    renderModelHealth();
+    renderCloudStatus(response && response.cloud || null, response && response.storage || null);
   });
 
   chrome.runtime.sendMessage({ type: 'GET_ACTIVE_PORTFOLIO' }, function(response) {
@@ -596,6 +852,7 @@ async function testOpenRouter() {
       })
     });
     var data = await response.json();
+    recordModelHealth(testedModel, 'openrouter', testedModel, response, data, 10);
     if (data.choices && data.choices[0] && data.choices[0].message) setStatus('openrouter-status', 'ok', 'OpenRouter is working for ' + testedModel + '.');
     else throw new Error((data.error && data.error.message) || 'Unexpected response.');
   } catch (err) {
@@ -618,13 +875,10 @@ async function testGroq() {
         'Authorization': 'Bearer ' + key,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        model: testedModel,
-        messages: [{ role: 'user', content: 'Reply with exactly OK' }],
-        max_tokens: 10
-      })
+      body: JSON.stringify(buildGroqTestBody(testedModel))
     });
     var data = await response.json();
+    recordModelHealth(isGroqModel(selectedModel()) ? selectedModel() : 'groq/' + testedModel, 'groq', testedModel, response, data, 10);
     if (data.choices && data.choices[0] && data.choices[0].message) setStatus('groq-status', 'ok', 'Groq is working for ' + testedModel + '.');
     else throw new Error((data.error && data.error.message) || 'Unexpected response.');
   } catch (err) {
@@ -732,7 +986,14 @@ function handleImportedDraft(response, successLabel) {
   setStatus('portfolio-status', 'ok', successLabel);
 }
 
-function renderCloudStatus(cloud) {
+function storageStatusSummary(storage) {
+  if (!storage) return '';
+  var used = storage.usedBytes >= 1024 * 1024 ? (Math.round(storage.usedBytes / 1024 / 102.4) / 10) + ' MB' : Math.round(storage.usedBytes / 1024) + ' KB';
+  var quota = storage.quotaBytes ? (storage.quotaBytes >= 1024 * 1024 ? (Math.round(storage.quotaBytes / 1024 / 102.4) / 10) + ' MB' : Math.round(storage.quotaBytes / 1024) + ' KB') : '';
+  return 'Local storage ' + storage.state + ': ' + used + (quota ? ' / ' + quota : '') + (storage.percentUsed != null ? ' (' + storage.percentUsed + '%)' : '') + (storage.writable ? '' : ' · write blocked');
+}
+
+function renderCloudStatus(cloud, storage) {
   var summary = document.getElementById('cloud-auth-summary');
   var chips = document.getElementById('cloud-auth-chips');
   if (!summary || !chips) return;
@@ -740,7 +1001,7 @@ function renderCloudStatus(cloud) {
   chips.innerHTML = '';
   if (!cloud || !cloud.configured) {
     summary.textContent = 'Account sign-in is not configured yet.';
-    chips.appendChild(chip('Helper missing', 'err'));
+    chips.appendChild(chip('Firebase config missing', 'err'));
     setCloudActionState(cloud || null);
     return;
   }
@@ -755,6 +1016,7 @@ function renderCloudStatus(cloud) {
     chips.appendChild(chip('Signed out', 'warn'));
   }
   if (cloud.lastError) chips.appendChild(chip(cloud.lastError, 'err'));
+  if (storage) chips.appendChild(chip(storageStatusSummary(storage), storage.writable && storage.state !== 'full' ? '' : 'err'));
   setCloudActionState(cloud || null);
 }
 
@@ -764,20 +1026,23 @@ function loadCloudStatus() {
       setStatus('cloud-auth-status', 'error', response && response.error || 'Could not load cloud status.');
       return;
     }
-    renderCloudStatus(response.cloud || null);
+    renderCloudStatus(response.cloud || null, response.storage || null);
   });
 }
 
 function signInToCloud() {
-  setStatus('cloud-auth-status', 'loading', 'Opening Google sign-in…');
+  var signInBtn = document.getElementById('cloud-sign-in-btn');
+  if (signInBtn) signInBtn.disabled = true;
+  setStatus('cloud-auth-status', 'loading', 'Opening Google sign-in...');
   chrome.runtime.sendMessage({ type: 'CLOUD_SIGN_IN' }, function(response) {
+    if (signInBtn) signInBtn.disabled = false;
     if (!response || response.error) {
       setStatus('cloud-auth-status', 'error', response && response.error || 'Google sign-in failed.');
       loadCloudStatus();
       return;
     }
-    renderCloudStatus(response.cloud || null);
-    setStatus('cloud-auth-status', 'ok', 'Signed in.');
+    renderCloudStatus(response.cloud || null, response.storage || null);
+    setStatus('cloud-auth-status', response.syncPending ? 'loading' : 'ok', response.syncPending ? 'Signed in. Syncing sessions and profile in the background...' : 'Signed in.');
     loadSettings();
   });
 }
@@ -789,7 +1054,7 @@ function signOutOfCloud() {
       setStatus('cloud-auth-status', 'error', response && response.error || 'Could not sign out.');
       return;
     }
-    renderCloudStatus(response.cloud || null);
+    renderCloudStatus(response.cloud || null, response.storage || null);
     setStatus('cloud-auth-status', 'ok', 'Signed out.');
     loadSettings();
   });
@@ -814,7 +1079,7 @@ function syncCloudNow() {
       loadCloudStatus();
       return;
     }
-    renderCloudStatus(response.cloud || null);
+    renderCloudStatus(response.cloud || null, response.storage || null);
     var count = response && response.result && typeof response.result.count === 'number' ? response.result.count : null;
     setStatus('cloud-auth-status', 'ok', count != null ? ('Synced ' + count + ' session' + (count === 1 ? '' : 's') + ' to Firebase.') : 'Synced to Firebase.');
     flashButtonSuccess(syncBtn, '✓ Synced', original);
@@ -896,9 +1161,31 @@ document.addEventListener('DOMContentLoaded', function() {
   bindById('test-groq-btn', 'click', testGroq);
   bindById('test-tavily-btn', 'click', testTavily);
   bindById('save-btn', 'click', saveRuntimeSettings);
+  bindById('refresh-model-health-btn', 'click', loadSettings);
+  bindById('model-select', 'change', renderModelHealth);
   bindById('cloud-sign-in-btn', 'click', signInToCloud);
   bindById('cloud-sync-btn', 'click', syncCloudNow);
   bindById('cloud-sign-out-btn', 'click', signOutOfCloud);
+  try {
+    chrome.runtime.onMessage.addListener(function(message) {
+      if (!message) return;
+      if (message.type === 'MODEL_HEALTH_UPDATE') {
+        currentModelHealth = message.modelHealth || {};
+        renderModelHealth();
+        return;
+      }
+      if (message.type !== 'CLOUD_STATUS_UPDATE') return;
+      renderCloudStatus(message.cloud || null, message.storage || null);
+      if (message.error) {
+        setStatus('cloud-auth-status', 'error', message.error);
+        return;
+      }
+      if (message.syncResult) {
+        var count = typeof message.syncResult.count === 'number' ? message.syncResult.count : null;
+        setStatus('cloud-auth-status', 'ok', count != null ? ('Signed in. Synced ' + count + ' session' + (count === 1 ? '' : 's') + '.') : 'Signed in. Cloud sync complete.');
+      }
+    });
+  } catch (_) {}
   bindById('apply-portfolio-btn', 'click', applyPortfolioDraft);
   bindById('load-current-btn', 'click', loadCurrentPortfolio);
 

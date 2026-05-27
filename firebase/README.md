@@ -16,27 +16,12 @@ Create that OAuth client in Google Cloud as a `Web application` client and add t
 
 You can get the real extension ID from `chrome://extensions` after loading the unpacked extension.
 
-If you also want website auth on the hosted site, deploy [auth-helper.html](/Users/tirthcshah/Desktop/Tirth%20Shah/Projects/CoverCraft/site/auth-helper.html) and [auth-helper.js](/Users/tirthcshah/Desktop/Tirth%20Shah/Projects/CoverCraft/site/auth-helper.js) from the `site/` folder to a hosted web origin such as:
-
-- `https://covercraft-951de.web.app/auth-helper.html`
-- `https://covercraft-951de.firebaseapp.com/auth-helper.html`
-
-The website auth helper is optional and website-only. Extension auth does not use it anymore.
-
-The website auth helper can also be tested locally from:
-
-- `http://127.0.0.1:5500/site/auth-helper.html`
-- `http://localhost:5500/site/auth-helper.html`
+Website auth helper pages are not packaged with the extension. Keep extension sign-in on the `chrome.identity` flow so the MV3 package does not include remotely hosted Firebase code.
 
 ## Firebase Console Checklist
 
 1. Enable Google Authentication.
 2. Create a Google OAuth client for the extension redirect flow and paste it into [src/firebase.js](/Users/tirthcshah/Desktop/Tirth%20Shah/Projects/CoverCraft/src/firebase.js) as `googleClientId`.
-3. Add your website auth helper origins as authorized domains if you are using hosted website auth:
-   `127.0.0.1`
-   `localhost`
-   `covercraft-951de.web.app`
-   `covercraft-951de.firebaseapp.com`
+3. Add only the domains needed for your active Firebase auth flow.
 4. Deploy the Firestore rules from [firestore.rules](/Users/tirthcshah/Desktop/Tirth%20Shah/Projects/CoverCraft/firebase/firestore.rules).
-5. If you want website auth, deploy the `site/` folder to Firebase Hosting or another hosted origin so the helper page is reachable.
-6. Keep API keys local in CoverCraft Settings; only sessions, research, cover letters, tailored resumes, and the active portfolio sync to Firestore.
+5. Keep API keys local in CoverCraft Settings; sessions, research, cover letters, tailored resumes, the active portfolio, model availability snapshots, and recent model usage logs sync to Firestore.

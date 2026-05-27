@@ -47,6 +47,35 @@
     sub.textContent = 'Not signed in';
   }
 
+  function injectPanelScripts(tabId, callback) {
+    chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      files: ['src/shared/core.js', 'src/shared/pdf.js', 'src/content/content.js']
+    }, function() {
+      if (chrome.runtime.lastError) {
+        callback(chrome.runtime.lastError.message || 'Could not inject CoverCraft on this page.');
+        return;
+      }
+      callback(null);
+    });
+  }
+
+  function dispatchOpen(tabId) {
+    chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      func: function() {
+        document.dispatchEvent(new CustomEvent('covercraft:open'));
+        return 'dispatched';
+      }
+    }, function() {
+      if (chrome.runtime.lastError) {
+        showStatus('Could not open: ' + chrome.runtime.lastError.message);
+        return;
+      }
+      window.close();
+    });
+  }
+
   chrome.runtime.sendMessage({ type: 'GET_SETTINGS' }, function(resp) {
     var settings = resp && resp.settings || {};
     var model = settings.model || 'openrouter/free';
@@ -67,18 +96,12 @@
         return;
       }
 
-      chrome.scripting.executeScript({
-        target: { tabId: tabId },
-        func: function() {
-          document.dispatchEvent(new CustomEvent('covercraft:open'));
-          return 'dispatched';
-        }
-      }, function(results) {
-        if (chrome.runtime.lastError) {
-          showStatus('Could not open: ' + chrome.runtime.lastError.message);
+      injectPanelScripts(tabId, function(error) {
+        if (error) {
+          showStatus('Could not load CoverCraft: ' + error);
           return;
         }
-        window.close();
+        dispatchOpen(tabId);
       });
     });
   });

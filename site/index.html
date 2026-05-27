@@ -5,30 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CoverCraft | Faster applications from the job page</title>
   <meta name="description" content="CoverCraft turns job pages into a faster workspace for cover letters, tailored resumes, and follow-up answers.">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
-  <script defer src="https://cloud.umami.is/script.js" data-website-id="2272cae4-9850-4df0-8d57-cdefdeccae35"></script>
-  <script>
-    (function(c, l, a, r, i, t, y) {
-      c[a] = c[a] || function() {
-        (c[a].q = c[a].q || []).push(arguments);
-      };
-      t = l.createElement(r);
-      t.async = 1;
-      t.src = "https://www.clarity.ms/tag/" + i;
-      y = l.getElementsByTagName(r)[0];
-      y.parentNode.insertBefore(t, y);
-    })(window, document, "clarity", "script", "w8r1zujiqz");
-  </script>
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-SR7HNT8YLK"></script>
-  <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag() { dataLayer.push(arguments); }
-    gtag("js", new Date());
-    gtag("config", "G-SR7HNT8YLK");
-  </script>
 </head>
 <body>
   <div class="bg-orb orb-a"></div>
@@ -40,7 +17,12 @@
       <span class="brand-mark">✦</span>
       <span class="brand-text">CoverCraft</span>
     </a>
-    <nav class="nav">
+    <button class="menu-toggle" type="button" aria-label="Open navigation menu" aria-expanded="false" aria-controls="site-nav">
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+    <nav class="nav" id="site-nav">
       <a href="#flow">Flow</a>
       <a href="#setup">Setup</a>
       <a href="#surfaces">Product</a>
@@ -54,10 +36,6 @@
     <section class="hero section">
       <div class="hero-copy reveal">
         <div class="eyebrow eyebrow-hero">Chrome extension for faster applications</div>
-        <div class="hero-brand">
-          <span class="hero-brand-mark">✦</span>
-          <span class="hero-brand-line">CoverCraft</span>
-        </div>
         <h1>Write better applications without leaving the job page.</h1>
         <p class="lede">
           Cover letters, tailored resumes, and follow-up answers stay in one clean workspace with the role, company, and profile already in context.
@@ -188,18 +166,22 @@
         <h2>The product in real screens.</h2>
       </div>
       <div class="showcase-carousel">
-        <div class="showcase-nav reveal" aria-label="Product surfaces">
-          <button class="showcase-nav-btn is-active" type="button" data-showcase-target="popup" aria-pressed="true">Popup</button>
-          <button class="showcase-nav-btn" type="button" data-showcase-target="cover-letter" aria-pressed="false">Cover Letter</button>
-          <button class="showcase-nav-btn" type="button" data-showcase-target="question" aria-pressed="false">Q&amp;A</button>
-          <button class="showcase-nav-btn" type="button" data-showcase-target="resume" aria-pressed="false">Resume</button>
-          <button class="showcase-nav-btn" type="button" data-showcase-target="control-center" aria-pressed="false">Control Center</button>
-          <button class="showcase-nav-btn" type="button" data-showcase-target="sessions" aria-pressed="false">Sessions</button>
-          <button class="showcase-nav-btn" type="button" data-showcase-target="settings" aria-pressed="false">Settings</button>
-          <button class="showcase-nav-btn" type="button" data-showcase-target="profile" aria-pressed="false">Profile</button>
-          <button class="showcase-nav-btn" type="button" data-showcase-target="activity" aria-pressed="false">Activity</button>
-          <button class="showcase-nav-btn" type="button" data-showcase-target="companies" aria-pressed="false">Companies</button>
-          <button class="showcase-nav-btn" type="button" data-showcase-target="account" aria-pressed="false">Account</button>
+        <div class="showcase-controls reveal">
+          <button class="showcase-arrow showcase-arrow--prev" type="button" data-showcase-prev aria-label="Previous product screen">‹</button>
+          <div class="showcase-nav" aria-label="Product surfaces">
+            <button class="showcase-nav-btn is-active" type="button" data-showcase-target="popup" aria-pressed="true">Popup</button>
+            <button class="showcase-nav-btn" type="button" data-showcase-target="cover-letter" aria-pressed="false">Cover Letter</button>
+            <button class="showcase-nav-btn" type="button" data-showcase-target="question" aria-pressed="false">Q&amp;A</button>
+            <button class="showcase-nav-btn" type="button" data-showcase-target="resume" aria-pressed="false">Resume</button>
+            <button class="showcase-nav-btn" type="button" data-showcase-target="control-center" aria-pressed="false">Control Center</button>
+            <button class="showcase-nav-btn" type="button" data-showcase-target="sessions" aria-pressed="false">Sessions</button>
+            <button class="showcase-nav-btn" type="button" data-showcase-target="settings" aria-pressed="false">Settings</button>
+            <button class="showcase-nav-btn" type="button" data-showcase-target="profile" aria-pressed="false">Profile</button>
+            <button class="showcase-nav-btn" type="button" data-showcase-target="activity" aria-pressed="false">Activity</button>
+            <button class="showcase-nav-btn" type="button" data-showcase-target="companies" aria-pressed="false">Companies</button>
+            <button class="showcase-nav-btn" type="button" data-showcase-target="account" aria-pressed="false">Account</button>
+          </div>
+          <button class="showcase-arrow showcase-arrow--next" type="button" data-showcase-next aria-label="Next product screen">›</button>
         </div>
 
         <div class="showcase-carousel-shell reveal">
@@ -422,7 +404,6 @@
         <div class="footer-col">
           <div class="footer-caption">Policies</div>
           <a href="privacy.html">Privacy policy</a>
-          <a href="/.well-known/security.txt">Security.txt</a>
           <a href="robots.txt">Robots</a>
           <a href="sitemap.xml">Sitemap</a>
         </div>

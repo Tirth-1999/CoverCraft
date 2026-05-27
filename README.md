@@ -2,6 +2,8 @@
 
 CoverCraft is a Chrome extension for faster job applications.
 
+Current release: `3.0`
+
 It turns a live job page into a reusable workspace where you can generate a tailored cover letter, ask focused follow-up questions, keep profile context ready, and move into a reusable control center without breaking flow.
 
 ## Why CoverCraft
@@ -16,10 +18,22 @@ With CoverCraft, you can:
 
 - open a compact extension panel directly on the job page
 - generate a tailored cover letter using the live role context
+- paste, edit, save, and download a manual cover letter without making an AI request
+- tailor an Overleaf-ready resume draft from the same job and profile context
 - ask Q&A follow-ups in the same saved session
 - keep one profile ready for reuse
 - reopen previous sessions without rebuilding everything
-- manage settings, sync, and account state from one control center
+- manage settings, sync, model availability, and account state from one control center
+
+## Release 3.0 Highlights
+
+- Manual mode: save a pasted or edited cover letter as a session artifact and download it as a PDF without using AI.
+- On-demand page injection: the extension now injects the page panel from the popup instead of registering a persistent `<all_urls>` content script.
+- Model availability: provider request headers, rate limits, cooldowns, and token usage are captured from generation and API tests.
+- Dashboard auditability: saved drafts show token usage, ranked evidence, prompt context, cached research, editable letter text, and exportable metrics.
+- Cloud sync hardening: sign-in and sync now report local Chrome storage state, Firestore quota details, background sync progress, and model usage sync.
+- Site polish: mobile navigation, docked header behavior, carousel arrows, responsive product screenshots, and third-party analytics script removal.
+- Firebase cleanup: hosted auth helper pages were removed from the repo; extension sign-in stays on the `chrome.identity` flow.
 
 ## Core Product Flow
 
@@ -28,19 +42,21 @@ flowchart LR
     A["Open job page"] --> B["Launch CoverCraft"]
     B --> C["Lock role and profile context"]
     C --> D["Generate cover letter"]
-    C --> E["Ask Q&A follow-ups"]
+    C --> E["Save manual letter"]
+    C --> F["Ask Q&A follow-ups"]
     D --> F["Save reusable session"]
     E --> F
     F --> G["Reopen from control center"]
-    G --> H["Manage settings, profile, and sync"]
+    G --> H["Manage settings, profile, models, and sync"]
 ```
 
 1. Open a job page
 2. Launch CoverCraft on that page
 3. Lock the role, company, and profile context
 4. Generate a tailored cover letter
-5. Ask focused follow-up questions in the same session
-6. Reuse the session later from the control center
+5. Optionally save a manual cover letter without AI
+6. Ask focused follow-up questions in the same session
+7. Reuse the session later from the control center
 
 ## What’s In This Repo
 
@@ -51,6 +67,7 @@ This repo contains:
 - the static marketing site and account page under `site/`
 - Firebase hosting and Firestore rules for the hosted surfaces
 - branding assets used by the landing page and account page
+- a post-approval launch checklist in `TODO.md`
 
 ## Quick Start
 
@@ -96,6 +113,8 @@ The landing page shows:
 - setup steps
 - real product screens
 - reusable dashboard and account surfaces
+
+The site intentionally avoids third-party analytics scripts in the checked-in pages.
 
 ## Local Verification
 

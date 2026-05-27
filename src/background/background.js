@@ -8,6 +8,15 @@ try { importScripts('../firebase.js'); } catch (_) {}
 
 var Core = CoverCraftCore;
 var STORAGE_KEYS = Core.STORAGE_KEYS;
+var numericHeaderValue = Core.numericHeaderValue || function(value) {
+  var text = String(value || '').trim();
+  if (!text) return 0;
+  var multiplier = 1;
+  if (/k$/i.test(text)) multiplier = 1000;
+  if (/m$/i.test(text)) multiplier = 1000000;
+  var parsed = Number(text.replace(/[^\d.]/g, ''));
+  return Number.isFinite(parsed) ? parsed * multiplier : 0;
+};
 var DEFAULT_MODEL = 'openrouter/free';
 var VISION_MODEL = 'google/gemma-3-12b-it:free';
 var FAST_EXTRACT_MODEL = 'google/gemma-3-12b-it:free';
@@ -23,16 +32,23 @@ var GROQ_MODELS = [
   'groq/llama-3.1-8b-instant',
   'groq/llama-3.3-70b-versatile',
   'groq/meta-llama/llama-4-scout-17b-16e-instruct',
-  'groq/moonshotai/kimi-k2-instruct',
-  'groq/moonshotai/kimi-k2-instruct-0905',
   'groq/openai/gpt-oss-120b',
   'groq/openai/gpt-oss-20b',
-  'groq/qwen/qwen3-32b'
-];
-var DISABLED_MODELS = [
+  'groq/qwen/qwen3-32b',
   'groq/compound',
   'groq/compound-mini'
 ];
+var DISABLED_MODELS = [];
+var GROQ_TPM_LIMITS = {
+  'llama-3.1-8b-instant': 6000,
+  'qwen/qwen3-32b': 6000,
+  'openai/gpt-oss-120b': 8000,
+  'openai/gpt-oss-20b': 8000,
+  'llama-3.3-70b-versatile': 12000,
+  'meta-llama/llama-4-scout-17b-16e-instruct': 30000,
+  'groq/compound': 70000,
+  'groq/compound-mini': 70000
+};
 var MAX_LEGACY_LOGS = 200;
 var mutationQueue = Promise.resolve();
 var CLOUD_AUTH_STORAGE_KEY = 'covercraft_cloud_auth_v1';
@@ -40,6 +56,11 @@ var CLOUD_META_STORAGE_KEY = 'covercraft_cloud_meta_v1';
 var CLOUD_AUTH_FLOW_STORAGE_KEY = 'covercraft_cloud_auth_flow_v1';
 var GUEST_SESSIONS_BACKUP_KEY = 'covercraft_guest_sessions_backup_v1';
 var GUEST_PORTFOLIO_BACKUP_KEY = 'covercraft_guest_portfolio_backup_v1';
+var MODEL_HEALTH_STORAGE_KEY = 'covercraft_model_health_v1';
+var MODEL_USAGE_LOG_STORAGE_KEY = 'covercraft_model_usage_log_v1';
+var MAX_MODEL_USAGE_LOGS = 500;
+var MAX_SESSION_SYNC_WRITES = 25;
+var MAX_MODEL_USAGE_SYNC_WRITES = 50;
 var FIREBASE_CONFIG = typeof COVERCRAFT_FIREBASE === 'object' && COVERCRAFT_FIREBASE ? COVERCRAFT_FIREBASE : {};
 
 var DEFAULT_SETTINGS = {
@@ -52,21 +73,355 @@ var DEFAULT_SETTINGS = {
   triggerMode: 'manual',
   cloudSyncEnabled: true
 };
+var MODEL_HEALTH_CACHE = {};
+var MODEL_USAGE_LOG_CACHE = [];
+var STORAGE_STATUS_PROBE_KEY = 'covercraft_storage_probe_v1';
+
+function modelHealthKey(model) {
+  return String(model || '').trim() || DEFAULT_MODEL;
+}
+
+function modelHealthAliases(model, apiModel) {
+  var raw = String(model || '').trim();
+  var api = String(apiModel || '').trim();
+  var values = [raw, api];
+  if (raw && raw.indexOf('groq/') !== 0 && GROQ_MODELS.indexOf('groq/' + raw) !== -1) values.push('groq/' + raw);
+  if (api && api.indexOf('groq/') !== 0 && GROQ_MODELS.indexOf('groq/' + api) !== -1) values.push('groq/' + api);
+  if (raw.indexOf('groq/') === 0) values.push(raw.replace(/^groq\//, ''));
+  if (api.indexOf('groq/') === 0) values.push(api.replace(/^groq\//, ''));
+  var seen = {};
+  return values.map(modelHealthKey).filter(function(value) {
+    if (!value || seen[value]) return false;
+    seen[value] = true;
+    return true;
+  });
+}
+
+function parseProviderSeconds(value) {
+  var text = String(value || '').trim();
+  if (!text) return 0;
+  var total = 0;
+  var match;
+  var re = /(\d+(?:\.\d+)?)\s*(ms|s|m|h)?/gi;
+  while ((match = re.exec(text))) {
+    var amount = Number(match[1]) || 0;
+    var unit = String(match[2] || 's').toLowerCase();
+    if (unit === 'ms') total += amount / 1000;
+    else if (unit === 'm') total += amount * 60;
+    else if (unit === 'h') total += amount * 3600;
+    else total += amount;
+  }
+  return total;
+}
+
+function providerLimitKind(message, rate) {
+  var text = String(message || '').toLowerCase();
+  rate = rate || {};
+  if (/tokens per day|daily token|daily.*token|token.*daily|tpd/.test(text)) return 'daily_tokens';
+  if (/requests per day|daily request|daily.*request|request.*daily|rpd/.test(text)) return 'daily_requests';
+  if (/tokens per minute|tpm/.test(text)) return 'minute_tokens';
+  if (/requests per minute|rpm/.test(text)) return 'minute_requests';
+  if (Core.numericHeaderValue(rate.remainingTokens) === 0 && Core.numericHeaderValue(rate.limitTokens) > 0) return 'minute_tokens';
+  if (Core.numericHeaderValue(rate.remainingRequests) === 0 && Core.numericHeaderValue(rate.limitRequests) > 0) return 'minute_requests';
+  return '';
+}
+
+async function rememberModelHealth(model, info) {
+  var key = modelHealthKey(model);
+  var rate = info && info.rateLimit || {};
+  var limitKind = info && info.limitKind || providerLimitKind(info && info.error, rate);
+  var resetSeconds = Math.max(parseProviderSeconds(rate.retryAfter), parseProviderSeconds(rate.resetTokens));
+  if ((limitKind === 'daily_tokens' || limitKind === 'daily_requests') && !resetSeconds) resetSeconds = parseProviderSeconds(rate.resetRequests);
+  if (limitKind === 'daily_tokens' || limitKind === 'daily_requests') resetSeconds = Math.max(resetSeconds, 24 * 60 * 60);
+  var checkedAt = Date.now();
+  var entry = {
+    model: key,
+    apiModel: info && info.apiModel || key,
+    provider: info && info.provider || (/^groq\//.test(key) ? 'groq' : 'openrouter'),
+    ok: !!(info && info.ok),
+    status: info && info.status || 0,
+    error: info && info.error || '',
+    rateLimit: rate,
+    limitKind: limitKind,
+    estimatedTokens: info && info.estimatedTokens || 0,
+    inputTokens: info && info.inputTokens || 0,
+    outputTokens: info && info.outputTokens || 0,
+    totalTokens: info && info.totalTokens || 0,
+    estimatedInputTokens: info && info.estimatedInputTokens || 0,
+    estimatedOutputTokens: info && info.estimatedOutputTokens || 0,
+    requestedOutputTokens: info && info.requestedOutputTokens || 0,
+    modelUsageTokens: info && info.modelUsageTokens || 0,
+    modelTokenLimit: info && info.modelTokenLimit || null,
+    modelUsagePercent: info && info.modelUsagePercent != null ? info.modelUsagePercent : null,
+    usageSource: info && info.usageSource || 'estimate',
+    checkedAt: checkedAt,
+    blockedUntil: resetSeconds ? checkedAt + Math.ceil(resetSeconds * 1000) : 0
+  };
+  modelHealthAliases(key, entry.apiModel).forEach(function(alias) {
+    MODEL_HEALTH_CACHE[alias] = Object.assign({}, entry, { model: alias });
+  });
+  await appendModelUsageLog(key, info, checkedAt, entry.blockedUntil);
+  await localSet((function() {
+    var update = {};
+    update[MODEL_HEALTH_STORAGE_KEY] = MODEL_HEALTH_CACHE;
+    return update;
+  })());
+  broadcastModelHealthUpdate();
+}
+
+async function appendModelUsageLog(model, info, checkedAt, blockedUntil) {
+  var entry = {
+    id: String(checkedAt) + '-' + Math.random().toString(36).slice(2, 8),
+    model: model,
+    apiModel: info && info.apiModel || model,
+    provider: info && info.provider || (/^groq\//.test(model) ? 'groq' : 'openrouter'),
+    ok: !!(info && info.ok),
+    status: info && info.status || 0,
+    error: info && info.error || '',
+    rateLimit: info && info.rateLimit || {},
+    estimatedTokens: info && info.estimatedTokens || 0,
+    estimatedInputTokens: info && info.estimatedInputTokens || 0,
+    estimatedOutputTokens: info && info.estimatedOutputTokens || 0,
+    requestedOutputTokens: info && info.requestedOutputTokens || 0,
+    modelUsageTokens: info && info.modelUsageTokens || 0,
+    modelTokenLimit: info && info.modelTokenLimit || null,
+    modelUsagePercent: info && info.modelUsagePercent != null ? info.modelUsagePercent : null,
+    usageSource: info && info.usageSource || 'estimate',
+    inputTokens: info && info.inputTokens || 0,
+    outputTokens: info && info.outputTokens || 0,
+    totalTokens: info && info.totalTokens || 0,
+    checkedAt: checkedAt,
+    timestamp: new Date(checkedAt).toISOString(),
+    blockedUntil: blockedUntil || 0
+  };
+  var data = await localGet(MODEL_USAGE_LOG_STORAGE_KEY);
+  var stored = data && data[MODEL_USAGE_LOG_STORAGE_KEY];
+  var logs = Array.isArray(stored) ? stored : MODEL_USAGE_LOG_CACHE;
+  logs = logs.concat(entry).slice(-MAX_MODEL_USAGE_LOGS);
+  MODEL_USAGE_LOG_CACHE = logs;
+  var update = {};
+  update[MODEL_USAGE_LOG_STORAGE_KEY] = logs;
+  await localSet(update);
+  return entry;
+}
+
+function getModelHealthSummary() {
+  var out = {};
+  Object.keys(MODEL_HEALTH_CACHE).forEach(function(key) {
+    var item = MODEL_HEALTH_CACHE[key];
+    if (!item) return;
+    out[key] = {
+      model: item.model,
+      apiModel: item.apiModel,
+      provider: item.provider,
+      ok: item.ok,
+      status: item.status,
+      error: item.error,
+      rateLimit: item.rateLimit || {},
+      limitKind: item.limitKind || '',
+      estimatedTokens: item.estimatedTokens || 0,
+      estimatedInputTokens: item.estimatedInputTokens || 0,
+      estimatedOutputTokens: item.estimatedOutputTokens || 0,
+      requestedOutputTokens: item.requestedOutputTokens || 0,
+      modelUsageTokens: item.modelUsageTokens || 0,
+      modelTokenLimit: item.modelTokenLimit || null,
+      modelUsagePercent: item.modelUsagePercent != null ? item.modelUsagePercent : null,
+      usageSource: item.usageSource || 'estimate',
+      inputTokens: item.inputTokens || 0,
+      outputTokens: item.outputTokens || 0,
+      totalTokens: item.totalTokens || 0,
+      checkedAt: item.checkedAt || 0,
+      blockedUntil: item.blockedUntil || 0
+    };
+  });
+  return out;
+}
+
+function rebuildModelHealthFromUsageLogs(logs) {
+  (logs || []).forEach(function(entry) {
+    if (!entry || !entry.model) return;
+    var health = {
+      model: entry.model,
+      apiModel: entry.apiModel || entry.model,
+      provider: entry.provider || (/^groq\//.test(entry.model) ? 'groq' : 'openrouter'),
+      ok: !!entry.ok,
+      status: entry.status || 0,
+      error: entry.error || '',
+      rateLimit: entry.rateLimit || {},
+      limitKind: entry.limitKind || '',
+      estimatedTokens: entry.estimatedTokens || 0,
+      estimatedInputTokens: entry.estimatedInputTokens || 0,
+      estimatedOutputTokens: entry.estimatedOutputTokens || 0,
+      requestedOutputTokens: entry.requestedOutputTokens || 0,
+      modelUsageTokens: entry.modelUsageTokens || 0,
+      modelTokenLimit: entry.modelTokenLimit || null,
+      modelUsagePercent: entry.modelUsagePercent != null ? entry.modelUsagePercent : null,
+      usageSource: entry.usageSource || 'estimate',
+      inputTokens: entry.inputTokens || 0,
+      outputTokens: entry.outputTokens || 0,
+      totalTokens: entry.totalTokens || 0,
+      checkedAt: entry.checkedAt || 0,
+      blockedUntil: entry.blockedUntil || 0
+    };
+    modelHealthAliases(entry.model, entry.apiModel).forEach(function(alias) {
+      var existing = MODEL_HEALTH_CACHE[alias];
+      if (!existing || Number(health.checkedAt || 0) >= Number(existing.checkedAt || 0)) {
+        MODEL_HEALTH_CACHE[alias] = Object.assign({}, health, { model: alias });
+      }
+    });
+  });
+}
+
+function broadcastModelHealthUpdate() {
+  var message = {
+    type: 'MODEL_HEALTH_UPDATE',
+    modelHealth: getModelHealthSummary(),
+    modelUsageLog: MODEL_USAGE_LOG_CACHE.slice(-MAX_MODEL_USAGE_LOGS)
+  };
+  try {
+    chrome.runtime.sendMessage(message, function() {
+      void chrome.runtime.lastError;
+    });
+  } catch (_) {}
+  try {
+    chrome.tabs.query({}, function(tabs) {
+      (tabs || []).forEach(function(tab) {
+        if (!tab || !tab.id) return;
+        chrome.tabs.sendMessage(tab.id, message, function() {
+          void chrome.runtime.lastError;
+        });
+      });
+    });
+  } catch (_) {}
+}
 
 function localGet(keys) {
-  return new Promise(function(resolve) {
+  return new Promise(function(resolve, reject) {
     chrome.storage.local.get(keys, function(data) {
+      if (chrome.runtime.lastError) {
+        var error = new Error(chrome.runtime.lastError.message || 'Could not read local storage.');
+        error.provider = 'chrome_storage';
+        reject(error);
+        return;
+      }
       resolve(data || {});
     });
   });
 }
 
-function localSet(obj) {
-  return new Promise(function(resolve) {
+function storageByteLength(value) {
+  try {
+    return new Blob([JSON.stringify(value || {})]).size;
+  } catch (_) {
+    return JSON.stringify(value || {}).length;
+  }
+}
+
+function rawLocalSet(obj) {
+  return new Promise(function(resolve, reject) {
     chrome.storage.local.set(obj, function() {
+      if (chrome.runtime.lastError) {
+        var error = new Error(chrome.runtime.lastError.message || 'Could not write local storage.');
+        error.provider = 'chrome_storage';
+        error.attemptedBytes = storageByteLength(obj);
+        reject(error);
+        return;
+      }
       resolve();
     });
   });
+}
+
+function isChromeStorageQuotaError(err) {
+  return !!(err && err.provider === 'chrome_storage' && /quota|exceeded|max.*bytes|storage/i.test(String(err.message || '')));
+}
+
+async function compactLocalStorageForQuota() {
+  await localRemove([STORAGE_KEYS.legacyLogs, GUEST_SESSIONS_BACKUP_KEY, GUEST_PORTFOLIO_BACKUP_KEY]).catch(function() {});
+  var data = await localGet([MODEL_USAGE_LOG_STORAGE_KEY]);
+  var logs = Array.isArray(data[MODEL_USAGE_LOG_STORAGE_KEY]) ? data[MODEL_USAGE_LOG_STORAGE_KEY] : MODEL_USAGE_LOG_CACHE;
+  if (logs.length > 120) {
+    MODEL_USAGE_LOG_CACHE = logs.slice(-120);
+    var update = {};
+    update[MODEL_USAGE_LOG_STORAGE_KEY] = MODEL_USAGE_LOG_CACHE;
+    await rawLocalSet(update).catch(function() {});
+  }
+}
+
+async function localSet(obj) {
+  try {
+    await rawLocalSet(obj);
+  } catch (err) {
+    if (!isChromeStorageQuotaError(err)) throw err;
+    await compactLocalStorageForQuota();
+    try {
+      await rawLocalSet(obj);
+    } catch (retryErr) {
+      if (!retryErr.provider) retryErr.provider = 'chrome_storage';
+      retryErr.storageStatus = await getExtensionStorageStatus().catch(function() { return null; });
+      throw retryErr;
+    }
+  }
+}
+
+function localRemove(keys) {
+  return new Promise(function(resolve, reject) {
+    chrome.storage.local.remove(keys, function() {
+      if (chrome.runtime.lastError) {
+        var error = new Error(chrome.runtime.lastError.message || 'Could not remove local storage.');
+        error.provider = 'chrome_storage';
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+async function getExtensionStorageStatus() {
+  var data = await localGet(null);
+  var usedBytes = storageByteLength(data);
+  var permissions = chrome.runtime.getManifest && chrome.runtime.getManifest().permissions || [];
+  var hasUnlimitedStorage = permissions.indexOf('unlimitedStorage') !== -1;
+  var quotaBytes = Number(chrome.storage.local && chrome.storage.local.QUOTA_BYTES || 0) || 0;
+  var writable = false;
+  var writeError = '';
+  try {
+    var probe = {};
+    probe[STORAGE_STATUS_PROBE_KEY] = { checkedAt: Core.nowIso(), value: Math.random().toString(36).slice(2) };
+    await rawLocalSet(probe);
+    await localRemove(STORAGE_STATUS_PROBE_KEY);
+    writable = true;
+  } catch (err) {
+    writeError = err && err.message || 'Storage write probe failed.';
+  }
+  var percentUsed = quotaBytes ? Math.round((usedBytes / quotaBytes) * 1000) / 10 : null;
+  var state = !writable ? 'blocked' : (percentUsed != null && percentUsed >= 95 ? 'full' : (percentUsed != null && percentUsed >= 80 ? 'warning' : 'ok'));
+  return {
+    state: state,
+    writable: writable,
+    writeError: writeError,
+    usedBytes: usedBytes,
+    quotaBytes: quotaBytes,
+    percentUsed: percentUsed,
+    hasUnlimitedStorage: hasUnlimitedStorage
+  };
+}
+
+function formatBytes(bytes) {
+  var value = Number(bytes || 0);
+  if (value >= 1024 * 1024) return (Math.round((value / 1024 / 1024) * 10) / 10) + ' MB';
+  if (value >= 1024) return (Math.round((value / 1024) * 10) / 10) + ' KB';
+  return value + ' B';
+}
+
+function describeStorageStatus(status) {
+  if (!status) return 'Storage status could not be checked.';
+  var parts = ['Extension local storage: ' + formatBytes(status.usedBytes) + (status.quotaBytes ? ' of ' + formatBytes(status.quotaBytes) : '')];
+  if (status.percentUsed != null) parts.push(status.percentUsed + '% used');
+  parts.push(status.hasUnlimitedStorage ? 'unlimitedStorage permission is enabled' : 'unlimitedStorage permission is not enabled');
+  parts.push(status.writable ? 'write probe passed' : 'write probe failed' + (status.writeError ? ': ' + status.writeError : ''));
+  return parts.join(', ') + '.';
 }
 
 function syncGet(keys) {
@@ -297,9 +652,51 @@ async function firestoreRequest(method, path, body, auth, query) {
   if (response.status === 404) return null;
   var data = await response.json().catch(function() { return {}; });
   if (!response.ok) {
-    throw new Error(data.error && data.error.message || ('Firestore HTTP ' + response.status));
+    var error = new Error(data.error && data.error.message || ('Firestore HTTP ' + response.status));
+    error.status = response.status;
+    error.code = data.error && (data.error.status || data.error.code) || '';
+    error.details = data.error && data.error.details || [];
+    error.method = method;
+    error.path = path;
+    error.provider = 'firestore';
+    error.retryAfter = response.headers.get('retry-after') || '';
+    throw error;
   }
   return data;
+}
+
+function firestoreErrorSummary(err) {
+  if (!err || err.provider !== 'firestore') return '';
+  var detailReasons = Array.isArray(err.details) ? err.details.map(function(detail) {
+    return detail && (detail.reason || detail['@type'] || detail.message) || '';
+  }).filter(Boolean) : [];
+  return [
+    'Firestore ' + (err.method || 'request') + ' ' + (err.path || 'unknown path'),
+    err.status ? 'HTTP ' + err.status : '',
+    err.code ? 'code ' + err.code : '',
+    detailReasons.length ? 'details ' + detailReasons.join(', ') : '',
+    err.retryAfter ? 'retry after ' + err.retryAfter + 's' : ''
+  ].filter(Boolean).join(' · ');
+}
+
+function normalizeCloudErrorMessage(err, phase, storageStatus) {
+  var message = String(err && err.message || err || '').trim();
+  var code = String(err && (err.code || err.status) || '').trim();
+  var provider = String(err && err.provider || '').trim();
+  var haystack = (message + ' ' + code).toLowerCase();
+  if (provider === 'chrome_storage' || /quota_bytes|chrome storage|local storage/.test(haystack)) {
+    return 'CoverCraft extension local storage quota was exceeded. This is local Chrome extension storage, not Firestore, so deleting Firestore documents will not clear it. CoverCraft already tried trimming nonessential local logs. ' + describeStorageStatus(storageStatus || err && err.storageStatus);
+  }
+  if (provider === 'firestore' && /quota|resource[_\s-]*exhausted|rate.?limit|too many requests|429/.test(haystack)) {
+    return 'Firestore rejected the cloud sync because its quota/rate window is exhausted. Deleting Firestore documents reduces stored data, but it does not reset Google read/write quota counters that have already been spent. ' + firestoreErrorSummary(err) + '. Your local CoverCraft data is still available; wait for the Firebase/Firestore quota window to reset, then run Sync Now again.';
+  }
+  if (/quota|resource[_\s-]*exhausted|rate.?limit|too many requests/.test(haystack)) {
+    if (phase === 'auth') {
+      return 'Google/Firebase sign-in quota was exceeded. Wait a bit, then try again, or check the Firebase Authentication and Identity Toolkit quotas for this Google Cloud project.';
+    }
+    return 'Cloud sign-in worked, but Firebase/Firestore sync hit a quota limit. Your local data is still available; cloud backup will retry after the quota window resets.';
+  }
+  return message || (phase === 'auth' ? 'Google sign-in failed.' : 'Cloud sync failed after sign-in.');
 }
 
 async function listFirestoreDocuments(path) {
@@ -370,6 +767,36 @@ async function mergeRemoteAppStateIntoLocal(remoteState, options) {
       await localSet(portfolioPayload);
     }
   }
+
+  if (remoteState.modelHealth && typeof remoteState.modelHealth === 'object') {
+    MODEL_HEALTH_CACHE = Object.assign({}, remoteState.modelHealth, MODEL_HEALTH_CACHE);
+    var healthPayload = {};
+    healthPayload[MODEL_HEALTH_STORAGE_KEY] = MODEL_HEALTH_CACHE;
+    await localSet(healthPayload);
+  }
+}
+
+async function mergeRemoteModelUsageIntoLocal(remoteUsageLogs) {
+  if (!Array.isArray(remoteUsageLogs) || !remoteUsageLogs.length) return;
+  var data = await localGet(MODEL_USAGE_LOG_STORAGE_KEY);
+  var localLogs = Array.isArray(data[MODEL_USAGE_LOG_STORAGE_KEY]) ? data[MODEL_USAGE_LOG_STORAGE_KEY] : MODEL_USAGE_LOG_CACHE;
+  var byId = {};
+  localLogs.concat(remoteUsageLogs).forEach(function(entry) {
+    if (!entry) return;
+    var id = entry.id || (String(entry.checkedAt || Date.now()) + '-' + String(entry.model || entry.apiModel || 'model'));
+    byId[id] = Object.assign({}, entry, { id: id });
+  });
+  var merged = Object.keys(byId).map(function(id) {
+    return byId[id];
+  }).sort(function(a, b) {
+    return Number(a.checkedAt || 0) - Number(b.checkedAt || 0);
+  }).slice(-MAX_MODEL_USAGE_LOGS);
+  MODEL_USAGE_LOG_CACHE = merged;
+  rebuildModelHealthFromUsageLogs(merged);
+  var payload = {};
+  payload[MODEL_USAGE_LOG_STORAGE_KEY] = merged;
+  payload[MODEL_HEALTH_STORAGE_KEY] = MODEL_HEALTH_CACHE;
+  await localSet(payload);
 }
 
 async function getRemoteCloudState() {
@@ -377,9 +804,11 @@ async function getRemoteCloudState() {
   if (!auth || !auth.uid) throw new Error('Sign in with Google to enable CoverCraft cloud sync.');
   var appDoc = await firestoreRequest('GET', 'users/' + auth.uid + '/state/main', null, auth);
   var sessions = await listFirestoreDocuments('users/' + auth.uid + '/sessions');
+  var modelUsageLogs = await listFirestoreDocuments('users/' + auth.uid + '/modelUsage');
   return {
     app: decodeFirestoreDocument(appDoc),
-    sessions: sessions
+    sessions: sessions,
+    modelUsageLogs: modelUsageLogs
   };
 }
 
@@ -391,6 +820,10 @@ async function syncCloudState(reason) {
 
   var state = await getSessionState();
   var portfolioBundle = await getPortfolioBundle();
+  var modelData = await localGet([MODEL_HEALTH_STORAGE_KEY, MODEL_USAGE_LOG_STORAGE_KEY]);
+  MODEL_HEALTH_CACHE = Object.assign({}, modelData[MODEL_HEALTH_STORAGE_KEY] || {}, MODEL_HEALTH_CACHE);
+  MODEL_USAGE_LOG_CACHE = Array.isArray(modelData[MODEL_USAGE_LOG_STORAGE_KEY]) ? modelData[MODEL_USAGE_LOG_STORAGE_KEY] : MODEL_USAGE_LOG_CACHE;
+  rebuildModelHealthFromUsageLogs(MODEL_USAGE_LOG_CACHE);
   var now = Core.nowIso();
 
   await patchFirestoreDocument('users/' + auth.uid, {
@@ -406,18 +839,58 @@ async function syncCloudState(reason) {
     portfolio: portfolioBundle.rawPortfolio || {},
     portfolioSource: portfolioBundle.source || 'local_file',
     portfolioVersion: portfolioBundle.version || '',
+    modelHealth: getModelHealthSummary(),
     updatedAt: now,
     syncReason: reason || 'manual'
   });
 
   var ids = state.order.slice();
-  for (var i = 0; i < ids.length; i++) {
-    var session = state.sessions[ids[i]];
+  var pendingSessionIds = ids.filter(function(id) {
+    var session = state.sessions[id];
+    if (!session) return false;
+    if (!session.syncedAt) return true;
+    return localTimeMs(session.updatedAt) > localTimeMs(session.syncedAt);
+  }).slice(0, MAX_SESSION_SYNC_WRITES);
+  var syncedSessionIds = {};
+  for (var i = 0; i < pendingSessionIds.length; i++) {
+    var session = state.sessions[pendingSessionIds[i]];
     if (!session) continue;
     await patchFirestoreDocument('users/' + auth.uid + '/sessions/' + session.id, Object.assign({}, session, {
       title: Core.sessionTitle(session),
       syncedAt: now
     }));
+    syncedSessionIds[session.id] = true;
+  }
+
+  var usageLogs = MODEL_USAGE_LOG_CACHE.slice(-MAX_MODEL_USAGE_LOGS);
+  var pendingUsageLogs = usageLogs.filter(function(usage) {
+    return usage && usage.id && !usage.syncedAt;
+  }).slice(-MAX_MODEL_USAGE_SYNC_WRITES);
+  var syncedUsageIds = {};
+  for (var j = 0; j < pendingUsageLogs.length; j++) {
+    var usage = pendingUsageLogs[j];
+    if (!usage || !usage.id) continue;
+    await patchFirestoreDocument('users/' + auth.uid + '/modelUsage/' + usage.id, Object.assign({}, usage, {
+      syncedAt: now
+    }));
+    syncedUsageIds[usage.id] = true;
+  }
+
+  if (Object.keys(syncedUsageIds).length) {
+    MODEL_USAGE_LOG_CACHE = MODEL_USAGE_LOG_CACHE.map(function(usage) {
+      if (!usage || !usage.id || !syncedUsageIds[usage.id]) return usage;
+      return Object.assign({}, usage, { syncedAt: now });
+    }).slice(-MAX_MODEL_USAGE_LOGS);
+    var usagePayload = {};
+    usagePayload[MODEL_USAGE_LOG_STORAGE_KEY] = MODEL_USAGE_LOG_CACHE;
+    await localSet(usagePayload);
+  }
+
+  if (Object.keys(syncedSessionIds).length) {
+    Object.keys(syncedSessionIds).forEach(function(id) {
+      if (state.sessions[id]) state.sessions[id] = Object.assign({}, state.sessions[id], { syncedAt: now });
+    });
+    await saveSessionState(state);
   }
 
   var verifiedAppDoc = await firestoreRequest('GET', 'users/' + auth.uid + '/state/main', null, auth);
@@ -430,10 +903,10 @@ async function syncCloudState(reason) {
     lastSyncedAt: now,
     lastError: '',
     lastSyncReason: reason || 'manual',
-    lastSyncedCount: ids.length,
+    lastSyncedCount: Object.keys(syncedSessionIds).length,
     lastVerifiedAt: Core.nowIso()
   });
-  return { ok: true, syncedAt: now, count: ids.length };
+  return { ok: true, syncedAt: now, count: Object.keys(syncedSessionIds).length, usageCount: Object.keys(syncedUsageIds).length };
 }
 
 async function clearCloudSessions() {
@@ -455,8 +928,9 @@ async function maybeSyncCloud(reason) {
   try {
     return await syncCloudState(reason);
   } catch (err) {
-    await saveCloudMeta({ lastError: err.message || 'Cloud sync failed.' });
-    return { ok: false, error: err.message };
+    var message = normalizeCloudErrorMessage(err, 'sync');
+    await saveCloudMeta({ lastError: message });
+    return { ok: false, error: message };
   }
 }
 
@@ -546,7 +1020,11 @@ async function exchangeGoogleIdTokenForFirebase(config, googleAuth) {
   });
   var data = await response.json().catch(function() { return {}; });
   if (!response.ok) {
-    throw new Error(data.error && data.error.message || 'Firebase sign-in failed.');
+    var error = new Error(data.error && data.error.message || 'Firebase sign-in failed.');
+    error.status = response.status;
+    error.code = data.error && (data.error.status || data.error.code) || '';
+    error.provider = 'identitytoolkit';
+    throw error;
   }
   return data;
 }
@@ -681,7 +1159,29 @@ async function backupGuestLocalState() {
     portfolio: portfolioBundle.rawPortfolio || {},
     source: portfolioBundle.source || 'local_file'
   };
-  await localSet(payload);
+  try {
+    await localSet(payload);
+  } catch (err) {
+    if (err && err.provider === 'chrome_storage' && /quota/i.test(String(err.message || ''))) {
+      await localRemove([GUEST_SESSIONS_BACKUP_KEY, GUEST_PORTFOLIO_BACKUP_KEY]).catch(function() {});
+      var fallback = {};
+      fallback[GUEST_SESSIONS_BACKUP_KEY] = {
+        skipped: true,
+        reason: 'quota_exceeded',
+        sessionCount: state.order && state.order.length || Object.keys(state.sessions || {}).length,
+        createdAt: Core.nowIso()
+      };
+      fallback[GUEST_PORTFOLIO_BACKUP_KEY] = {
+        skipped: true,
+        reason: 'quota_exceeded',
+        source: portfolioBundle.source || 'local_file',
+        createdAt: Core.nowIso()
+      };
+      await localSet(fallback);
+      return;
+    }
+    throw err;
+  }
 }
 
 async function restoreGuestLocalState() {
@@ -689,9 +1189,11 @@ async function restoreGuestLocalState() {
   var sessionBackup = data[GUEST_SESSIONS_BACKUP_KEY] || null;
   var portfolioBackup = data[GUEST_PORTFOLIO_BACKUP_KEY] || null;
   var payload = {};
-  payload[STORAGE_KEYS.sessions] = sessionBackup && sessionBackup.sessions ? sessionBackup.sessions : {};
-  payload[STORAGE_KEYS.sessionOrder] = sessionBackup && sessionBackup.order ? sessionBackup.order : [];
-  if (portfolioBackup) {
+  if (sessionBackup && !sessionBackup.skipped && sessionBackup.sessions) {
+    payload[STORAGE_KEYS.sessions] = sessionBackup.sessions;
+    payload[STORAGE_KEYS.sessionOrder] = sessionBackup.order || [];
+  }
+  if (portfolioBackup && !portfolioBackup.skipped) {
     payload[STORAGE_KEYS.activePortfolio] = portfolioBackup.portfolio || {};
     payload[STORAGE_KEYS.activePortfolioSource] = portfolioBackup.source || 'local_file';
   }
@@ -705,9 +1207,27 @@ function queueMutation(work) {
     return work();
   });
   mutationQueue = next.catch(function(err) {
+    if (isKnownProviderWarning(err)) {
+      console.warn('[CoverCraft]', err && err.message || err);
+      return;
+    }
     console.error('[CoverCraft]', err);
   });
   return next;
+}
+
+function isKnownProviderWarning(err) {
+  var message = String(err && err.message || err || '').toLowerCase();
+  if (!message) return false;
+  return /groq rate limit|openrouter.*rate limit|rate limit reached|too many requests|daily token|daily request|tokens per minute|requests per minute|tokens-per-minute|requests-per-minute|model.*unavailable|not available to this api key|does not exist or you do not have access|provider returned error|temporarily unavailable|overloaded/.test(message);
+}
+
+function warningPipelineLabel(err, fallback) {
+  var message = String(err && err.message || err || '').toLowerCase();
+  if (/rate limit|too many requests|daily token|daily request|tokens per minute|requests per minute|tokens-per-minute|requests-per-minute/.test(message)) return 'Provider limit reached';
+  if (/model.*unavailable|not available to this api key|does not exist or you do not have access/.test(message)) return 'Model unavailable';
+  if (/provider returned error|temporarily unavailable|overloaded/.test(message)) return 'Provider unavailable';
+  return fallback || 'Provider warning';
 }
 
 function moveIdToFront(order, id) {
@@ -753,7 +1273,12 @@ function ensureSessionBase(state, payload, portfolioVersion) {
   var normalizedUrl = Core.normalizeUrl(payload.pageUrl || '');
   var rawText = String(payload.rawPageText || '');
   var scrapeHash = Core.shortHash(rawText);
-  var sessionId = Core.buildSessionId(normalizedUrl, scrapeHash, portfolioVersion);
+  var requestedSessionId = String(payload.sessionId || '').trim();
+  var sessionId = requestedSessionId && state.sessions[requestedSessionId]
+    ? requestedSessionId
+    : (payload.forceNewSession
+      ? 'sess_' + Core.shortHash([normalizedUrl, scrapeHash, portfolioVersion, payload.refreshNonce || Core.nowIso()].join('|'))
+      : Core.buildSessionId(normalizedUrl, scrapeHash, portfolioVersion));
   var session = state.sessions[sessionId] || Core.createEmptySession();
 
   session.id = sessionId;
@@ -1214,13 +1739,118 @@ async function aiChatMessages(messages, options) {
   var useGroq = /^groq\//i.test(requestedModel) || GROQ_MODELS.indexOf(requestedModel) !== -1;
   var apiKey = useGroq ? settings.groqKey : settings.openrouterKey;
   if (!apiKey) throw new Error(useGroq ? 'Missing Groq API key. Add it in CoverCraft settings.' : 'Missing OpenRouter API key. Add it in CoverCraft settings.');
+  var groqModelId = useGroq ? groqApiModelId(requestedModel) : requestedModel;
+  var requestedMaxTokens = options && options.maxTokens || 1200;
+  var maxTokens = useGroq ? clampGroqMaxTokens(groqModelId, requestedMaxTokens) : requestedMaxTokens;
 
   var body = {
-    model: useGroq ? requestedModel.replace(/^groq\//, '') : requestedModel,
+    model: groqModelId,
     messages: messages,
-    temperature: options && options.temperature != null ? options.temperature : 0.2,
-    max_tokens: options && options.maxTokens || 1200
+    temperature: options && options.temperature != null ? options.temperature : 0.2
   };
+  if (useGroq) {
+    body.max_completion_tokens = maxTokens;
+    body.top_p = 1;
+    body.stream = false;
+    body.stop = null;
+    if (isGroqCompoundModel(groqModelId)) {
+      body.compound_custom = {
+        tools: {
+          enabled_tools: ['web_search', 'code_interpreter', 'visit_website']
+        }
+      };
+    }
+  } else {
+    body.max_tokens = maxTokens;
+  }
+
+  function groqApiModelId(model) {
+    var value = String(model || '').trim();
+    if (value === 'groq/compound' || value === 'groq/compound-mini') return value;
+    return value.replace(/^groq\//, '');
+  }
+
+  function isGroqCompoundModel(modelId) {
+    return modelId === 'groq/compound' || modelId === 'groq/compound-mini';
+  }
+
+  function estimateTokensFromMessages(items) {
+    var chars = JSON.stringify(items || []).length;
+    return Math.ceil(chars / 4);
+  }
+
+  function clampGroqMaxTokens(modelId, requested) {
+    var limit = GROQ_TPM_LIMITS[modelId] || 6000;
+    if (limit <= 6000) return Math.min(requested, 1050);
+    if (limit <= 8000) return Math.min(requested, 1250);
+    if (limit <= 12000) return Math.min(requested, 1500);
+    return Math.min(requested, 1800);
+  }
+
+  var estimatedInputTokens = estimateTokensFromMessages(messages);
+  var estimatedRequestTokens = estimatedInputTokens + maxTokens;
+
+  function numberFromHeader(value) {
+    var parsed = Number(String(value || '').replace(/[^\d.]/g, ''));
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  function collectRateLimitHeaders(response) {
+    return {
+      retryAfter: response.headers.get('retry-after') || '',
+      limitRequests: response.headers.get('x-ratelimit-limit-requests') || '',
+      limitTokens: response.headers.get('x-ratelimit-limit-tokens') || '',
+      remainingRequests: response.headers.get('x-ratelimit-remaining-requests') || '',
+      remainingTokens: response.headers.get('x-ratelimit-remaining-tokens') || '',
+      resetRequests: response.headers.get('x-ratelimit-reset-requests') || '',
+      resetTokens: response.headers.get('x-ratelimit-reset-tokens') || ''
+    };
+  }
+
+  function estimateTokensFromText(text) {
+    return Math.ceil(String(text || '').length / 4);
+  }
+
+  function normalizeTokenUsage(data, responseText, rateLimit) {
+    var usage = data && data.usage || {};
+    var actualInputTokens = Number(usage.prompt_tokens || usage.input_tokens || usage.inputTokens || 0) || 0;
+    var actualOutputTokens = Number(usage.completion_tokens || usage.output_tokens || usage.outputTokens || 0) || 0;
+    var actualTotalTokens = Number(usage.total_tokens || usage.totalTokens || 0) || 0;
+    var estimatedOutputTokens = actualOutputTokens ? 0 : estimateTokensFromText(responseText);
+    var estimatedTotal = actualTotalTokens || (estimatedInputTokens + (actualOutputTokens || estimatedOutputTokens || maxTokens));
+    var modelTokenLimit = numberFromHeader(rateLimit && rateLimit.limitTokens);
+    var usageTokenCount = actualTotalTokens || estimatedTotal;
+    return {
+      inputTokens: actualInputTokens,
+      outputTokens: actualOutputTokens,
+      totalTokens: actualTotalTokens,
+      estimatedInputTokens: estimatedInputTokens,
+      estimatedOutputTokens: estimatedOutputTokens,
+      requestedOutputTokens: maxTokens,
+      estimatedTokens: estimatedTotal,
+      modelUsageTokens: usageTokenCount,
+      modelTokenLimit: modelTokenLimit || null,
+      modelUsagePercent: modelTokenLimit ? Math.round((usageTokenCount / modelTokenLimit) * 1000) / 10 : null,
+      usageSource: actualTotalTokens ? 'provider' : 'estimate'
+    };
+  }
+
+  function rateLimitDetails(resultInfo) {
+    var rate = resultInfo && resultInfo.rateLimit || {};
+    var parts = [];
+    if (rate.limitTokens) parts.push('TPM limit: ' + rate.limitTokens);
+    if (rate.remainingTokens) parts.push('tokens remaining: ' + rate.remainingTokens);
+    if (rate.resetTokens) parts.push('token reset: ' + rate.resetTokens);
+    if (rate.retryAfter) parts.push('retry after: ' + rate.retryAfter + 's');
+    if (estimatedRequestTokens) parts.push('estimated request: ~' + estimatedRequestTokens + ' tokens');
+    return parts.length ? ' (' + parts.join(', ') + ')' : '';
+  }
+
+  function displayModelFromResponse(resultInfo, fallbackModel) {
+    var returned = String(resultInfo && resultInfo.data && resultInfo.data.model || fallbackModel || '').trim();
+    if (useGroq && returned && returned.indexOf('groq/') !== 0) return 'groq/' + returned;
+    return returned || fallbackModel || requestedModel;
+  }
 
   async function runOpenRouterRequest(requestBody) {
     var headers = {
@@ -1237,11 +1867,37 @@ async function aiChatMessages(messages, options) {
       body: JSON.stringify(requestBody)
     });
     var data = await response.json().catch(function() { return {}; });
-    return {
+    var rateLimit = collectRateLimitHeaders(response);
+    var responseText = (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '';
+    var normalizedUsage = normalizeTokenUsage(data, responseText, rateLimit);
+    var resultObject = {
       ok: response.ok,
       status: response.status,
-      data: data
+      data: data,
+      rateLimit: rateLimit,
+      usage: normalizedUsage
     };
+    await rememberModelHealth(requestedModel, {
+      provider: useGroq ? 'groq' : 'openrouter',
+      apiModel: requestBody.model,
+      ok: response.ok,
+      status: response.status,
+      error: data && data.error && data.error.message || '',
+      rateLimit: resultObject.rateLimit,
+      limitKind: providerLimitKind(data && data.error && data.error.message || '', resultObject.rateLimit),
+      estimatedTokens: resultObject.usage.estimatedTokens,
+      estimatedInputTokens: resultObject.usage.estimatedInputTokens,
+      estimatedOutputTokens: resultObject.usage.estimatedOutputTokens,
+      requestedOutputTokens: resultObject.usage.requestedOutputTokens,
+      modelUsageTokens: resultObject.usage.modelUsageTokens,
+      modelTokenLimit: resultObject.usage.modelTokenLimit,
+      modelUsagePercent: resultObject.usage.modelUsagePercent,
+      usageSource: resultObject.usage.usageSource,
+      inputTokens: resultObject.usage.inputTokens,
+      outputTokens: resultObject.usage.outputTokens,
+      totalTokens: resultObject.usage.totalTokens
+    });
+    return resultObject;
   }
 
   function wait(ms) {
@@ -1262,14 +1918,28 @@ async function aiChatMessages(messages, options) {
     return text;
   }
 
-  function normalizeOpenRouterError(errorMessage, status) {
+  function normalizeOpenRouterError(errorMessage, status, resultInfo) {
     var message = String(errorMessage || '').trim() || ((useGroq ? 'Groq' : 'OpenRouter') + ' HTTP ' + status);
     var requestedModelLabel = requestedModel.replace(/^groq\//, '');
+    var loweredMessage = message.toLowerCase();
+    if (useGroq && (status === 413 || /request entity too large|payload too large|context length|maximum context|too large/.test(loweredMessage))) {
+      return 'Groq request too large for ' + requestedModelLabel + '. This is a payload/context-size problem, not a normal rate-limit reset. Reduce scraped page text, profile context, or research context, then try a larger-context Groq model such as Llama 4 Scout or Compound.' +
+        rateLimitDetails(resultInfo);
+    }
     if (useGroq && (status === 429 || /rate limit|too many requests/i.test(message))) {
       var detail = summarizeGroqRateLimit(message);
+      var rate = resultInfo && resultInfo.rateLimit || {};
+      var remainingTokens = numberFromHeader(rate.remainingTokens);
+      var hasEnoughVisibleTpm = remainingTokens && estimatedRequestTokens && remainingTokens >= estimatedRequestTokens;
+      var advice = hasEnoughVisibleTpm
+        ? 'Groq headers still show enough visible TPM, so this is likely an underlying Compound/component limit, request expansion, or a moving window mismatch. Wait for the reset, reduce context, or switch to another available Groq model.'
+        : (requestedModel === 'groq/compound' || requestedModel === 'groq/compound-mini'
+          ? 'Wait for the reset, reduce page/profile context, or switch to Llama 4 Scout for a non-Compound route.'
+          : 'Switch to Llama 4 Scout or Compound for larger prompts, reduce page/profile context, or wait for the limit window to reset.');
       return 'Groq rate limit reached for ' + requestedModelLabel + '. ' +
         (detail ? detail + ' ' : '') +
-        'Switch to another Groq model or wait for the limit window to reset.';
+        advice +
+        rateLimitDetails(resultInfo);
     }
     if (useGroq && /authentication|invalid api key|unauthorized/i.test(message)) return 'Groq rejected the API key. Check the Groq key in CoverCraft settings.';
     if (useGroq && /does not exist or you do not have access/i.test(message)) {
@@ -1288,6 +1958,19 @@ async function aiChatMessages(messages, options) {
       return 'The selected model provider failed upstream for "' + requestedModelLabel + '". CoverCraft retried, but the provider is still failing. Try again or switch models.';
     }
     return message;
+  }
+
+  var cachedHealth = MODEL_HEALTH_CACHE[modelHealthKey(requestedModel)];
+  if (useGroq && cachedHealth && cachedHealth.blockedUntil && Date.now() < cachedHealth.blockedUntil) {
+    var cachedRate = cachedHealth.rateLimit || {};
+    var cachedRemaining = numberFromHeader(cachedRate.remainingTokens);
+    var cachedLimitKind = String(cachedHealth.limitKind || '').toLowerCase();
+    if (cachedLimitKind === 'daily_tokens' || cachedLimitKind === 'daily_requests' || !cachedHealth.ok) {
+      throw new Error('Groq rate limit reached for ' + requestedModel.replace(/^groq\//, '') + '. This model is marked unavailable from the last provider response. Wait ' + Math.ceil((cachedHealth.blockedUntil - Date.now()) / 1000) + 's or choose another model.' + rateLimitDetails({ rateLimit: cachedRate }));
+    }
+    if (cachedRemaining && cachedRemaining < estimatedRequestTokens) {
+      throw new Error('Groq rate limit reached for ' + requestedModel.replace(/^groq\//, '') + '. Last response shows only ' + cachedRemaining + ' TPM remaining, but this request is estimated at ~' + estimatedRequestTokens + ' tokens. Wait ' + Math.ceil((cachedHealth.blockedUntil - Date.now()) / 1000) + 's or choose a model with enough remaining capacity.');
+    }
   }
 
   function shouldRetrySameModel(errorMessage, status) {
@@ -1349,7 +2032,7 @@ async function aiChatMessages(messages, options) {
     }
   }
   if (!result.ok) {
-    var primaryError = normalizeOpenRouterError((result.data.error && result.data.error.message) || ('OpenRouter HTTP ' + result.status), result.status);
+    var primaryError = normalizeOpenRouterError((result.data.error && result.data.error.message) || ('OpenRouter HTTP ' + result.status), result.status, result);
     if (allowRouterModelFallback && shouldRetryWithFreeRouter(body.model, primaryError, result.status)) {
       var fallbackBody = Object.assign({}, body, { model: DEFAULT_MODEL });
       var fallback = await runOpenRouterRequest(fallbackBody);
@@ -1362,7 +2045,7 @@ async function aiChatMessages(messages, options) {
         fallback = await runOpenRouterRequest(fallbackBody);
       }
       if (!fallback.ok) {
-        var fallbackError = normalizeOpenRouterError((fallback.data.error && fallback.data.error.message) || primaryError, fallback.status);
+        var fallbackError = normalizeOpenRouterError((fallback.data.error && fallback.data.error.message) || primaryError, fallback.status, fallback);
         if (/privacy or guardrail settings/i.test(fallbackError)) {
           fallbackError = 'OpenRouter could not find any provider that matches your current privacy restrictions for this free request. Review https://openrouter.ai/settings/privacy or keep using Free Routing with less restrictive data-policy settings.';
         }
@@ -1370,7 +2053,8 @@ async function aiChatMessages(messages, options) {
       }
       return {
         content: (fallback.data.choices && fallback.data.choices[0] && fallback.data.choices[0].message && fallback.data.choices[0].message.content) || '',
-        model: fallback.data.model || fallbackBody.model
+        model: displayModelFromResponse(fallback, fallbackBody.model),
+        usage: fallback.usage || {}
       };
     }
     throw new Error(primaryError);
@@ -1378,7 +2062,8 @@ async function aiChatMessages(messages, options) {
 
   return {
     content: (result.data.choices && result.data.choices[0] && result.data.choices[0].message && result.data.choices[0].message.content) || '',
-    model: (useGroq ? 'groq/' : '') + (result.data.model || body.model)
+    model: displayModelFromResponse(result, body.model),
+    usage: result.usage || {}
   };
 }
 
@@ -1527,12 +2212,17 @@ function stripFormatting(text, portfolio) {
     .replace(/\*([^*]+)\*/g, '$1')
     .replace(/^#{1,6}\s+/gm, '')
     .replace(/^[-*•]\s+/gm, '')
+    .replace(/\s*--+\s*/g, ', ')
     .replace(/\u2014/g, ',')
     .replace(/\u2013/g, '-')
     .replace(/[\u201C\u201D]/g, '"')
     .replace(/[\u2018\u2019]/g, "'")
     .replace(/\r\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\s+([,.;:])/g, '$1')
+    .replace(/,\s*,+/g, ',')
+    .replace(/,\s*\./g, '.')
     .trim();
 
   var dearIdx = clean.search(/\bDear\b/i);
@@ -1547,6 +2237,75 @@ function stripFormatting(text, portfolio) {
   }
   clean += '\n\nSincerely,\n' + ownerName;
   return clean.trim();
+}
+
+function coverLetterQualityIssues(text) {
+  var clean = String(text || '');
+  var lower = clean.toLowerCase();
+  var issues = [];
+  if (/\s--+\s/.test(clean)) issues.push('double hyphen separators');
+  if (/[\u2013\u2014]/.test(clean)) issues.push('dash punctuation');
+  [
+    'seasoned ',
+    'i am excited',
+    'i am confident',
+    'significant impact',
+    'strong fit',
+    'my passion',
+    'poised for continued success',
+    'look forward to contributing'
+  ].forEach(function(phrase) {
+    if (lower.indexOf(phrase) !== -1) issues.push('generic phrase: ' + phrase.trim());
+  });
+  if (/\bover\s+\d+\s+years?\b/i.test(clean) || /\b\d+\+?\s+years?\s+of experience\b/i.test(clean)) {
+    issues.push('unsupported years-of-experience claim');
+  }
+  return issues;
+}
+
+async function repairCoverLetterQuality(text, issues, portfolio, model) {
+  var systemPrompt = [
+    'You are a strict cover-letter editor.',
+    'Rewrite the draft into polished professional prose.',
+    'Preserve every grounded fact, role, employer, metric, tool, and job/company name.',
+    'Do not add new facts, seniority claims, years of experience, credentials, or motivations.',
+    'Remove generic enthusiasm, self-rating, unsupported claims, double hyphens, em dashes, and en dashes.',
+    'Output only the final letter text.'
+  ].join('\n');
+  var userPrompt = [
+    'Fix these quality issues:',
+    JSON.stringify(issues || []),
+    '',
+    'Draft:',
+    String(text || '')
+  ].join('\n');
+  var response = await aiChat(systemPrompt, userPrompt, 0.18, 1800, model);
+  return {
+    text: stripFormatting(response.content, portfolio),
+    model: response.model,
+    usage: response.usage || {}
+  };
+}
+
+function mergeTokenUsage(base, next) {
+  var out = Object.assign({}, base || {});
+  next = next || {};
+  [
+    'inputTokens',
+    'outputTokens',
+    'totalTokens',
+    'estimatedInputTokens',
+    'estimatedOutputTokens',
+    'requestedOutputTokens',
+    'estimatedTokens',
+    'modelUsageTokens'
+  ].forEach(function(key) {
+    out[key] = (Number(out[key]) || 0) + (Number(next[key]) || 0);
+  });
+  out.modelTokenLimit = Math.max(Number(out.modelTokenLimit) || 0, Number(next.modelTokenLimit) || 0) || null;
+  out.modelUsagePercent = out.modelTokenLimit ? Math.round(((Number(out.modelUsageTokens) || 0) / out.modelTokenLimit) * 1000) / 10 : null;
+  out.usageSource = out.usageSource === 'provider' || next.usageSource === 'provider' ? 'provider' : 'estimate';
+  return out;
 }
 
 function normalizePlainAnswer(text) {
@@ -1600,10 +2359,13 @@ function buildCoverLetterSystemPrompt(portfolio, style) {
     'Output only the final letter text.',
     'Write in first person and plain prose only.',
     'Do not use markdown, bullets, headings, labels, or sign-off blocks.',
-    'Avoid AI clichés, generic praise, resume-summary dumping, and em dashes.',
+    'Avoid AI clichés, generic praise, resume-summary dumping, em dashes, en dashes, and double hyphens.',
+    'Do not use phrases like "seasoned", "I am excited", "I am confident", "significant impact", "strong fit", "my passion", or "poised for continued success".',
     'Begin exactly with "Dear Hiring Manager,".',
     'Use only the provided job context, ranked portfolio evidence, and company research.',
     'Never invent experience, metrics, technologies, domains, employers, titles, dates, or motivations.',
+    'Never infer total years of experience unless the portfolio explicitly states a total.',
+    'Never upgrade titles. Preserve student, assistant, intern, graduate assistant, and other level markers when naming roles.',
     'Silently rank the evidence first, then write from the strongest relevant evidence only.',
     'If one experience has clear industry or domain overlap with the role, prioritize it early even if it is not the newest experience.',
     'Do not mention experience just because it exists in the portfolio. Include only evidence that strengthens fit for this exact role.',
@@ -1629,16 +2391,18 @@ function buildCoverLetterSystemPrompt(portfolio, style) {
   ].join('\n');
 }
 
-function buildCoverLetterUserPrompt(session, style, portfolio) {
-  var promptContext = buildJobApplicationPromptContext(session, portfolio);
+function buildCoverLetterUserPrompt(session, style, portfolio, promptContext) {
+  promptContext = promptContext || buildJobApplicationPromptContext(session, portfolio);
   return [
     'Write a tailored cover letter using the job context below.',
     'Before drafting, silently decide which 2 experiences and which optional project best prove fit.',
-    'Use the ranked evidence as the default priority order unless another item is more clearly supported.',
+    'Use the ranked evidence scores, matched keywords, matched requirements, and whySelected notes as the default priority order unless another item is more clearly supported.',
     'If a ranked experience already contains gold-standard wording for this job, preserve that wording in narrative form instead of flattening it.',
+    'Use the highest-scoring bullets inside each ranked experience, not the experience chronologically.',
+    'Make the role-specific keywords visible through grounded evidence, but never stuff keywords or copy requirement language mechanically.',
     'Use the company research and job details directly.',
     'Keep it concrete, natural, and evidence-backed.',
-    'Target 430 to 560 words.',
+    'Target 360 to 500 words.',
     'Write exactly 5 paragraphs unless a 6th short paragraph materially improves the letter.',
     'Use this paragraph structure:',
     '1. Opening fit for the exact title and company, with immediate credibility.',
@@ -1649,6 +2413,8 @@ function buildCoverLetterUserPrompt(session, style, portfolio) {
     'Do not list experiences chronologically unless chronology also matches relevance.',
     'Do not spend space on experiences that are only loosely related to the role.',
     'Do not say the applicant is a fit without proving it from evidence.',
+    'Do not claim seniority, total years of experience, or broad architecture ownership unless the source evidence states it.',
+    'Use restrained professional language. Prefer concrete evidence over enthusiasm and self-rating.',
     'Keep the final paragraph concise and do not add "Sincerely", "Thank you", or the applicant name.',
     '',
     'Style:',
@@ -1659,35 +2425,62 @@ function buildCoverLetterUserPrompt(session, style, portfolio) {
     '',
     'Job context:',
     JSON.stringify({
-      page: session.page,
-      job: session.job,
-      research: session.research,
-      scrapePreview: session.scrape.preview
+      page: {
+        hostname: session.page && session.page.hostname || '',
+        normalizedUrl: session.page && session.page.normalizedUrl || ''
+      },
+      job: {
+        jobTitle: session.job && session.job.jobTitle || '',
+        companyName: session.job && session.job.companyName || '',
+        location: session.job && session.job.location || '',
+        seniorityLevel: session.job && session.job.seniorityLevel || '',
+        keywords: session.job && session.job.keywords ? session.job.keywords.slice(0, 10) : [],
+        responsibilities: session.job && session.job.responsibilities ? session.job.responsibilities.slice(0, 5).map(function(item) { return clipWords(item, 22); }) : [],
+        requirements: session.job && session.job.requirements ? session.job.requirements.slice(0, 5).map(function(item) { return clipWords(item, 22); }) : []
+      },
+      research: {
+        summary: clipWords(session.research && session.research.summary || '', 90)
+      },
+      scrapePreview: clipWords(session.scrape && session.scrape.preview || '', 70)
     })
   ].join('\n');
 }
 
 async function generateCoverLetter(session, style, model, portfolio) {
   var systemPrompt = buildCoverLetterSystemPrompt(portfolio, style);
-  var userPrompt = buildCoverLetterUserPrompt(session, style, portfolio);
+  var promptContext = buildJobApplicationPromptContext(session, portfolio);
+  var userPrompt = buildCoverLetterUserPrompt(session, style, portfolio, promptContext);
   var attempts = 0;
   var response = null;
   var output = '';
+  var tokenUsage = {};
   while (attempts < 2) {
     attempts++;
     response = await aiChat(
       systemPrompt,
       userPrompt,
-      attempts === 1 ? 0.72 : 0.55,
+      attempts === 1 ? 0.48 : 0.32,
       2200,
       model
     );
+    tokenUsage = mergeTokenUsage(tokenUsage, response.usage);
     output = stripFormatting(response.content, portfolio);
-    if (output && looksLikeCompleteCoverLetter(output, portfolio && portfolio.name)) break;
+    if (output && looksLikeCompleteCoverLetter(output, portfolio && portfolio.name) && !coverLetterQualityIssues(output).length) break;
   }
   if (!output) throw new Error('AI returned an empty response.');
   if (!looksLikeCompleteCoverLetter(output, portfolio && portfolio.name)) {
     throw new Error('The model returned an incomplete cover letter. Please try again or switch models.');
+  }
+  var qualityIssues = coverLetterQualityIssues(output);
+  if (qualityIssues.length) {
+    var repaired = await repairCoverLetterQuality(output, qualityIssues, portfolio, model);
+    output = repaired.text || output;
+    if (repaired.model) response.model = repaired.model;
+    tokenUsage = mergeTokenUsage(tokenUsage, repaired.usage);
+    qualityIssues = coverLetterQualityIssues(output);
+  }
+  if (qualityIssues.length) {
+    throw new Error('The model returned a draft with professional-quality issues: ' + qualityIssues.slice(0, 3).join(', ') + '. Please try again or switch models.');
   }
   return {
     text: output,
@@ -1695,7 +2488,9 @@ async function generateCoverLetter(session, style, model, portfolio) {
     prompt: {
       system: systemPrompt,
       user: userPrompt
-    }
+    },
+    rankingContext: promptContext.rankedEvidence,
+    tokenUsage: tokenUsage
   };
 }
 
@@ -1928,6 +2723,199 @@ function buildResumeKeywords(session) {
   }).slice(0, 30);
 }
 
+function normalizeRankTerm(value) {
+  return normalizeResumeComparisonText(value)
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function rankKindPriority(kind) {
+  var priority = {
+    requirement: 5,
+    responsibility: 4,
+    title: 3,
+    keyword: 2,
+    phrase: 1,
+    company: 0
+  };
+  return priority[kind] || 0;
+}
+
+function rankTermWords(value) {
+  return normalizeRankTerm(value).split(' ').filter(Boolean);
+}
+
+function technicalRankTermMap() {
+  var terms = [
+    'ab testing', 'airflow', 'analytics', 'analytics engineering', 'analytics platform', 'api',
+    'arima', 'artificial intelligence', 'automation', 'aws', 'azure', 'bigquery', 'business intelligence',
+    'classification', 'cloud', 'computer vision', 'cross functional', 'dashboard', 'data analyst',
+    'data architecture', 'data contracts', 'data engineering', 'data governance', 'data lake',
+    'data lakehouse', 'data pipeline', 'data pipelines', 'data quality', 'data science',
+    'data scientist', 'data visualization', 'database', 'databricks', 'dbt', 'deep learning',
+    'docker', 'etl', 'elt', 'excel', 'experiment', 'experimentation', 'forecasting', 'gcp',
+    'github', 'java', 'javascript', 'kafka', 'kubernetes', 'lakehouse', 'lakehouse architecture',
+    'llm', 'machine learning', 'mariadb', 'metrics', 'ml', 'model', 'modeling', 'mongodb',
+    'mysql', 'natural language processing', 'nlp', 'numpy', 'orchestration', 'pandas',
+    'postgres', 'postgresql', 'power bi', 'prophet', 'python', 'pyspark', 'r', 'regression',
+    'reporting', 'research', 'scikit-learn', 'schema validation', 'snowflake', 'spark',
+    'sql', 'sql server', 'sqlite', 'stakeholder', 'statistical', 'statistics', 'supabase',
+    'tableau', 'typescript', 'visualization'
+  ];
+  var map = {};
+  terms.forEach(function(term) { map[term] = true; });
+  return map;
+}
+
+function isAllowedRoleSignal(term) {
+  return /\b(data scientist|data engineer|analytics engineer|machine learning engineer|ml engineer|data analyst|business intelligence analyst|software engineer|ai engineer|research scientist|database engineer)\b/.test(term);
+}
+
+function isLikelyTechnicalRankTerm(term, source, kind) {
+  var clean = normalizeRankTerm(term);
+  if (!clean) return false;
+  var words = rankTermWords(clean);
+  var blocked = {
+    application: 1, applications: 1, apply: 1, applicant: 1, assist: 1, careers: 1,
+    changes: 1, chirayu: 1, content: 1, discard: 1, generated: 1, inside: 1,
+    levels: 1, necessary: 1, required: 1, summary: 1, southern: 1, tirth: 1,
+    shah: 1, cover: 1, letter: 1, manager: 1, hiring: 1
+  };
+  if (blocked[clean]) return false;
+  if (words.some(function(word) { return blocked[word]; })) return false;
+  if (kind === 'title' && isAllowedRoleSignal(clean)) return true;
+
+  var allow = technicalRankTermMap();
+  if (allow[clean]) return true;
+  if (words.length === 1) return !!allow[clean];
+
+  return words.some(function(word) { return !!allow[word]; }) && !/^(about|apply|assist|content|generated|required|summary)\b/.test(clean);
+}
+
+function addRankTerm(map, term, weight, source, kind) {
+  var clean = normalizeRankTerm(term);
+  if (!clean) return;
+  var words = rankTermWords(clean);
+  var genericSingleTerms = {
+    data: 1, role: 1, team: 1, company: 1, business: 1, work: 1, systems: 1, platform: 1,
+    experience: 1, ability: 1, skills: 1, strong: 1, senior: 1, manager: 1, build: 1,
+    using: 1, support: 1, solutions: 1, requirements: 1, responsibilities: 1, engineer: 1
+  };
+  if (words.length === 1 && genericSingleTerms[clean]) return;
+  if (clean.length < 3) return;
+  if (!isLikelyTechnicalRankTerm(clean, source, kind)) return;
+  var current = map[clean] || { term: clean, weight: 0, sources: {}, kind: kind || 'keyword' };
+  current.weight += weight;
+  current.sources[source || 'job'] = true;
+  if (rankKindPriority(kind) > rankKindPriority(current.kind)) current.kind = kind || current.kind;
+  map[clean] = current;
+}
+
+function extractRankTermsFromText(text, map, source, baseWeight, kind) {
+  var clean = normalizeRankTerm(text);
+  if (!clean) return;
+  var knownPhrases = [
+    'data lakehouse', 'lakehouse architecture', 'analytics engineering', 'data engineering',
+    'data pipeline', 'data pipelines', 'etl', 'elt', 'sql', 'python', 'dbt', 'airflow',
+    'databricks', 'snowflake', 'bigquery', 'redshift', 'spark', 'pyspark', 'power bi',
+    'tableau', 'schema validation', 'data contracts', 'data quality', 'data governance',
+    'orchestration', 'stakeholder', 'cross functional', 'machine learning', 'forecasting',
+    'cloud', 'gcp', 'aws', 'azure', 'firebase', 'postgres', 'mysql', 'sql server',
+    'dashboard', 'reporting', 'automation', 'migration', 'analytics platform'
+  ];
+  knownPhrases.forEach(function(phrase) {
+    if (clean.indexOf(phrase) !== -1) addRankTerm(map, phrase, baseWeight + 2, source, kind || 'keyword');
+  });
+
+  var chunks = clean.split(/[.;:|()[\]\n]+/).map(function(part) { return part.trim(); }).filter(Boolean);
+  chunks.forEach(function(chunk) {
+    var words = rankTermWords(chunk);
+    if (words.length >= 2 && words.length <= 5 && isLikelyTechnicalRankTerm(chunk, source, kind)) {
+      addRankTerm(map, chunk, baseWeight + 1, source, kind || 'phrase');
+    }
+  });
+
+  var tokens = clean.match(/[a-z][a-z0-9.+#/-]{2,}/g) || [];
+  var ignore = {
+    the: 1, and: 1, with: 1, for: 1, from: 1, that: 1, this: 1, role: 1, team: 1,
+    company: 1, work: 1, years: 1, year: 1, using: 1, build: 1, across: 1, about: 1,
+    your: 1, will: 1, have: 1, our: 1, you: 1, job: 1, are: 1, can: 1, all: 1,
+    their: 1, them: 1, into: 1, more: 1, than: 1, such: 1, other: 1, including: 1
+  };
+  tokens.forEach(function(token) {
+    if (ignore[token]) return;
+    if (isLikelyTechnicalRankTerm(token, source, kind)) addRankTerm(map, token, baseWeight, source, kind || 'keyword');
+  });
+}
+
+function buildJobRankProfile(session) {
+  var job = session && session.job || {};
+  var map = {};
+  addRankTerm(map, job.jobTitle || '', 7, 'title', 'title');
+  (job.keywords || []).forEach(function(keyword) {
+    addRankTerm(map, keyword, 7, 'extracted_keyword', 'keyword');
+    extractRankTermsFromText(keyword, map, 'extracted_keyword', 3, 'keyword');
+  });
+  (job.requirements || []).slice(0, 8).forEach(function(item) {
+    extractRankTermsFromText(item, map, 'requirement', 5, 'requirement');
+  });
+  (job.responsibilities || []).slice(0, 8).forEach(function(item) {
+    extractRankTermsFromText(item, map, 'responsibility', 4, 'responsibility');
+  });
+  extractRankTermsFromText(session && session.scrape ? clipWords(session.scrape.preview || '', 120) : '', map, 'page_preview', 1, 'keyword');
+
+  var terms = Object.keys(map).map(function(key) {
+    var entry = map[key];
+    return {
+      term: entry.term,
+      weight: Math.round(entry.weight * 10) / 10,
+      kind: entry.kind,
+      sources: Object.keys(entry.sources)
+    };
+  }).sort(function(a, b) {
+    if (b.weight !== a.weight) return b.weight - a.weight;
+    return b.term.length - a.term.length;
+  }).slice(0, 34);
+
+  return {
+    terms: terms,
+    keywords: terms.map(function(entry) { return entry.term; }).slice(0, 30),
+    requirements: terms.filter(function(entry) { return entry.sources.indexOf('requirement') !== -1; }).slice(0, 12).map(function(entry) { return entry.term; }),
+    responsibilities: terms.filter(function(entry) { return entry.sources.indexOf('responsibility') !== -1; }).slice(0, 12).map(function(entry) { return entry.term; })
+  };
+}
+
+function rankTextAgainstProfile(text, profile, multiplier) {
+  var haystack = ' ' + normalizeResumeComparisonText(text) + ' ';
+  var score = 0;
+  var matched = [];
+  (profile && profile.terms || []).forEach(function(entry) {
+    var key = normalizeRankTerm(entry.term);
+    if (!key) return;
+    var isMatch = haystack.indexOf(' ' + key + ' ') !== -1 || haystack.indexOf(key) !== -1;
+    if (!isMatch) return;
+    var phraseBoost = key.indexOf(' ') !== -1 ? 1.35 : 1;
+    var sourceBoost = entry.sources && entry.sources.indexOf('requirement') !== -1 ? 1.2 : 1;
+    var points = entry.weight * phraseBoost * sourceBoost * (multiplier || 1);
+    score += points;
+    matched.push({
+      term: entry.term,
+      points: Math.round(points * 10) / 10,
+      sources: entry.sources || [],
+      kind: entry.kind || 'keyword'
+    });
+  });
+  matched.sort(function(a, b) { return b.points - a.points; });
+  return {
+    score: Math.round(score * 10) / 10,
+    matchedTerms: matched.slice(0, 8)
+  };
+}
+
+function rankWhy(parts) {
+  return parts.filter(Boolean).slice(0, 3).join(' ');
+}
+
 function keywordMatchesForText(text, keywords, limit) {
   var haystack = ' ' + normalizeResumeComparisonText(text) + ' ';
   var seen = {};
@@ -1957,41 +2945,93 @@ function scoreExperienceForPrompt(experience, keywords) {
   return score;
 }
 
-function choosePromptExperiences(experiences, keywords, limit) {
+function choosePromptExperiences(experiences, rankProfile, limit) {
   return (experiences || []).map(function(experience, index) {
+    var roleRank = rankTextAgainstProfile([
+      experience.role || '',
+      experience.company || ''
+    ].join(' '), rankProfile, 1.6);
+    var bulletRanks = (experience.bullets || []).map(function(bullet, bulletIndex) {
+      var rank = rankTextAgainstProfile(bullet, rankProfile, 1);
+      var impactBonus = hasResumeImpactSignal(bullet) ? 2.5 : 0;
+      return {
+        text: bullet,
+        index: bulletIndex,
+        score: Math.round((rank.score + impactBonus) * 10) / 10,
+        matchedTerms: rank.matchedTerms.slice(0, 6),
+        hasImpact: impactBonus > 0
+      };
+    }).sort(function(a, b) {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.index - b.index;
+    });
+    var topBullets = bulletRanks.slice(0, 3);
+    var requirementHits = [].concat(roleRank.matchedTerms, topBullets.reduce(function(all, bullet) {
+      return all.concat(bullet.matchedTerms || []);
+    }, [])).filter(function(match) {
+      return match.sources && match.sources.indexOf('requirement') !== -1;
+    });
+    var score = roleRank.score + topBullets.reduce(function(total, bullet) {
+      return total + bullet.score;
+    }, 0) + Math.max(0, 4 - index) * 0.2;
+    if (topBullets.some(function(bullet) { return bullet.hasImpact; })) score += 1;
     return {
       experience: experience,
-      score: scoreExperienceForPrompt(experience, keywords) + Math.max(0, 4 - index) * 0.15,
-      matchedKeywords: keywordMatchesForText([
-        experience.role || '',
-        experience.company || '',
-        Array.isArray(experience.bullets) ? experience.bullets.join(' ') : ''
-      ].join(' '), keywords, 8)
+      score: Math.round(score * 10) / 10,
+      roleMatches: roleRank.matchedTerms.slice(0, 5),
+      bulletRanks: topBullets,
+      requirementHits: requirementHits.slice(0, 5)
     };
   }).sort(function(a, b) {
     return b.score - a.score;
   }).slice(0, limit || 4).map(function(entry) {
+    var matchedTerms = [].concat(entry.roleMatches, entry.bulletRanks.reduce(function(all, bullet) {
+      return all.concat(bullet.matchedTerms || []);
+    }, []));
+    var seenTerms = {};
+    matchedTerms = matchedTerms.filter(function(match) {
+      var key = normalizeRankTerm(match.term);
+      if (!key || seenTerms[key]) return false;
+      seenTerms[key] = true;
+      return true;
+    }).slice(0, 8);
     return {
       company: entry.experience.company,
       role: entry.experience.role,
       duration: entry.experience.duration,
       location: entry.experience.location,
-      matchedKeywords: entry.matchedKeywords,
-      bullets: entry.experience.bullets
+      score: entry.score,
+      matchedKeywords: matchedTerms.map(function(match) { return match.term; }).slice(0, 6),
+      matchedRequirements: entry.requirementHits.map(function(match) { return match.term; }).slice(0, 4),
+      whySelected: rankWhy([
+        matchedTerms.length ? 'Matches ' + matchedTerms.slice(0, 3).map(function(match) { return match.term; }).join(', ') + '.' : '',
+        entry.requirementHits.length ? 'Covers requirement signals: ' + entry.requirementHits.slice(0, 2).map(function(match) { return match.term; }).join(', ') + '.' : '',
+        entry.bulletRanks.some(function(bullet) { return bullet.hasImpact; }) ? 'Contains quantified impact evidence.' : ''
+      ]),
+      bullets: entry.bulletRanks.map(function(bullet) {
+        return {
+          text: clipWords(bullet.text, 34),
+          score: bullet.score,
+          matchedKeywords: (bullet.matchedTerms || []).map(function(match) { return match.term; }).slice(0, 5),
+          hasImpact: bullet.hasImpact
+        };
+      })
     };
   });
 }
 
-function choosePromptProjects(projects, keywords, limit) {
+function choosePromptProjects(projects, rankProfile, limit) {
   return (projects || []).map(function(project, index) {
+    var rank = rankTextAgainstProfile([
+      project.title || '',
+      project.description || '',
+      (project.technologies || []).join(' ')
+    ].join(' '), rankProfile, 1);
+    var score = rank.score + (hasResumeImpactSignal(project.description) ? 1.5 : 0) + Math.max(0, 3 - index) * 0.1;
     return {
       project: project,
-      score: scoreProjectForKeywords(project, keywords) + Math.max(0, 3 - index) * 0.1,
-      matchedKeywords: keywordMatchesForText([
-        project.title || '',
-        project.description || '',
-        (project.technologies || []).join(' ')
-      ].join(' '), keywords, 8)
+      score: Math.round(score * 10) / 10,
+      matchedTerms: rank.matchedTerms
     };
   }).sort(function(a, b) {
     return b.score - a.score;
@@ -2001,26 +3041,38 @@ function choosePromptProjects(projects, keywords, limit) {
       description: entry.project.description,
       technologies: entry.project.technologies,
       links: entry.project.links,
-      matchedKeywords: entry.matchedKeywords
+      score: entry.score,
+      matchedKeywords: entry.matchedTerms.map(function(match) { return match.term; }).slice(0, 6),
+      whySelected: rankWhy([
+        entry.matchedTerms.length ? 'Matches ' + entry.matchedTerms.slice(0, 3).map(function(match) { return match.term; }).join(', ') + '.' : '',
+        hasResumeImpactSignal(entry.project.description) ? 'Contains measurable project impact.' : ''
+      ])
     };
   });
 }
 
-function choosePromptAchievements(achievements, keywords, limit) {
+function choosePromptAchievements(achievements, rankProfile, limit) {
   return dedupeStrings(achievements || []).map(function(item, index) {
+    var rank = rankTextAgainstProfile(item, rankProfile, 1);
     return {
       text: item,
-      score: scoreResumeTextAgainstKeywords(item, keywords) + Math.max(0, 3 - index) * 0.1
+      score: Math.round((rank.score + Math.max(0, 3 - index) * 0.1) * 10) / 10,
+      matchedTerms: rank.matchedTerms
     };
   }).sort(function(a, b) {
     return b.score - a.score;
   }).slice(0, limit || 4).map(function(entry) {
-    return entry.text;
+    return {
+      text: entry.text,
+      score: entry.score,
+      matchedKeywords: entry.matchedTerms.map(function(match) { return match.term; }).slice(0, 5)
+    };
   });
 }
 
 function buildJobApplicationPromptContext(session, portfolio) {
-  var keywords = buildResumeKeywords(session);
+  var rankProfile = buildJobRankProfile(session);
+  var keywords = rankProfile.keywords;
   var experiences = normalizeResumeExperiences(portfolio || {});
   var projects = normalizeResumeProjects(portfolio || {});
   var skillsList = splitSkillList(portfolio && portfolio.skills || '');
@@ -2032,22 +3084,44 @@ function buildJobApplicationPromptContext(session, portfolio) {
       seniorityLevel: session && session.job ? session.job.seniorityLevel || '' : ''
     },
     jobSignals: {
-      keywords: session && session.job ? (session.job.keywords || []).slice(0, 12) : [],
-      requirements: session && session.job ? (session.job.requirements || []).slice(0, 8) : [],
-      responsibilities: session && session.job ? (session.job.responsibilities || []).slice(0, 8) : []
+      keywords: session && session.job ? (session.job.keywords || []).slice(0, 10) : [],
+      requirements: session && session.job ? (session.job.requirements || []).slice(0, 5).map(function(item) { return clipWords(item, 22); }) : [],
+      responsibilities: session && session.job ? (session.job.responsibilities || []).slice(0, 5).map(function(item) { return clipWords(item, 22); }) : []
     },
     rankedEvidence: {
-      experiences: choosePromptExperiences(experiences, keywords, 4),
-      projects: choosePromptProjects(projects, keywords, 3),
-      achievements: choosePromptAchievements(portfolio && portfolio.achievements || [], keywords, 4),
-      skills: chooseResumeSkills(skillsList, keywords, 18, 260),
-      keywords: keywords.slice(0, 18)
+      rankProfile: {
+        topTerms: rankProfile.terms.slice(0, 16),
+        requirementTerms: rankProfile.requirements.slice(0, 8),
+        responsibilityTerms: rankProfile.responsibilities.slice(0, 8)
+      },
+      experiences: choosePromptExperiences(experiences, rankProfile, 3),
+      projects: choosePromptProjects(projects, rankProfile, 2).map(function(project) {
+        return Object.assign({}, project, {
+          description: clipWords(project.description || '', 28),
+          technologies: (project.technologies || []).slice(0, 8),
+          links: []
+        });
+      }),
+      achievements: choosePromptAchievements(portfolio && portfolio.achievements || [], rankProfile, 3).map(function(item) {
+        return {
+          text: clipWords(item.text || '', 24),
+          score: item.score,
+          matchedKeywords: item.matchedKeywords || []
+        };
+      }),
+      skills: chooseResumeSkills(skillsList, keywords, 14, 210),
+      keywords: keywords.slice(0, 12)
     },
     companyResearch: {
-      summary: session && session.research ? session.research.summary || '' : '',
-      sources: session && session.research ? (session.research.sources || []).slice(0, 4) : []
+      summary: clipWords(session && session.research ? session.research.summary || '' : '', 90),
+      sources: session && session.research ? (session.research.sources || []).slice(0, 2).map(function(source) {
+        return {
+          title: source.title || '',
+          snippet: clipWords(source.snippet || '', 28)
+        };
+      }) : []
     },
-    scrapePreview: session && session.scrape ? session.scrape.preview || '' : ''
+    scrapePreview: clipWords(session && session.scrape ? session.scrape.preview || '' : '', 70)
   };
 }
 
@@ -3201,7 +4275,10 @@ chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
   }
 
   if (message.type === 'GET_SETTINGS' || message.type === 'RELOAD_CONFIG') {
-    Promise.all([loadSettings(), getPortfolioBundle(), getCloudStatus()]).then(function(results) {
+    Promise.all([loadSettings(), getPortfolioBundle(), getCloudStatus(), localGet([MODEL_HEALTH_STORAGE_KEY, MODEL_USAGE_LOG_STORAGE_KEY])]).then(function(results) {
+      MODEL_HEALTH_CACHE = Object.assign({}, results[3] && results[3][MODEL_HEALTH_STORAGE_KEY] || {}, MODEL_HEALTH_CACHE);
+      MODEL_USAGE_LOG_CACHE = Array.isArray(results[3] && results[3][MODEL_USAGE_LOG_STORAGE_KEY]) ? results[3][MODEL_USAGE_LOG_STORAGE_KEY] : MODEL_USAGE_LOG_CACHE;
+      rebuildModelHealthFromUsageLogs(MODEL_USAGE_LOG_CACHE);
       sendResponse({
         settings: results[0],
         portfolio: {
@@ -3210,7 +4287,9 @@ chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
           warnings: results[1].validation.warnings,
           errors: results[1].validation.errors
         },
-        cloud: results[2]
+        cloud: results[2],
+        modelHealth: getModelHealthSummary(),
+        modelUsageLog: MODEL_USAGE_LOG_CACHE.slice(-MAX_MODEL_USAGE_LOGS)
       });
     }).catch(function(err) {
       sendResponse({ error: err.message });
@@ -3218,9 +4297,57 @@ chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
     return true;
   }
 
+  if (message.type === 'RECORD_MODEL_HEALTH') {
+    var payload = message.payload || {};
+    rememberModelHealth(payload.model || DEFAULT_MODEL, {
+      provider: payload.provider || (/^groq\//.test(String(payload.model || '')) ? 'groq' : 'openrouter'),
+      apiModel: payload.apiModel || payload.model || DEFAULT_MODEL,
+      ok: !!payload.ok,
+      status: payload.status || 0,
+      error: payload.error || '',
+      rateLimit: payload.rateLimit || {},
+      limitKind: payload.limitKind || '',
+      estimatedTokens: payload.estimatedTokens || 0,
+      estimatedInputTokens: payload.estimatedInputTokens || 0,
+      estimatedOutputTokens: payload.estimatedOutputTokens || 0,
+      requestedOutputTokens: payload.requestedOutputTokens || 0,
+      modelUsageTokens: payload.modelUsageTokens || 0,
+      modelTokenLimit: payload.modelTokenLimit || 0,
+      modelUsagePercent: payload.modelUsagePercent || 0,
+      usageSource: payload.usageSource || 'estimate',
+      inputTokens: payload.inputTokens || 0,
+      outputTokens: payload.outputTokens || 0,
+      totalTokens: payload.totalTokens || 0
+    }).then(function() {
+      sendResponse({ ok: true, modelHealth: getModelHealthSummary(), modelUsageLog: MODEL_USAGE_LOG_CACHE.slice(-MAX_MODEL_USAGE_LOGS) });
+    }).catch(function(err) {
+      sendResponse({ error: err.message });
+    });
+    return true;
+  }
+
+  if (message.type === 'GET_MODEL_USAGE_LOG') {
+    localGet(MODEL_USAGE_LOG_STORAGE_KEY).then(function(data) {
+      MODEL_USAGE_LOG_CACHE = Array.isArray(data && data[MODEL_USAGE_LOG_STORAGE_KEY]) ? data[MODEL_USAGE_LOG_STORAGE_KEY] : MODEL_USAGE_LOG_CACHE;
+      sendResponse({ modelUsageLog: MODEL_USAGE_LOG_CACHE.slice(-MAX_MODEL_USAGE_LOGS) });
+    }).catch(function(err) {
+      sendResponse({ error: err.message });
+    });
+    return true;
+  }
+
   if (message.type === 'GET_CLOUD_STATUS') {
-    getCloudStatus().then(function(status) {
-      sendResponse({ cloud: status });
+    Promise.all([getCloudStatus(), getExtensionStorageStatus()]).then(function(results) {
+      sendResponse({ cloud: results[0], storage: results[1] });
+    }).catch(function(err) {
+      sendResponse({ error: err.message });
+    });
+    return true;
+  }
+
+  if (message.type === 'GET_EXTENSION_STORAGE_STATUS') {
+    getExtensionStorageStatus().then(function(status) {
+      sendResponse({ storage: status, message: describeStorageStatus(status) });
     }).catch(function(err) {
       sendResponse({ error: err.message });
     });
@@ -3229,6 +4356,7 @@ chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
 
   if (message.type === 'CLOUD_SIGN_IN') {
     queueMutation(async function() {
+      var responseSent = false;
       if (await getPendingCloudAuthFlow()) throw new Error('Google sign-in is already in progress.');
       var flow = { startedAt: Core.nowIso(), method: 'chrome_identity' };
       await savePendingCloudAuthFlow(flow);
@@ -3238,17 +4366,37 @@ chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
         await finalizeFirebaseAuth({ ok: true, auth: auth });
         await backupGuestLocalState();
         await syncSet({ cloudSyncEnabled: true });
-        var remote = await getRemoteCloudState().catch(function() { return { app: null, sessions: [] }; });
+        responseSent = true;
+        sendResponse({ ok: true, cloud: await getCloudStatus(), syncPending: true });
+        var remote = await getRemoteCloudState().catch(function() { return { app: null, sessions: [], modelUsageLogs: [] }; });
         await mergeRemoteAppStateIntoLocal(remote.app || {}, { forcePortfolioReplace: true });
         await mergeRemoteSessionsIntoLocal(remote.sessions || []);
+        await mergeRemoteModelUsageIntoLocal(remote.modelUsageLogs || []);
         var syncResult = await maybeSyncCloud('sign_in');
         if (!syncResult || syncResult.ok === false) throw new Error(syncResult && syncResult.error || 'Cloud sync failed after sign-in.');
         await clearPendingCloudAuthFlow();
-        sendResponse({ ok: true, cloud: await getCloudStatus() });
+        chrome.runtime.sendMessage({
+          type: 'CLOUD_STATUS_UPDATE',
+          cloud: await getCloudStatus(),
+          syncResult: syncResult
+        });
       } catch (err) {
         await clearPendingCloudAuthFlow();
-        await saveCloudMeta({ lastError: err.message || 'Google sign-in failed.' });
-        sendResponse({ error: err.message, cloud: await getCloudStatus() });
+        var phase = responseSent ? 'sync' : 'auth';
+        var storageStatus = await getExtensionStorageStatus().catch(function() { return err && err.storageStatus || null; });
+        var errorMessage = normalizeCloudErrorMessage(err, phase, storageStatus);
+        await saveCloudMeta({ lastError: errorMessage }).catch(function() {});
+        var cloudStatus = await getCloudStatus();
+        if (!responseSent) {
+          sendResponse({ error: errorMessage, cloud: cloudStatus, storage: storageStatus });
+        } else {
+          chrome.runtime.sendMessage({
+            type: 'CLOUD_STATUS_UPDATE',
+            cloud: cloudStatus,
+            storage: storageStatus,
+            error: errorMessage
+          });
+        }
       }
     }).catch(function(err) {
       sendResponse({ error: err.message });
@@ -3269,13 +4417,16 @@ chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
 
   if (message.type === 'SYNC_CLOUD_NOW') {
     queueMutation(async function() {
-      var remote = await getRemoteCloudState().catch(function() { return { app: null, sessions: [] }; });
+      var remote = await getRemoteCloudState().catch(function() { return { app: null, sessions: [], modelUsageLogs: [] }; });
       await mergeRemoteAppStateIntoLocal(remote.app || {});
       await mergeRemoteSessionsIntoLocal(remote.sessions || []);
+      await mergeRemoteModelUsageIntoLocal(remote.modelUsageLogs || []);
       var result = await syncCloudState('manual_sync');
-      sendResponse({ ok: true, result: result, cloud: await getCloudStatus() });
+      sendResponse({ ok: true, result: result, cloud: await getCloudStatus(), storage: await getExtensionStorageStatus().catch(function() { return null; }) });
     }).catch(function(err) {
-      sendResponse({ error: err.message });
+      getExtensionStorageStatus().catch(function() { return err && err.storageStatus || null; }).then(function(storageStatus) {
+        sendResponse({ error: normalizeCloudErrorMessage(err, 'sync', storageStatus), storage: storageStatus });
+      });
     });
     return true;
   }
@@ -3334,7 +4485,10 @@ chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
         titleHint: message.payload.titleHint,
         companyHint: message.payload.companyHint,
         coverLetterType: message.payload.coverLetterType,
-        model: sanitizeModelFromSettings(settings, message.payload.model)
+        model: sanitizeModelFromSettings(settings, message.payload.model),
+        sessionId: message.payload.sessionId || '',
+        forceNewSession: !!message.payload.forceNewSession,
+        refreshNonce: message.payload.refreshNonce || ''
       }, portfolioBundle.version);
       refreshSession = session;
 
@@ -3361,7 +4515,8 @@ chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
       sendResponse({ session: serializeSession(session) });
     }).catch(function(err) {
       if (refreshSession && refreshState) {
-        setSessionPipeline(refreshSession, 'refresh', 'error', 'Context refresh failed', err.message || '', 100, 'error');
+        var refreshWarning = isKnownProviderWarning(err);
+        setSessionPipeline(refreshSession, 'refresh', refreshWarning ? 'provider_warning' : 'error', refreshWarning ? warningPipelineLabel(err, 'Context provider warning') : 'Context refresh failed', err.message || '', 100, refreshWarning ? 'warning' : 'error');
         refreshSession.updatedAt = Core.nowIso();
         saveSessionState(refreshState).then(function() {
           broadcastSessionUpdate(refreshSession);
@@ -3389,7 +4544,8 @@ chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
         titleHint: message.payload.titleHint,
         companyHint: message.payload.companyHint,
         coverLetterType: style,
-        model: model
+        model: model,
+        sessionId: message.payload.sessionId || ''
       }, portfolioBundle.version);
       pipelineSession = session;
 
@@ -3419,6 +4575,8 @@ chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
         model: generated.model,
         owner: portfolioBundle.owner,
         prompt: generated.prompt,
+        rankingContext: generated.rankingContext,
+        tokenUsage: generated.tokenUsage || {},
         sessionId: session.id,
         outputWords: Core.wordCount(generated.text),
         outputChars: generated.text.length
@@ -3438,7 +4596,8 @@ chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
         payload: {
           artifactId: artifact.id,
           style: style,
-          model: generated.model
+          model: generated.model,
+          tokenUsage: artifact.tokenUsage || {}
         }
       });
 
@@ -3468,7 +4627,8 @@ chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
           rawResponse: artifact.text,
           outputWords: artifact.outputWords,
           outputChars: artifact.outputChars,
-          model: artifact.model
+          model: artifact.model,
+          tokenUsage: artifact.tokenUsage || {}
         },
         output: artifact.text
       });
@@ -3482,7 +4642,8 @@ chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
       });
     }).catch(function(err) {
       if (pipelineSession && pipelineState) {
-        setSessionPipeline(pipelineSession, 'generate', 'error', 'Cover letter generation failed', err.message || '', 100, 'error');
+        var pipelineWarning = isKnownProviderWarning(err);
+        setSessionPipeline(pipelineSession, 'generate', pipelineWarning ? 'provider_warning' : 'error', pipelineWarning ? warningPipelineLabel(err, 'Cover letter provider warning') : 'Cover letter generation failed', err.message || '', 100, pipelineWarning ? 'warning' : 'error');
         pipelineSession.updatedAt = Core.nowIso();
         saveSessionState(pipelineState).then(function() {
           broadcastSessionUpdate(pipelineSession);
@@ -3576,12 +4737,124 @@ chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
       });
     }).catch(function(err) {
       if (resumeSession && resumeState) {
-        setSessionPipeline(resumeSession, 'resume', 'error', 'Resume generation failed', err.message || '', 100, 'error');
+        var resumeWarning = isKnownProviderWarning(err);
+        setSessionPipeline(resumeSession, 'resume', resumeWarning ? 'provider_warning' : 'error', resumeWarning ? warningPipelineLabel(err, 'Resume provider warning') : 'Resume generation failed', err.message || '', 100, resumeWarning ? 'warning' : 'error');
         resumeSession.updatedAt = Core.nowIso();
         saveSessionState(resumeState).then(function() {
           broadcastSessionUpdate(resumeSession);
         }).catch(function() {});
       }
+      sendResponse({ error: err.message });
+    });
+    return true;
+  }
+
+  if (message.type === 'SAVE_MANUAL_COVER_LETTER') {
+    queueMutation(async function() {
+      var portfolioBundle = await getPortfolioBundle();
+      var state = await getSessionState();
+      var coverLetterText = String(message.payload.coverLetterText || '').trim();
+      if (!coverLetterText) throw new Error('Manual cover letter text is required.');
+
+      var session = ensureSessionBase(state, {
+        pageUrl: message.payload.pageUrl,
+        rawPageText: message.payload.rawPageText || '',
+        pageTitle: message.payload.pageTitle,
+        titleHint: message.payload.titleHint,
+        companyHint: message.payload.companyHint,
+        coverLetterType: 'manual',
+        model: 'manual/no-ai'
+      }, portfolioBundle.version);
+
+      session.job = session.job || {};
+      if (message.payload.titleHint) session.job.jobTitle = message.payload.titleHint;
+      if (message.payload.companyHint) session.job.companyName = message.payload.companyHint;
+      session.job.jobTitle = session.job.jobTitle || message.payload.pageTitle || 'Cover Letter';
+      session.job.companyName = session.job.companyName || '';
+      session.panel.open = true;
+      session.panel.activeView = 'manual';
+
+      var artifact = {
+        id: 'manual_artifact_' + Core.shortHash(session.id + '|' + Core.nowIso() + '|' + coverLetterText),
+        createdAt: Core.nowIso(),
+        text: coverLetterText,
+        style: 'manual',
+        model: 'manual/no-ai',
+        source: 'manual',
+        noAi: true,
+        owner: portfolioBundle.owner,
+        prompt: {
+          system: 'Manual cover letter pasted by the user. No AI call was made.',
+          user: ''
+        },
+        rankingContext: null,
+        sessionId: session.id,
+        jobTitle: session.job.jobTitle || '',
+        company: session.job.companyName || '',
+        outputWords: Core.wordCount(coverLetterText),
+        outputChars: coverLetterText.length
+      };
+
+      session.artifacts = Array.isArray(session.artifacts) ? session.artifacts : [];
+      session.artifacts.unshift(artifact);
+      session.artifacts = session.artifacts.slice(0, 20);
+      session.latestStyle = 'manual';
+      session.latestModel = 'manual/no-ai';
+      clearSessionPipeline(session, 'manual', 'Manual cover letter saved');
+      session.updatedAt = Core.nowIso();
+
+      pushSessionActivity(session, {
+        type: 'manual_cover_letter',
+        createdAt: Core.nowIso(),
+        payload: {
+          artifactId: artifact.id,
+          model: artifact.model,
+          outputWords: artifact.outputWords,
+          noAi: true
+        }
+      });
+
+      await saveSessionState(state);
+      broadcastSessionUpdate(session);
+      await maybeSyncCloud('manual_cover_letter');
+      await appendLegacyLog({
+        kind: 'manual_cover_letter',
+        id: Date.now(),
+        timestamp: Core.nowIso(),
+        url: session.page.url,
+        style: 'manual',
+        model: 'manual/no-ai',
+        noAi: true,
+        step1: {
+          fullText: session.scrape.rawText,
+          preview: session.scrape.preview,
+          wordCount: session.scrape.wordCount,
+          charCount: session.scrape.charCount,
+          titleHint: message.payload.titleHint || '',
+          companyHint: message.payload.companyHint || ''
+        },
+        step2: {
+          parsed: session.job
+        },
+        step3: session.research || null,
+        step4: {
+          rawResponse: artifact.text,
+          outputWords: artifact.outputWords,
+          outputChars: artifact.outputChars,
+          model: artifact.model,
+          noAi: true
+        },
+        output: artifact.text
+      });
+
+      sendResponse({
+        session: serializeSession(session),
+        coverLetter: artifact.text,
+        artifact: artifact,
+        owner: portfolioBundle.owner,
+        extracted: session.job
+      });
+    }).catch(function(err) {
       sendResponse({ error: err.message });
     });
     return true;
@@ -3653,7 +4926,8 @@ chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
       });
     }).catch(function(err) {
       if (askSession && askState) {
-        setSessionPipeline(askSession, 'ask', 'error', 'Answer generation failed', err.message || '', 100, 'error');
+        var askWarning = isKnownProviderWarning(err);
+        setSessionPipeline(askSession, 'ask', askWarning ? 'provider_warning' : 'error', askWarning ? warningPipelineLabel(err, 'Answer provider warning') : 'Answer generation failed', err.message || '', 100, askWarning ? 'warning' : 'error');
         askSession.updatedAt = Core.nowIso();
         saveSessionState(askState).then(function() {
           broadcastSessionUpdate(askSession);
@@ -3665,13 +4939,18 @@ chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
   }
 
   if (message.type === 'GET_DASHBOARD_DATA') {
-    Promise.all([getSessionState(), getPortfolioBundle()]).then(function(results) {
+    Promise.all([getSessionState(), getPortfolioBundle(), localGet([MODEL_HEALTH_STORAGE_KEY, MODEL_USAGE_LOG_STORAGE_KEY])]).then(function(results) {
       var state = results[0];
+      MODEL_HEALTH_CACHE = Object.assign({}, results[2] && results[2][MODEL_HEALTH_STORAGE_KEY] || {}, MODEL_HEALTH_CACHE);
+      MODEL_USAGE_LOG_CACHE = Array.isArray(results[2] && results[2][MODEL_USAGE_LOG_STORAGE_KEY]) ? results[2][MODEL_USAGE_LOG_STORAGE_KEY] : MODEL_USAGE_LOG_CACHE;
+      rebuildModelHealthFromUsageLogs(MODEL_USAGE_LOG_CACHE);
       var sessions = state.order.map(function(id) {
         return state.sessions[id];
       }).filter(Boolean).map(serializeSession);
       sendResponse({
         sessions: sessions,
+        modelHealth: getModelHealthSummary(),
+        modelUsageLog: MODEL_USAGE_LOG_CACHE.slice(-MAX_MODEL_USAGE_LOGS),
         portfolio: {
           source: results[1].source,
           owner: results[1].owner

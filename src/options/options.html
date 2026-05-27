@@ -3,7 +3,6 @@
 <head>
   <meta charset="UTF-8">
   <title>CoverCraft – Settings</title>
-  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
     html{scrollbar-gutter:stable}
@@ -41,6 +40,23 @@
     .chip{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;padding:5px 8px;border-radius:999px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);color:#cbd5e1}
     .chip.warn{background:rgba(251,191,36,.08);border-color:rgba(251,191,36,.18);color:#fcd34d}
     .chip.err{background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.18);color:#fca5a5}
+    .model-health{margin-top:12px;padding:12px;border-radius:14px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07)}
+    .model-health-head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:10px}
+    .model-health-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:#c7d2fe}
+    .model-health-note{font-size:10.5px;color:#64748b;line-height:1.5}
+    .model-health-list{display:grid;gap:7px}
+    .model-health-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 9px;border-radius:11px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.06)}
+    .model-health-row strong{display:block;font-size:11.5px;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .model-health-row span{font-size:10.5px;color:#94a3b8;line-height:1.45}
+    .model-health-badge{font-size:10px;font-weight:800;border-radius:999px;padding:4px 7px;background:rgba(148,163,184,.1);color:#cbd5e1;white-space:nowrap}
+    .model-health-row.ok .model-health-badge{background:rgba(16,185,129,.1);color:#86efac}
+    .model-health-row.warn .model-health-badge{background:rgba(245,158,11,.1);color:#fcd34d}
+    .model-health-row.wait .model-health-badge{background:rgba(251,191,36,.1);color:#fcd34d}
+    .model-health-row.error .model-health-badge{background:rgba(239,68,68,.1);color:#fca5a5}
+    .model-health-meter{height:6px;margin-top:6px;border-radius:999px;overflow:hidden;background:rgba(148,163,184,.16)}
+    .model-health-meter-fill{display:block;height:100%;width:0;background:#10b981;transition:width .25s ease,background .25s ease}
+    .model-health-row.warn .model-health-meter-fill,.model-health-row.wait .model-health-meter-fill{background:#f59e0b}
+    .model-health-row.error .model-health-meter-fill{background:#ef4444}
     .split{display:grid;grid-template-columns:1fr 1fr;gap:16px}
     .check{display:flex;align-items:center;gap:10px;font-size:12px;color:#cbd5e1}
     .check input{accent-color:#818cf8}
@@ -109,15 +125,23 @@
               <optgroup label="Groq">
               <option value="groq/llama-3.1-8b-instant">Groq Llama 3.1 8B Instant</option>
               <option value="groq/llama-3.3-70b-versatile">Groq Llama 3.3 70B Versatile</option>
-              <option value="groq/meta-llama/llama-4-scout-17b-16e-instruct">Groq Llama 4 Scout 17B</option>
-              <option value="groq/moonshotai/kimi-k2-instruct">Groq Kimi K2 Instruct</option>
-              <option value="groq/moonshotai/kimi-k2-instruct-0905">Groq Kimi K2 Instruct 0905</option>
               <option value="groq/openai/gpt-oss-120b">Groq GPT-OSS 120B</option>
               <option value="groq/openai/gpt-oss-20b">Groq GPT-OSS 20B</option>
+              <option value="groq/meta-llama/llama-4-scout-17b-16e-instruct">Groq Llama 4 Scout 17B Preview</option>
               <option value="groq/qwen/qwen3-32b">Groq Qwen3 32B</option>
+              <option value="groq/compound-mini">Groq Compound Mini</option>
+              <option value="groq/compound">Groq Compound</option>
               </optgroup>
               <option value="custom">Custom Model</option>
             </select>
+            <div class="model-health" id="model-health-panel">
+              <div class="model-health-head">
+                <div class="model-health-title">Model Availability</div>
+                <button class="btn btn-secondary" id="refresh-model-health-btn" type="button">Refresh View</button>
+              </div>
+              <div class="model-health-note">Shows last-known provider headers from real requests and API tests. Groq does not expose a live all-model remaining-token endpoint.</div>
+              <div class="model-health-list" id="model-health-list"></div>
+            </div>
           </div>
           <div class="field">
             <label for="custom-model-input">Custom model string</label>

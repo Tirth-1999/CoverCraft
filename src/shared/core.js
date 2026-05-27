@@ -188,6 +188,121 @@
     return new Date().toISOString();
   }
 
+  function numericHeaderValue(value) {
+    var text = String(value || '').trim();
+    if (!text) return 0;
+    var multiplier = 1;
+    if (/k$/i.test(text)) multiplier = 1000;
+    if (/m$/i.test(text)) multiplier = 1000000;
+    var parsed = Number(text.replace(/[^\d.]/g, ''));
+    return Number.isFinite(parsed) ? parsed * multiplier : 0;
+  }
+
+  function clampPercent(value) {
+    if (!Number.isFinite(value)) return 0;
+    return Math.max(0, Math.min(100, Math.round(value)));
+  }
+
+  function modelAvailability(health, now) {
+    now = now || Date.now();
+    if (!health) {
+      return {
+        status: 'unknown',
+        tone: 'unknown',
+        label: 'Unknown',
+        dot: '⚪',
+        percent: null,
+        source: ''
+      };
+    }
+
+    var rate = health.rateLimit || {};
+    var tokenLimit = numericHeaderValue(rate.limitTokens);
+    var tokenRemaining = numericHeaderValue(rate.remainingTokens);
+    var requestLimit = numericHeaderValue(rate.limitRequests);
+    var requestRemaining = numericHeaderValue(rate.remainingRequests);
+    var percent = null;
+    var source = '';
+    if (tokenLimit > 0 && rate.remainingTokens !== '') {
+      percent = clampPercent((tokenRemaining / tokenLimit) * 100);
+      source = 'tokens';
+    } else if (requestLimit > 0 && rate.remainingRequests !== '') {
+      percent = clampPercent((requestRemaining / requestLimit) * 100);
+      source = 'requests';
+    }
+
+    var limitKind = String(health.limitKind || '').toLowerCase();
+    var hardLimit = limitKind === 'daily_tokens' || limitKind === 'daily_requests';
+    var hardLimitActive = hardLimit && (!health.blockedUntil || health.blockedUntil > now);
+    var wasRateLimited = health.status === 429 || health.status === 413 || !!limitKind;
+    var resetElapsed = !!(health.blockedUntil && health.blockedUntil <= now && health.status === 429 && !hardLimit);
+    if (hardLimit && health.blockedUntil && health.blockedUntil <= now) resetElapsed = true;
+    if (resetElapsed && (percent == null || percent === 0)) {
+      percent = 100;
+      source = source || 'capacity';
+    }
+
+    var waiting = !!(health.blockedUntil && health.blockedUntil > now && wasRateLimited);
+    var unavailable = hardLimitActive || waiting || (!health.ok && !resetElapsed) || percent === 0;
+    var tone = 'ok';
+    var label = 'Ready';
+    var dot = '🟢';
+    if (unavailable) {
+      tone = hardLimitActive ? 'error' : (waiting || health.status === 429 || health.status === 413 ? 'wait' : 'error');
+      label = hardLimitActive ? 'Unavailable' : (waiting ? 'Wait' : 'Unavailable');
+      dot = '🔴';
+      percent = 0;
+    } else if (percent != null && percent <= 50) {
+      tone = 'warn';
+      label = 'Low';
+      dot = '🟡';
+    }
+
+    return {
+      status: unavailable ? 'unavailable' : (tone === 'warn' ? 'limited' : 'available'),
+      tone: tone,
+      label: label,
+      dot: dot,
+      percent: percent,
+      source: source
+    };
+  }
+
+  function modelAliases(model) {
+    var raw = String(model || '').trim();
+    if (!raw) return [];
+    var stripped = raw.replace(/^groq\//, '');
+    var values = [raw, stripped, stripped ? 'groq/' + stripped : ''];
+    var seen = {};
+    return values.filter(function(value) {
+      if (!value || seen[value]) return false;
+      seen[value] = true;
+      return true;
+    });
+  }
+
+  function lookupModelHealth(modelHealth, model) {
+    var map = modelHealth || {};
+    var aliases = modelAliases(model);
+    for (var i = 0; i < aliases.length; i++) {
+      if (map[aliases[i]]) return map[aliases[i]];
+    }
+    var wanted = {};
+    aliases.forEach(function(alias) {
+      wanted[alias] = true;
+    });
+    var keys = Object.keys(map);
+    for (var j = 0; j < keys.length; j++) {
+      var item = map[keys[j]];
+      if (!item) continue;
+      var itemAliases = modelAliases(item.model).concat(modelAliases(item.apiModel));
+      for (var k = 0; k < itemAliases.length; k++) {
+        if (wanted[itemAliases[k]]) return item;
+      }
+    }
+    return null;
+  }
+
   function sessionTitle(session) {
     var job = session && session.job ? session.job : {};
     var title = job.jobTitle || 'Untitled Role';
@@ -265,6 +380,10 @@
     portfolioFingerprint: portfolioFingerprint,
     buildSessionId: buildSessionId,
     nowIso: nowIso,
+    numericHeaderValue: numericHeaderValue,
+    modelAvailability: modelAvailability,
+    modelAliases: modelAliases,
+    lookupModelHealth: lookupModelHealth,
     sessionTitle: sessionTitle,
     createEmptySession: createEmptySession,
     STORAGE_KEYS: {
