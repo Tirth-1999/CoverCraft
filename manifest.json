@@ -4,6 +4,7 @@
   "version": "3.0",
   "version_name": "3.0",
   "description": "AI-powered Chrome extension for cover letters, tailored resumes, and follow-up questions",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0PBDolSL1j3AjYUEQLBIJYyL6yfPNKr73sqpXZHIpNo10MhCVn4GET+PhyfijVromVzugmna8m7Z535jCleMebNlp4IqyfllqeXaBjW6z0JrnzKb31Xk+eyS35B8yJXkdEoYOWm4Hqku/u10yZL72JCaJnjBebkcjtIFlmDC0sEA/RKwp4UwIbLwUkc6/VW4brQq/E9opvI63jzuDsiwxdP72Ts8KJnaJ0H2e6bDjkvM/SIvCjraG4LB+uyARxIwrPGAAFrjHPsZrd6MM53p3dLG5ClOSrE2UX3gG8EbjdqLdxvVsUviiO0qIqEZLI/7KZDNMlv4NodMWPJoGTWmhQIDAQAB",
   "icons": {
     "16":  "icons/icon16.png",
     "48":  "icons/icon48.png",
