@@ -395,6 +395,7 @@ section[id] {
 .hero-actions {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 0.8rem;
   flex-wrap: wrap;
   margin-top: 1rem;
@@ -2523,6 +2524,10 @@ section[id] {
 
   .hero {
     padding-top: 2rem;
+  }
+
+  .hero-actions {
+    width: 100%;
   }
 
   .download-shell {
