@@ -283,6 +283,7 @@
               '<span class="cc-btn-label">Generate Cover Letter</span>',
               '<span class="cc-btn-progress"><span class="cc-btn-progress-fill"></span></span>',
             '</button>',
+            '<div id="cc-generate-status" class="cc-inline-status cc-hidden" role="alert"></div>',
 
             '<div id="cc-output-wrap" class="cc-card cc-hidden">',
               '<div class="cc-card-head">Latest Cover Letter (Editable)</div>',
@@ -302,6 +303,7 @@
                 '<span class="cc-btn-label">Download Manual Letter</span>',
                 '<span class="cc-btn-progress"><span class="cc-btn-progress-fill"></span></span>',
               '</button>',
+              '<div id="cc-manual-status" class="cc-inline-status cc-hidden" role="alert"></div>',
             '</div>',
           '</section>',
 
@@ -313,6 +315,7 @@
                 '<span class="cc-btn-label">Answer Question</span>',
                 '<span class="cc-btn-progress"><span class="cc-btn-progress-fill"></span></span>',
               '</button>',
+              '<div id="cc-ask-status" class="cc-inline-status cc-hidden" role="alert"></div>',
             '</div>',
             '<div id="cc-answer-wrap" class="cc-card cc-hidden">',
               '<div class="cc-card-head">Latest Answer</div>',
@@ -357,6 +360,7 @@
                 '<span class="cc-btn-label">Tailor Resume</span>',
                 '<span class="cc-btn-progress"><span class="cc-btn-progress-fill"></span></span>',
               '</button>',
+              '<div id="cc-resume-status" class="cc-inline-status cc-hidden" role="alert"></div>',
             '</div>',
 
             '<div id="cc-resume-output-wrap" class="cc-card cc-hidden">',
@@ -454,6 +458,10 @@
       '.cc-mini-stat{display:flex;flex-direction:column;gap:4px;padding:9px 10px;border-radius:10px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.06)}',
       '.cc-mini-stat-k{font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em}',
       '.cc-mini-stat strong{font-size:12px;font-weight:700;color:#e2e8f0;line-height:1.45;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+      '.cc-inline-status{padding:9px 10px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);color:#94a3b8;font-size:11px;line-height:1.55;overflow-wrap:anywhere}',
+      '.cc-inline-status.loading{background:rgba(99,102,241,.08);border-color:rgba(129,140,248,.2);color:#dbe4ff}',
+      '.cc-inline-status.ok{background:rgba(16,185,129,.08);border-color:rgba(16,185,129,.18);color:#d1fae5}',
+      '.cc-inline-status.error{background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.2);color:#fee2e2}',
       '.cc-output{resize:vertical;min-height:110px;max-height:360px;overflow:auto;scrollbar-width:none;-ms-overflow-style:none}',
       '.cc-manual-text{min-height:220px}',
       '.cc-question{min-height:90px}',
@@ -564,6 +572,8 @@
   function shortFailureLabel(errorText, fallback) {
     var text = String(errorText || '').trim().toLowerCase();
     if (!text) return fallback || 'Request Failed';
+    if (text.indexOf('tavily api key') !== -1) return 'Add Tavily Key';
+    if (text.indexOf('groq api key') !== -1) return 'Add Groq Key';
     if (text.indexOf('openrouter api key') !== -1) return 'Add OpenRouter Key';
     if (text.indexOf('job title or company') !== -1) return 'Need Job Details';
     if (text.indexOf('could not parse') !== -1) return 'Parse Error';
@@ -576,6 +586,58 @@
   function detailedFailureMessage(errorText, fallback) {
     var text = String(errorText || '').replace(/\s+/g, ' ').trim();
     return text || fallback || 'Something went wrong.';
+  }
+
+  function selectedModelValue() {
+    return ($id('cc-model-select') && $id('cc-model-select').value) || 'openrouter/free';
+  }
+
+  function modelUsesGroq(model) {
+    return /^groq\//i.test(String(model || ''));
+  }
+
+  function hasCachedResearch() {
+    return !!(currentSession && currentSession.research && currentSession.research.summary);
+  }
+
+  function runtimeValidationMessage(action, settings) {
+    settings = settings || {};
+    var model = selectedModelValue();
+    var missing = [];
+    if (modelUsesGroq(model)) {
+      if (!settings.groqKey) missing.push('Groq API key for the selected model');
+    } else if (!settings.openrouterKey) {
+      missing.push('OpenRouter API key for the selected model');
+    }
+    var needsResearch = action === 'generate' || action === 'resume' || (action === 'ask' && !hasCachedResearch());
+    if (needsResearch && !settings.tavilyKey) missing.push('Tavily API key for company research');
+    if (!missing.length) return '';
+    return 'Missing setup: ' + missing.join(', ') + '. Open CoverCraft Settings, add the missing key' + (missing.length === 1 ? '' : 's') + ', save, then try again.';
+  }
+
+  function withRuntimeValidation(action, statusFn, buttonId, callback) {
+    safeMsg({ type: 'GET_SETTINGS' }, function(response) {
+      if (!ctxOk() || chrome.runtime.lastError) {
+        statusFn('error', 'CoverCraft could not read settings. Reopen the extension and try again.');
+        flashButtonState(buttonId, 'Settings Error', 'error', 2200);
+        return;
+      }
+      if (!response || response.error) {
+        statusFn('error', response && response.error || 'CoverCraft could not read settings.');
+        flashButtonState(buttonId, 'Settings Error', 'error', 2200);
+        return;
+      }
+      currentSettings = response.settings || {};
+      currentModelHealth = response.modelHealth || currentModelHealth || {};
+      renderModelHealth();
+      var message = runtimeValidationMessage(action, currentSettings);
+      if (message) {
+        statusFn('error', message);
+        flashButtonState(buttonId, 'Missing Setup', 'error', 2400);
+        return;
+      }
+      callback();
+    });
   }
 
   function formatHealthTimestamp(value) {
@@ -1318,7 +1380,7 @@
     var inferred = inferIdentityHints();
     var manualHints = currentManualHints();
     if (!rawText) {
-      completeGenerateProgress(false, 'No Job Text');
+      completeGenerateProgress(false, 'No Job Text', 'CoverCraft could not find usable job text on this page. Open a job posting, wait for it to finish loading, then click Scrape and try again.');
       return;
     }
 
@@ -1357,41 +1419,43 @@
       return !!(($id('cc-title-hint').value || '').trim() && ($id('cc-company-hint').value || '').trim());
     }
 
-    saveDisplaySettings();
-    startGenerateProgress();
-    if (hasJobIdentity()) {
-      sendPipeline();
-      return;
-    }
+    withRuntimeValidation('generate', setGenerateStatus, 'cc-generate-btn', function() {
+      saveDisplaySettings();
+      startGenerateProgress();
+      if (hasJobIdentity()) {
+        sendPipeline();
+        return;
+      }
 
-    safeMsg({
-      type: 'REFRESH_SESSION_CONTEXT',
-      payload: {
-        pageUrl: window.location.href,
-        rawPageText: rawText,
-        pageTitle: inferred.pageTitle,
-        titleHint: manualHints.titleHint,
-        companyHint: manualHints.companyHint,
-        coverLetterType: $id('cc-style-select').value,
-        model: $id('cc-model-select').value,
-        sessionId: currentSession && currentSession.id || ''
-      }
-    }, function(response) {
-      if (!ctxOk() || chrome.runtime.lastError) {
-        completeGenerateProgress(false, 'Connection Failed');
-        return;
-      }
-      if (!response || response.error) {
-        refreshModelHealth();
-        completeGenerateProgress(false, shortFailureLabel(response && response.error, 'Refresh Failed'), response && response.error);
-        return;
-      }
-      hydrateSession(response.session);
-      if (!hasJobIdentity()) {
-        completeGenerateProgress(false, 'Need Job Details');
-        return;
-      }
-      sendPipeline();
+      safeMsg({
+        type: 'REFRESH_SESSION_CONTEXT',
+        payload: {
+          pageUrl: window.location.href,
+          rawPageText: rawText,
+          pageTitle: inferred.pageTitle,
+          titleHint: manualHints.titleHint,
+          companyHint: manualHints.companyHint,
+          coverLetterType: $id('cc-style-select').value,
+          model: $id('cc-model-select').value,
+          sessionId: currentSession && currentSession.id || ''
+        }
+      }, function(response) {
+        if (!ctxOk() || chrome.runtime.lastError) {
+          completeGenerateProgress(false, 'Connection Failed');
+          return;
+        }
+        if (!response || response.error) {
+          refreshModelHealth();
+          completeGenerateProgress(false, shortFailureLabel(response && response.error, 'Refresh Failed'), response && response.error);
+          return;
+        }
+        hydrateSession(response.session);
+        if (!hasJobIdentity()) {
+          completeGenerateProgress(false, 'Need Job Details', 'Add or correct the job title and company fields, then try again.');
+          return;
+        }
+        sendPipeline();
+      });
     });
   }
 
@@ -1459,6 +1523,7 @@
   function runAsk() {
     var question = ($id('cc-question').value || '').trim();
     if (!question) {
+      setAskStatus('error', 'Enter a question before asking CoverCraft to answer.');
       flashButtonState('cc-ask-btn', 'Enter A Question', 'error', 2000);
       return;
     }
@@ -1490,13 +1555,15 @@
       });
     }
 
-    if (!currentSession || !currentSession.id) {
-      refreshContext(function() {
-        sendQuestion();
-      }, 'cc-ask-btn');
-      return;
-    }
-    sendQuestion();
+    withRuntimeValidation('ask', setAskStatus, 'cc-ask-btn', function() {
+      if (!currentSession || !currentSession.id) {
+        refreshContext(function() {
+          sendQuestion();
+        }, 'cc-ask-btn');
+        return;
+      }
+      sendQuestion();
+    });
   }
 
   function runResume() {
@@ -1561,15 +1628,17 @@
       });
     }
 
-    saveDisplaySettings();
-    startResumeProgress();
-    if (($id('cc-title-hint').value || '').trim() && ($id('cc-company-hint').value || '').trim()) {
-      sendResumeRequest();
-      return;
-    }
-    refreshContext(function() {
-      sendResumeRequest();
-    }, 'cc-resume-btn');
+    withRuntimeValidation('resume', setResumeStatus, 'cc-resume-btn', function() {
+      saveDisplaySettings();
+      startResumeProgress();
+      if (($id('cc-title-hint').value || '').trim() && ($id('cc-company-hint').value || '').trim()) {
+        sendResumeRequest();
+        return;
+      }
+      refreshContext(function() {
+        sendResumeRequest();
+      }, 'cc-resume-btn');
+    });
   }
 
   function bindEvents() {
