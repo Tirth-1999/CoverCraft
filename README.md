@@ -77,7 +77,7 @@ For a direct install package, use:
 
 - `site/downloads/CoverCraft-extension.zip`
 
-The public ZIP is built from the files Chrome needs to run CoverCraft. It includes the extension manifest, icons, runtime scripts, dashboard/options/popup pages, vendor libraries, defaults/examples, and lightweight internal site pages. It intentionally excludes `.git`, local-only keys, local portfolio data, the hosted download folder, demo pages, and large audio/video media.
+The public ZIP is built from an explicit allowlist of files Chrome needs to run CoverCraft. It includes the extension manifest, icons, runtime scripts, dashboard/options/popup pages, sandbox tooling, vendor libraries, Firebase runtime config, and referenced internal site assets. It intentionally excludes `.git`, local-only API keys, local portfolio data, the hosted download folder, demo pages, unused media, and development metadata.
 
 To install from the ZIP:
 
