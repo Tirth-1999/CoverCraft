@@ -88,6 +88,8 @@ To install from the ZIP:
 5. Click `Load unpacked`
 6. Select the unzipped CoverCraft folder
 
+If Chrome shows `An unknown error occurred when fetching the script`, re-download the latest ZIP, unzip it again, and load the extracted folder that contains `manifest.json`. Also confirm you are testing on a normal `https://` job page; Chrome blocks extension injection on browser settings pages, the Chrome Web Store, other extension pages, and local `file://` pages unless file access is enabled for CoverCraft.
+
 ### Load the extension
 
 1. Open `chrome://extensions`

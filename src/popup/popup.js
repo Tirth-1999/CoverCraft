@@ -15,6 +15,38 @@
     if (status) status.textContent = msg;
   }
 
+  function pageAccessError(url) {
+    var text = String(url || '');
+    if (/^(chrome|edge|brave|vivaldi|opera|about):\/\//i.test(text)) return 'CoverCraft cannot run on browser settings pages.';
+    if (/^chrome-extension:\/\//i.test(text)) return 'CoverCraft cannot run inside another extension page.';
+    if (/^https:\/\/(chromewebstore\.google\.com|chrome\.google\.com\/webstore)\//i.test(text)) return 'Chrome blocks extensions from running on the Chrome Web Store.';
+    if (/^file:\/\//i.test(text)) return 'Chrome blocks this extension on local files unless file access is enabled for CoverCraft in chrome://extensions.';
+    if (/^(devtools|view-source):/i.test(text)) return 'CoverCraft cannot run on this page type.';
+    return '';
+  }
+
+  function explainInjectionError(message, file) {
+    var text = String(message || '').trim();
+    var lower = text.toLowerCase();
+    if (lower.indexOf('cannot access') !== -1 || lower.indexOf('permissions') !== -1 || lower.indexOf('scheme') !== -1) {
+      return text;
+    }
+    if (lower.indexOf('fetching the script') !== -1 || lower.indexOf('could not load file') !== -1 || lower.indexOf('failed to fetch') !== -1) {
+      return 'Chrome could not fetch ' + file + ' from the extension package. Re-download and unzip the latest CoverCraft package, then load the unzipped folder that contains manifest.json.';
+    }
+    return text || 'Could not inject ' + file + '.';
+  }
+
+  function ensurePackagedFile(file) {
+    var url = chrome.runtime.getURL(file);
+    return fetch(url, { cache: 'no-store' }).then(function(response) {
+      if (!response.ok) throw new Error('Missing packaged file: ' + file);
+      return true;
+    }).catch(function(err) {
+      throw new Error(err && err.message || ('Missing packaged file: ' + file));
+    });
+  }
+
   function initialsForName(name, fallback) {
     var text = String(name || '').trim();
     if (!text) return fallback || 'G';
@@ -48,16 +80,29 @@
   }
 
   function injectPanelScripts(tabId, callback) {
-    chrome.scripting.executeScript({
-      target: { tabId: tabId },
-      files: ['src/shared/core.js', 'src/shared/pdf.js', 'src/content/content.js']
-    }, function() {
-      if (chrome.runtime.lastError) {
-        callback(chrome.runtime.lastError.message || 'Could not inject CoverCraft on this page.');
+    var files = ['src/shared/core.js', 'src/shared/pdf.js', 'src/content/content.js'];
+    function injectNext(index) {
+      if (index >= files.length) {
+        callback(null);
         return;
       }
-      callback(null);
-    });
+      var file = files[index];
+      ensurePackagedFile(file).then(function() {
+        chrome.scripting.executeScript({
+          target: { tabId: tabId },
+          files: [file]
+        }, function() {
+          if (chrome.runtime.lastError) {
+            callback(explainInjectionError(chrome.runtime.lastError.message, file));
+            return;
+          }
+          injectNext(index + 1);
+        });
+      }).catch(function(err) {
+        callback(err && err.message || ('Missing packaged file: ' + file));
+      });
+    }
+    injectNext(0);
   }
 
   function dispatchOpen(tabId) {
@@ -90,9 +135,10 @@
       if (!tabs || !tabs[0]) { showStatus('No active tab found.'); return; }
       var tabId = tabs[0].id;
       var url   = tabs[0].url || '';
+      var blocked = pageAccessError(url);
 
-      if (url.startsWith('chrome://') || url.startsWith('chrome-extension://') || url.startsWith('about:')) {
-        showStatus('Cannot open on this page type.');
+      if (blocked) {
+        showStatus(blocked);
         return;
       }
 
