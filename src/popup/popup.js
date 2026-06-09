@@ -61,6 +61,15 @@
     var sub = byId('account-sub');
     if (!avatar || !name || !sub) return;
     avatar.innerHTML = '';
+    var installation = cloud && cloud.installation || null;
+    var storeLink = byId('store-link');
+    if (storeLink) storeLink.classList.toggle('hidden', !installation || installation.official);
+    if (installation && !installation.official) {
+      avatar.textContent = 'L';
+      name.textContent = 'Local ZIP mode';
+      sub.textContent = 'BYOK and local storage only';
+      return;
+    }
     if (cloud && cloud.signedIn && cloud.user) {
       if (cloud.user.photoURL) {
         var img = document.createElement('img');
@@ -171,6 +180,13 @@
     event.preventDefault();
     chrome.tabs.create({ url: 'https://cover-craft.app/' }, function() {
       if (!chrome.runtime.lastError) window.close();
+    });
+  });
+
+  bind('store-link', 'click', function(event) {
+    event.preventDefault();
+    chrome.runtime.sendMessage({ type: 'OPEN_STORE' }, function() {
+      window.close();
     });
   });
 })();

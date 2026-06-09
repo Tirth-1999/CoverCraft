@@ -41,11 +41,10 @@
           Cover letters, tailored resumes, and follow-up answers stay in one clean workspace with the role, company, and profile already in context.
         </p>
         <div class="hero-actions">
-          <a class="primary-btn download-btn" href="./downloads/CoverCraft-extension.zip" download>
-            <span class="download-icon" aria-hidden="true">↓</span>
-            Download ZIP
+          <a class="primary-btn" href="https://chromewebstore.google.com/detail/apnbkjkgobikeejmfjgnmbflonmbgffg" target="_blank" rel="noopener">
+            Install from Chrome Web Store
           </a>
-          <a class="secondary-btn" href="#setup">Setup guide</a>
+          <a class="secondary-btn" href="#local-install">Developer ZIP</a>
         </div>
       </div>
 
@@ -68,19 +67,20 @@
       </div>
     </section>
 
-    <section class="section download-section">
+    <section class="section download-section" id="local-install">
       <div class="panel download-shell reveal">
         <div class="download-copy">
-          <div class="eyebrow">Direct Download</div>
-          <h2>Install from the ZIP.</h2>
-          <p>Download the clean extension package, unzip it locally, then load the extracted folder from Chrome's Extensions page.</p>
+          <div class="eyebrow">Developer / Local Install</div>
+          <h2>Need the unpacked ZIP?</h2>
+          <p>The ZIP supports BYOK generation, local profiles, sessions, and exports. Google sign-in and Firebase sync are available only in the official Chrome Web Store installation.</p>
         </div>
         <div class="download-actions">
           <a class="primary-btn download-btn" href="./downloads/CoverCraft-extension.zip" download>
             <span class="download-icon" aria-hidden="true">↓</span>
-            Download CoverCraft ZIP
+            Download ZIP (Local Mode)
           </a>
-          <div class="download-meta">Package includes only the extension runtime, vendor libraries, icons, and lightweight internal pages.</div>
+          <a class="secondary-btn" href="https://chromewebstore.google.com/detail/apnbkjkgobikeejmfjgnmbflonmbgffg" target="_blank" rel="noopener">Install Official Version</a>
+          <div class="download-meta">The package contains no developer API keys. Each local user supplies their own OpenRouter, Groq, and optional Tavily key.</div>
         </div>
       </div>
     </section>
@@ -344,8 +344,8 @@
               <article class="panel showcase-slide showcase-shot showcase-shot--wide showcase-shot--dense showcase-shot--account" data-showcase-slide="account">
                 <div class="showcase-shot-copy">
                   <div class="eyebrow">Account</div>
-                  <h3>Manage sign-in and sync from the website.</h3>
-                  <p>The account center keeps identity, sync status, and high-level usage in one place outside the extension surface itself.</p>
+                  <h3>Understand account access before installation.</h3>
+                  <p>The official Store extension keeps identity, sync status, and profile controls in its Dashboard. This website explains which installation mode supports those features.</p>
                 </div>
                 <div class="showcase-shot-media">
                   <div class="showcase-frame showcase-shot-frame">
@@ -378,7 +378,12 @@
         <button class="faq-item reveal" data-faq>
           <span>Where are my logs stored?</span>
           <span class="faq-icon">+</span>
-          <div class="faq-body">Local-first by default, with optional Firebase sync for signed-in users.</div>
+          <div class="faq-body">The ZIP stays local. The official Chrome Web Store installation can optionally sync signed-in users through Firebase.</div>
+        </button>
+        <button class="faq-item reveal" data-faq>
+          <span>Why does Google sign-in not work in the ZIP version?</span>
+          <span class="faq-icon">+</span>
+          <div class="faq-body">Chrome assigns unpacked extensions a different ID. For security, CoverCraft enables the production OAuth redirect only for the official Web Store ID.</div>
         </button>
         <button class="faq-item reveal" data-faq>
           <span>How do I import my portfolio?</span>
@@ -435,7 +440,7 @@
     </div>
     <div class="footer-bottom">
       <span>Built for faster repeat applications.</span>
-      <span>Local-first with optional sync.</span>
+      <span>Official Store install adds optional sync.</span>
     </div>
   </footer>
 

@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.0.4 - 2026-06-09
+
+### Installation Identity
+
+- Restricted production Google sign-in and Firebase sync to Chrome Web Store ID `apnbkjkgobikeejmfjgnmbflonmbgffg`.
+- Kept unpacked ZIP installations fully usable for BYOK generation, local profiles, sessions, and exports.
+- Added clear local-install status and Store installation actions to popup, dashboard, and settings.
+- Made the Store listing the primary website installation path and labeled the ZIP as local mode.
+- Replaced misleading hosted account controls with an installation-mode guide.
+
 ## 3.0.3 - 2026-06-09
 
 ### Security

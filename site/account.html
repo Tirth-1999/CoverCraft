@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CoverCraft | Account</title>
-  <meta name="description" content="Manage CoverCraft sign-in, sync, and profile state from a dedicated account page.">
+  <meta name="description" content="Learn which CoverCraft installation supports Google sign-in, Firebase sync, and local BYOK mode.">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -32,27 +32,23 @@
       <div class="panel reveal account-center-shell">
         <div class="section-head account-head">
           <div class="eyebrow eyebrow-hero">Account</div>
-          <h2>Identity, sync, and profile in one place.</h2>
-          <p id="site-account-copy">Manage the account and profile details that power your cover letters, resumes, and follow-up answers.</p>
+          <h2>Choose the installation mode that fits your workflow.</h2>
+          <p>Account actions run inside the extension Dashboard. The website does not read or control extension account data.</p>
         </div>
         <div class="account-summary-card account-summary-card-lg">
           <div class="account-summary-top account-summary-top-lg">
             <div class="account-avatar account-avatar-lg" id="site-account-avatar">G</div>
             <div class="account-identity-copy">
-              <div class="account-name account-name-lg" id="site-account-name">Guest</div>
-              <div class="account-sub" id="site-account-sub">Not signed in</div>
-              <div class="account-status-row" id="site-account-badges"></div>
+              <div class="account-name account-name-lg">Official Store installation</div>
+              <div class="account-sub">Google sign-in and optional Firebase sync</div>
+              <div class="account-status-row"><span class="account-status-pill">Production ID verified</span></div>
             </div>
           </div>
         </div>
         <div class="sync-action-bar">
-          <button class="site-action-btn site-action-btn--primary" id="site-sign-in-btn" type="button">Sign In With Google</button>
-          <button class="site-action-btn site-action-btn--secondary" id="site-sync-btn" type="button">Sync Now</button>
-          <button class="site-action-btn site-action-btn--secondary" id="site-open-settings-btn" type="button">Open Extension Settings</button>
-          <button class="site-action-btn site-action-btn--danger" id="site-sign-out-btn" type="button">Sign Out</button>
+          <a class="site-action-btn site-action-btn--primary" href="https://chromewebstore.google.com/detail/apnbkjkgobikeejmfjgnmbflonmbgffg" target="_blank" rel="noopener">Install Official Extension</a>
+          <a class="site-action-btn site-action-btn--secondary" href="index.html#setup">Open Setup Guide</a>
         </div>
-        <div class="site-account-status account-inline-status" id="site-account-status"></div>
-        <div class="mini-grid account-stats-grid" id="site-account-stats"></div>
       </div>
     </section>
 
@@ -60,59 +56,25 @@
       <div class="panel reveal account-editor-shell">
         <div class="editor-head">
           <div>
-            <div class="eyebrow">Profile</div>
-            <h2>Active profile details.</h2>
-            <p class="account-editor-copy" id="site-profile-copy">Update the profile used in cover letters, tailored resumes, and exports.</p>
+            <div class="eyebrow">Local ZIP Mode</div>
+            <h2>BYOK generation stays available.</h2>
+            <p class="account-editor-copy">The downloadable ZIP supports user-provided OpenRouter, Groq, and Tavily keys, local profiles, sessions, and exports. It does not support production Google sign-in or Firebase sync.</p>
           </div>
         </div>
-        <div class="account-guest-note hidden" id="site-profile-guest-note">Sign in with Google to unlock profile editing and synced identity details.</div>
         <div class="account-editor-sections" id="site-profile-sections">
           <div class="account-editor-section">
             <div class="editor-section-head">
-              <h3>Identity</h3>
-              <p>These details are used in cover letters, tailored resumes, PDF exports, and the account summary.</p>
-            </div>
-            <div class="account-editor-grid">
-              <label class="account-field">
-                <span>Full name</span>
-                <input type="text" id="site-profile-name-input" placeholder="Tirth Shah">
-              </label>
-              <label class="account-field">
-                <span>Title</span>
-                <input type="text" id="site-profile-title-input" placeholder="Data Scientist">
-              </label>
-              <label class="account-field">
-                <span>Location</span>
-                <input type="text" id="site-profile-location-input" placeholder="Austin, TX">
-              </label>
-              <label class="account-field">
-                <span>Website</span>
-                <input type="text" id="site-profile-website-input" placeholder="https://your-site.com">
-              </label>
+              <h3>Why the distinction exists</h3>
+              <p>Chrome assigns unpacked extensions a different ID. OAuth redirects are bound to the official Web Store ID, so CoverCraft blocks production login from other IDs.</p>
             </div>
           </div>
           <div class="account-editor-section">
             <div class="editor-section-head">
-              <h3>Contact</h3>
-              <p>Keep these fields updated so the active profile is ready before you generate the next application.</p>
-            </div>
-            <div class="account-editor-grid">
-              <label class="account-field">
-                <span>Email</span>
-                <input type="email" id="site-profile-email-input" placeholder="name@example.com">
-              </label>
-              <label class="account-field">
-                <span>Phone</span>
-                <input type="text" id="site-profile-phone-input" placeholder="(555) 555-5555">
-              </label>
+              <h3>Where to manage your profile</h3>
+              <p>Open CoverCraft Dashboard, then Profile. Official installs show sign-in and sync controls; local ZIP installs show local-mode status and continue to support profile import.</p>
             </div>
           </div>
         </div>
-        <div class="editor-actions editor-actions-bottom">
-          <button class="site-action-btn" id="site-profile-refresh-btn" type="button">Reload Profile</button>
-          <button class="site-action-btn" id="site-profile-save-btn" type="button">Save Profile</button>
-        </div>
-        <div class="site-account-status" id="site-profile-status"></div>
       </div>
     </section>
 
@@ -153,17 +115,17 @@
         <button class="faq-item reveal" data-faq>
           <span>What does cloud sync back up?</span>
           <span class="faq-icon">+</span>
-          <div class="faq-body">Sessions, research, generated output, and the active profile can be synced.</div>
+          <div class="faq-body">In the official Store installation, sessions, research, generated output, and the active profile can be synced.</div>
         </button>
         <button class="faq-item reveal" data-faq>
-          <span>Can I edit the active profile here?</span>
+          <span>Can I edit the active profile on this website?</span>
           <span class="faq-icon">+</span>
-          <div class="faq-body">Yes. Signed-in users can update the profile used across letters, resumes, and exports.</div>
+          <div class="faq-body">No. Profile editing happens inside the extension Dashboard so the website does not receive extension-local data.</div>
         </button>
         <button class="faq-item reveal" data-faq>
           <span>Do I need the extension open?</span>
           <span class="faq-icon">+</span>
-          <div class="faq-body">Open this page from CoverCraft when you want live account actions and synced profile editing.</div>
+          <div class="faq-body">No. This page is a setup guide. Live account actions happen inside the extension Dashboard.</div>
         </button>
         <button class="faq-item reveal" data-faq>
           <span>Can I use this page without signing in?</span>

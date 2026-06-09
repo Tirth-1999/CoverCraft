@@ -430,22 +430,32 @@ function setCloudActionState(cloud) {
   var signInBtn = document.getElementById('cloud-sign-in-btn');
   var syncBtn = document.getElementById('cloud-sync-btn');
   var signOutBtn = document.getElementById('cloud-sign-out-btn');
+  var syncCheckbox = document.getElementById('cloud-sync-enabled');
+  var installBtn = document.getElementById('install-official-btn');
+  var localNotice = document.getElementById('local-install-notice');
+  var official = !!(cloud && cloud.installation && cloud.installation.official);
   var configured = !!(cloud && cloud.configured);
   var signedIn = !!(cloud && cloud.signedIn);
   var syncEnabled = !!(cloud && cloud.enabled);
 
   if (signInBtn) {
-    signInBtn.classList.toggle('hidden', configured && signedIn);
-    signInBtn.disabled = !configured || signedIn;
+    signInBtn.classList.toggle('hidden', !official || (configured && signedIn));
+    signInBtn.disabled = !official || !configured || signedIn;
   }
   if (syncBtn) {
-    syncBtn.classList.toggle('hidden', !configured || !signedIn);
-    syncBtn.disabled = !configured || !signedIn || !syncEnabled;
+    syncBtn.classList.toggle('hidden', !official || !configured || !signedIn);
+    syncBtn.disabled = !official || !configured || !signedIn || !syncEnabled;
   }
   if (signOutBtn) {
-    signOutBtn.classList.toggle('hidden', !configured || !signedIn);
-    signOutBtn.disabled = !configured || !signedIn;
+    signOutBtn.classList.toggle('hidden', !official || !configured || !signedIn);
+    signOutBtn.disabled = !official || !configured || !signedIn;
   }
+  if (syncCheckbox) {
+    syncCheckbox.disabled = !official;
+    if (!official) syncCheckbox.checked = false;
+  }
+  if (installBtn) installBtn.classList.toggle('hidden', official);
+  if (localNotice) localNotice.classList.toggle('hidden', official);
 }
 
 function readFileAsText(file) {
@@ -500,6 +510,12 @@ function renderTopbarProfile(cloud) {
   if (!avatar || !name || !sub) return;
 
   avatar.innerHTML = '';
+  if (cloud && cloud.installation && !cloud.installation.official) {
+    avatar.textContent = 'L';
+    name.textContent = 'Local ZIP mode';
+    sub.textContent = 'BYOK and local storage';
+    return;
+  }
   if (cloud && cloud.signedIn && cloud.user) {
     if (cloud.user.photoURL) {
       var img = document.createElement('img');
@@ -529,7 +545,12 @@ function renderProfileSurface() {
   var owner = lastPortfolioOwner || {};
   ownerChips.innerHTML = '';
 
-  if (cloud && cloud.signedIn && cloud.user) {
+  if (cloud && cloud.installation && !cloud.installation.official) {
+    ownerName.textContent = owner.name || 'Local profile';
+    ownerSub.textContent = owner.email || 'Stored only in this local extension installation.';
+    ownerChips.appendChild(chip('Local ZIP mode', 'warn'));
+    ownerChips.appendChild(chip('Cloud unavailable', 'warn'));
+  } else if (cloud && cloud.signedIn && cloud.user) {
     ownerName.textContent = cloud.user.displayName || owner.name || 'Signed in';
     ownerSub.textContent = cloud.user.email || 'Account connected';
     if (cloud.lastSyncedAt) ownerChips.appendChild(chip('Last sync ' + fmtDate(cloud.lastSyncedAt), ''));
@@ -561,6 +582,16 @@ function renderCloudStatus(cloud, storage) {
   if (!summary || !chips) return;
 
   chips.innerHTML = '';
+  if (cloud && cloud.installation && !cloud.installation.official) {
+    summary.textContent = cloud.unavailableReason || 'Google sign-in and Firebase sync require the official Chrome Web Store installation.';
+    chips.appendChild(chip('Local ZIP mode', 'warn'));
+    chips.appendChild(chip('BYOK generation available', ''));
+    if (storage) chips.appendChild(chip(limitText(storageStatusSummary(storage), 90), storage.writable && storage.state !== 'full' ? '' : 'err'));
+    setCloudActionState(cloud);
+    renderTopbarProfile(cloud);
+    renderProfileSurface();
+    return;
+  }
   if (!cloud || !cloud.configured) {
     summary.textContent = 'Account sign-in is not configured yet.';
     chips.appendChild(chip('Firebase config missing', 'err'));
@@ -2429,6 +2460,11 @@ function openWebsite() {
   chrome.tabs.create({ url: 'https://cover-craft.app/' });
 }
 
+function installOfficialVersion() {
+  var storeUrl = lastCloudStatus && lastCloudStatus.installation && lastCloudStatus.installation.storeUrl;
+  chrome.tabs.create({ url: storeUrl || 'https://chromewebstore.google.com/detail/apnbkjkgobikeejmfjgnmbflonmbgffg' });
+}
+
 function handleImportedDraft(response, successLabel) {
   if (!response || response.error) {
     setStatus('portfolio-status', 'error', response && response.error || 'Import failed.');
@@ -2496,6 +2532,7 @@ function initDashboardPage() {
   bindById('cloud-sign-in-btn', 'click', signInToCloud);
   bindById('cloud-sync-btn', 'click', syncCloudNow);
   bindById('cloud-sign-out-btn', 'click', signOutOfCloud);
+  bindById('install-official-btn', 'click', installOfficialVersion);
   bindById('topbar-profile-chip', 'click', openProfileSurface);
   bindById('topbar-profile-chip', 'keydown', openProfileSurface);
   bindById('upload-json-btn', 'click', function() {

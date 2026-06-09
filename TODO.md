@@ -7,7 +7,8 @@ Complete these steps for the production Chrome Web Store extension ID `apnbkjkgo
 ### Extension Identity
 
 - Confirm the published install uses the same permanent ID across machines.
-- Decide whether to add a manifest `key` field for stable local development IDs.
+- Confirm unpacked ZIP installs show Local ZIP mode and cannot start production OAuth.
+- Keep the release manifest free of a `key`; use a separate development OAuth project if local OAuth is needed later.
 
 ### Google OAuth And Firebase
 
@@ -24,6 +25,7 @@ Complete these steps for the production Chrome Web Store extension ID `apnbkjkgo
 - Test cloud sync from the published build.
 - Test popup, dashboard, settings, and account flows from the published build.
 - Verify generation still works with user-supplied OpenRouter, Groq, and Tavily keys.
+- Load the ZIP unpacked and verify BYOK generation, profile import, sessions, and exports still work without sign-in.
 
 ### Release Follow-Up
 

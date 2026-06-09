@@ -470,7 +470,7 @@ function renderSiteAccount(cloud, portfolioBundle, overview) {
     name.textContent = 'Extension context only';
     sub.textContent = 'Open this page from the CoverCraft extension to manage sign-in and sync.';
     if (badges) badges.innerHTML = statusPill('Preview mode', false) + statusPill('Extension required', true);
-    copy.textContent = 'This page becomes a full account center only when it is opened through CoverCraft.';
+    copy.textContent = 'Account controls are available inside the official CoverCraft extension Dashboard.';
     if (profileCopy) profileCopy.textContent = 'Open this account page from CoverCraft to edit the active profile used in letters, resumes, and exports.';
     if (stats) {
       stats.innerHTML = accountStatCards({ sessions: '—', coverLetters: '—', replies: '—', resumes: '—', companies: '—' }, false);

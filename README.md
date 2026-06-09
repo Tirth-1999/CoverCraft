@@ -2,7 +2,7 @@
 
 CoverCraft is a Chrome extension for faster job applications.
 
-Current release: `3.0.3`
+Current release: `3.0.4`
 
 It turns a live job page into a reusable workspace where you can generate a tailored cover letter, ask focused follow-up questions, keep profile context ready, and move into a reusable control center without breaking flow.
 
@@ -77,13 +77,23 @@ Release history is documented in [CHANGELOG.md](CHANGELOG.md). Security and secr
 
 ## Quick Start
 
-### Download the ZIP
+### Official Chrome Web Store installation
 
-For a direct install package, use:
+Use the official listing for Google sign-in and optional Firebase sync:
+
+- `https://chromewebstore.google.com/detail/apnbkjkgobikeejmfjgnmbflonmbgffg`
+
+The production extension ID is `apnbkjkgobikeejmfjgnmbflonmbgffg`. CoverCraft enables production OAuth only when `chrome.runtime.id` matches that ID.
+
+### Local ZIP installation
+
+For BYOK development or local-only use:
 
 - `site/downloads/CoverCraft-extension.zip`
 
-The public ZIP is built from an explicit allowlist of files Chrome needs to run CoverCraft. It includes the manifest, icons, runtime pages and scripts, resume-import tooling, vendor libraries, and public Firebase runtime config. The marketing website and branding media remain hosted at `cover-craft.app` and are not duplicated in the extension package.
+The public ZIP is built from an explicit allowlist of files Chrome needs to run CoverCraft. It includes the manifest, icons, runtime pages and scripts, resume-import tooling, vendor libraries, and public Firebase project identifiers. The marketing website and branding media remain hosted at `cover-craft.app` and are not duplicated in the extension package.
+
+Chrome assigns an unpacked ZIP a different extension ID. The ZIP therefore supports BYOK generation, local profile import, local sessions, and exports, but production Google sign-in and Firebase sync are deliberately unavailable.
 
 The production fallback profile is intentionally empty. Each user must import or create their own profile before generating personalized output. No developer profile or provider API key is included in the ZIP.
 
@@ -115,7 +125,7 @@ Developer-owned provider keys must not be placed in the extension package. Users
 
 ### Optional Firebase setup
 
-Production Google sign-in and cloud sync are configured in `src/firebase.defaults.js`. A local `src/firebase.js` may override those values during development.
+Production Google sign-in and cloud sync are configured in `src/firebase.defaults.js` and restricted to the official Chrome Web Store ID. A local `src/firebase.js` may override project values during development, but it does not bypass the production-ID gate.
 
 More details are in `firebase/README.md`.
 

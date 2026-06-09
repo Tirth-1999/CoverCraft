@@ -39,6 +39,8 @@ var MAX_SESSION_SYNC_WRITES = 25;
 var MAX_MODEL_USAGE_SYNC_WRITES = 50;
 var FIREBASE_CONFIG = typeof COVERCRAFT_FIREBASE === 'object' && COVERCRAFT_FIREBASE ? COVERCRAFT_FIREBASE : {};
 var PROVIDER_KEY_NAMES = ['openrouterKey', 'groqKey', 'tavilyKey'];
+var PRODUCTION_EXTENSION_ID = 'apnbkjkgobikeejmfjgnmbflonmbgffg';
+var CHROME_WEB_STORE_URL = 'https://chromewebstore.google.com/detail/' + PRODUCTION_EXTENSION_ID;
 
 var DEFAULT_SETTINGS = {
   openrouterKey: COVERCRAFT_CONFIG && COVERCRAFT_CONFIG.openrouterKey || '',
@@ -464,6 +466,30 @@ function isFirebaseConfigured() {
   return !!(config.apiKey && config.projectId && config.authDomain && hasUsableGoogleClientId(config.googleClientId));
 }
 
+function getInstallationInfo() {
+  var extensionId = String(chrome.runtime.id || '');
+  var official = extensionId === PRODUCTION_EXTENSION_ID;
+  return {
+    mode: official ? 'official' : 'local',
+    official: official,
+    extensionId: extensionId,
+    productionExtensionId: PRODUCTION_EXTENSION_ID,
+    storeUrl: CHROME_WEB_STORE_URL,
+    cloudAvailable: official
+  };
+}
+
+function localInstallCloudError() {
+  return 'Google sign-in and Firebase sync are available only in the official Chrome Web Store installation. This local ZIP installation still supports BYOK generation, local sessions, profile import, and exports.';
+}
+
+function requireOfficialInstallation() {
+  if (getInstallationInfo().official) return;
+  var error = new Error(localInstallCloudError());
+  error.code = 'LOCAL_INSTALL';
+  throw error;
+}
+
 function localTimeMs(value) {
   var ms = Date.parse(value || '');
   return isNaN(ms) ? 0 : ms;
@@ -643,6 +669,7 @@ async function refreshCloudIdToken(auth) {
 }
 
 async function ensureCloudAuthReady() {
+  requireOfficialInstallation();
   if (!isFirebaseConfigured()) throw new Error('Firebase is not configured yet.');
   var bundle = await getCloudAuthSession();
   var auth = bundle.auth;
@@ -816,6 +843,7 @@ async function mergeRemoteModelUsageIntoLocal(remoteUsageLogs) {
 }
 
 async function getRemoteCloudState() {
+  requireOfficialInstallation();
   var auth = await ensureCloudAuthReady();
   if (!auth || !auth.uid) throw new Error('Sign in with Google to enable CoverCraft cloud sync.');
   var appDoc = await firestoreRequest('GET', 'users/' + auth.uid + '/state/main', null, auth);
@@ -829,6 +857,7 @@ async function getRemoteCloudState() {
 }
 
 async function syncCloudState(reason) {
+  requireOfficialInstallation();
   var settings = await loadSettings();
   if (!settings.cloudSyncEnabled) return { ok: true, skipped: 'disabled' };
   var auth = await ensureCloudAuthReady();
@@ -926,6 +955,7 @@ async function syncCloudState(reason) {
 }
 
 async function clearCloudSessions() {
+  requireOfficialInstallation();
   var auth = await ensureCloudAuthReady();
   if (!auth || !auth.uid) return;
   var remoteSessions = await listFirestoreDocuments('users/' + auth.uid + '/sessions');
@@ -941,6 +971,7 @@ async function clearCloudSessions() {
 }
 
 async function maybeSyncCloud(reason) {
+  if (!getInstallationInfo().official) return { ok: true, skipped: 'local_install' };
   try {
     return await syncCloudState(reason);
   } catch (err) {
@@ -1034,7 +1065,7 @@ async function launchGoogleIdTokenFlow(config) {
     throw new Error('Chrome identity API is not available.');
   }
   if (!hasUsableGoogleClientId(config.googleClientId)) {
-    throw new Error('Firebase auth config is incomplete. Add the real Google OAuth client ID to src/firebase.js for the extension OAuth flow.');
+    throw new Error('The production Google OAuth client configuration is incomplete.');
   }
   var redirectUrl = chrome.identity.getRedirectURL('firebase');
   var state = randomUrlSafe(24);
@@ -1093,6 +1124,7 @@ function buildFirebaseAuthFromGoogleResponse(data) {
 }
 
 async function signInToCloudWithGoogle() {
+  requireOfficialInstallation();
   var config = getFirebaseConfig();
   var googleAuth = await launchGoogleIdTokenFlow(config);
   var firebaseAuth = await exchangeGoogleIdTokenForFirebase(config, googleAuth);
@@ -1111,25 +1143,29 @@ async function finalizeFirebaseAuth(response) {
 }
 
 async function getCloudStatus() {
+  var installation = getInstallationInfo();
   var settings = await loadSettings();
   var bundle = await getCloudAuthSession();
   var flow = await getPendingCloudAuthFlow();
   var auth = bundle.auth;
   var meta = bundle.meta || {};
   return {
-    configured: isFirebaseConfigured(),
-    signedIn: !!(auth && auth.uid),
-    user: auth ? {
+    installation: installation,
+    available: installation.official && isFirebaseConfigured(),
+    configured: installation.official && isFirebaseConfigured(),
+    signedIn: installation.official && !!(auth && auth.uid),
+    user: installation.official && auth ? {
       uid: auth.uid || '',
       email: auth.email || '',
       displayName: auth.displayName || '',
       photoURL: auth.photoURL || '',
       expiresAt: auth.expiresAt || ''
     } : null,
-    enabled: !!settings.cloudSyncEnabled,
+    enabled: installation.official && !!settings.cloudSyncEnabled,
     lastSyncedAt: meta.lastSyncedAt || '',
-    lastError: meta.lastError || '',
-    authInProgress: !!flow
+    lastError: installation.official ? (meta.lastError || '') : '',
+    unavailableReason: installation.official ? '' : localInstallCloudError(),
+    authInProgress: installation.official && !!flow
   };
 }
 
@@ -4162,6 +4198,11 @@ chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
     return false;
   }
 
+  if (message.type === 'OPEN_STORE') {
+    chrome.tabs.create({ url: CHROME_WEB_STORE_URL });
+    return false;
+  }
+
   if (message.type === 'DOWNLOAD_PDF_DATA_URL') {
     chrome.downloads.download({
       url: message.payload && message.payload.dataUrl || '',
@@ -4256,6 +4297,7 @@ chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
 
   if (message.type === 'CLOUD_SIGN_IN') {
     queueMutation(async function() {
+      requireOfficialInstallation();
       var responseSent = false;
       if (await getPendingCloudAuthFlow()) throw new Error('Google sign-in is already in progress.');
       var flow = { startedAt: Core.nowIso(), method: 'chrome_identity' };
@@ -4321,6 +4363,7 @@ chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
 
   if (message.type === 'SYNC_CLOUD_NOW') {
     queueMutation(async function() {
+      requireOfficialInstallation();
       var remote = await getRemoteCloudState().catch(function() { return { app: null, sessions: [], modelUsageLogs: [] }; });
       await mergeRemoteAppStateIntoLocal(remote.app || {});
       await mergeRemoteSessionsIntoLocal(remote.sessions || []);

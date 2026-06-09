@@ -176,6 +176,10 @@
           <label for="cloud-sync-enabled">Enable cloud sync for sessions and portfolio</label>
         </div>
         <div class="hint">API keys stay in extension-local storage and are not placed in Chrome Sync or Firebase. Google sign-in is optional.</div>
+        <div class="source-box hidden" id="local-install-notice" style="margin-top:14px">
+          <h3>Local ZIP installation</h3>
+          <p>Generation, profile import, sessions, and exports work locally with your own provider keys. Google sign-in and Firebase sync require the official Chrome Web Store version.</p>
+        </div>
         <div class="source-box" style="margin-top:14px">
           <h3>Google Cloud Account</h3>
           <p id="cloud-auth-summary">Checking cloud status…</p>
@@ -184,6 +188,7 @@
             <button class="btn btn-success" id="cloud-sign-in-btn">Sign In With Google</button>
             <button class="btn" id="cloud-sync-btn">Sync Now</button>
             <button class="btn btn-secondary" id="cloud-sign-out-btn">Sign Out</button>
+            <button class="btn btn-success hidden" id="install-official-btn">Install Official Version</button>
           </div>
           <div id="cloud-auth-status" class="status"></div>
         </div>

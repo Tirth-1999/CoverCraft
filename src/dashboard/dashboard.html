@@ -1577,6 +1577,10 @@
             <div class="panel-title">Google Cloud Account</div>
             <div class="panel-copy" id="cloud-auth-summary">Checking cloud status…</div>
             <div class="chips" id="cloud-auth-chips" style="margin-top:10px"></div>
+            <div class="source-box hidden" id="local-install-notice" style="margin-top:14px">
+              <h3>Local ZIP installation</h3>
+              <p>Generation, profile import, sessions, and exports work locally with your own provider keys. Google sign-in and Firebase sync require the official Chrome Web Store version.</p>
+            </div>
             <div class="check" style="margin-top:16px">
               <input type="checkbox" id="cloud-sync-enabled">
               <label for="cloud-sync-enabled">Enable cloud sync for sessions and portfolio</label>
@@ -1586,6 +1590,7 @@
               <button class="btn btn-green" id="cloud-sign-in-btn">Sign In With Google</button>
               <button class="btn" id="cloud-sync-btn">Sync Now</button>
               <button class="btn btn-red" id="cloud-sign-out-btn">Sign Out</button>
+              <button class="btn btn-green hidden" id="install-official-btn">Install Official Version</button>
             </div>
             <div id="cloud-auth-status" class="status" style="margin-top:8px"></div>
           </article>

@@ -750,22 +750,32 @@ function setCloudActionState(cloud) {
   var signInBtn = document.getElementById('cloud-sign-in-btn');
   var syncBtn = document.getElementById('cloud-sync-btn');
   var signOutBtn = document.getElementById('cloud-sign-out-btn');
+  var syncCheckbox = document.getElementById('cloud-sync-enabled');
+  var installBtn = document.getElementById('install-official-btn');
+  var localNotice = document.getElementById('local-install-notice');
+  var official = !!(cloud && cloud.installation && cloud.installation.official);
   var configured = !!(cloud && cloud.configured);
   var signedIn = !!(cloud && cloud.signedIn);
   var syncEnabled = !!(cloud && cloud.enabled);
 
   if (signInBtn) {
-    signInBtn.classList.toggle('hidden', configured && signedIn);
-    signInBtn.disabled = !configured || signedIn;
+    signInBtn.classList.toggle('hidden', !official || (configured && signedIn));
+    signInBtn.disabled = !official || !configured || signedIn;
   }
   if (syncBtn) {
-    syncBtn.classList.toggle('hidden', !configured || !signedIn);
-    syncBtn.disabled = !configured || !signedIn || !syncEnabled;
+    syncBtn.classList.toggle('hidden', !official || !configured || !signedIn);
+    syncBtn.disabled = !official || !configured || !signedIn || !syncEnabled;
   }
   if (signOutBtn) {
-    signOutBtn.classList.toggle('hidden', !configured || !signedIn);
-    signOutBtn.disabled = !configured || !signedIn;
+    signOutBtn.classList.toggle('hidden', !official || !configured || !signedIn);
+    signOutBtn.disabled = !official || !configured || !signedIn;
   }
+  if (syncCheckbox) {
+    syncCheckbox.disabled = !official;
+    if (!official) syncCheckbox.checked = false;
+  }
+  if (installBtn) installBtn.classList.toggle('hidden', official);
+  if (localNotice) localNotice.classList.toggle('hidden', official);
 }
 
 function loadSettings() {
@@ -996,6 +1006,14 @@ function renderCloudStatus(cloud, storage) {
   if (!summary || !chips) return;
 
   chips.innerHTML = '';
+  if (cloud && cloud.installation && !cloud.installation.official) {
+    summary.textContent = cloud.unavailableReason || 'Google sign-in and Firebase sync require the official Chrome Web Store installation.';
+    chips.appendChild(chip('Local ZIP mode', 'warn'));
+    chips.appendChild(chip('BYOK generation available', ''));
+    if (storage) chips.appendChild(chip(storageStatusSummary(storage), storage.writable && storage.state !== 'full' ? '' : 'err'));
+    setCloudActionState(cloud);
+    return;
+  }
   if (!cloud || !cloud.configured) {
     summary.textContent = 'Account sign-in is not configured yet.';
     chips.appendChild(chip('Firebase config missing', 'err'));
@@ -1083,6 +1101,10 @@ function syncCloudNow() {
   });
 }
 
+function installOfficialVersion() {
+  chrome.tabs.create({ url: 'https://chromewebstore.google.com/detail/apnbkjkgobikeejmfjgnmbflonmbgffg' });
+}
+
 async function handleJsonUpload(event) {
   var input = event && event.target ? event.target : null;
   var file = input && input.files ? input.files[0] : null;
@@ -1163,6 +1185,7 @@ document.addEventListener('DOMContentLoaded', function() {
   bindById('cloud-sign-in-btn', 'click', signInToCloud);
   bindById('cloud-sync-btn', 'click', syncCloudNow);
   bindById('cloud-sign-out-btn', 'click', signOutOfCloud);
+  bindById('install-official-btn', 'click', installOfficialVersion);
   try {
     chrome.runtime.onMessage.addListener(function(message) {
       if (!message) return;

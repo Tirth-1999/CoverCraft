@@ -14,9 +14,11 @@ Create that OAuth client in Google Cloud as a `Web application` client and add t
 
 - `https://apnbkjkgobikeejmfjgnmbflonmbgffg.chromiumapp.org/firebase`
 
-The production Chrome Web Store extension ID is `apnbkjkgobikeejmfjgnmbflonmbgffg`. The release manifest intentionally does not contain the previous development public key because it generated a different extension ID.
+The production Chrome Web Store extension ID is `apnbkjkgobikeejmfjgnmbflonmbgffg`. The release manifest intentionally has no `key`, so an unpacked ZIP receives a different ID.
 
-To make unpacked development builds use the production ID, open the Chrome Web Store Developer Dashboard, go to **Package**, choose **View public key**, remove the PEM header/footer and line breaks, and use that value as the manifest `key`. The extension ID alone cannot be converted back into the public key.
+CoverCraft checks `chrome.runtime.id` at runtime. Production Google sign-in and Firebase sync are available only for the official Store ID. Unpacked ZIP installations remain BYOK/local-only; do not add arbitrary unpacked redirect URIs to the production OAuth client.
+
+If a developer later needs OAuth in a separate development build, use a separate OAuth/Firebase development project and explicit development configuration. Do not weaken the production-ID check.
 
 Website auth helper pages are not packaged with the extension. Keep extension sign-in on the `chrome.identity` flow so the MV3 package does not include remotely hosted Firebase code.
 
