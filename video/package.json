@@ -1,0 +1,26 @@
+{
+  "name": "covercraft-demo-video",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sync-assets": "rm -rf public/branding && mkdir -p public/branding && cp ../site/branding/Live_Execution.mp4 public/branding/ && cp ../site/branding/extension-cover-letter.png public/branding/ && cp ../site/branding/extension-resume.png public/branding/ && cp ../site/branding/extension-question.png public/branding/ && cp ../site/branding/dashboard-overview.jpeg public/branding/ && cp ../site/branding/dashboard-sessions.jpeg public/branding/ && cp ../site/branding/dashboard-profile.jpeg public/branding/ && cp ../site/branding/dashboard-settings.jpeg public/branding/",
+    "predev": "npm run sync-assets",
+    "dev": "remotion studio src/index.ts",
+    "prerender": "npm run sync-assets",
+    "render": "remotion render src/index.ts CoverCraftLinkedIn out/covercraft-linkedin-demo.mp4 --codec=h264",
+    "prerender:square": "npm run sync-assets",
+    "render:square": "remotion render src/index.ts CoverCraftSquare out/covercraft-square-demo.mp4 --codec=h264"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.472",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "remotion": "4.0.472"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "typescript": "5.9.3"
+  }
+}

@@ -2,7 +2,7 @@
 
 CoverCraft is a Chrome extension for faster job applications.
 
-Current release: `3.0`
+Current release: `3.0.3`
 
 It turns a live job page into a reusable workspace where you can generate a tailored cover letter, ask focused follow-up questions, keep profile context ready, and move into a reusable control center without breaking flow.
 
@@ -52,11 +52,13 @@ flowchart LR
 
 1. Open a job page
 2. Launch CoverCraft on that page
-3. Lock the role, company, and profile context
-4. Generate a tailored cover letter
-5. Optionally save a manual cover letter without AI
-6. Ask focused follow-up questions in the same session
-7. Reuse the session later from the control center
+3. Open Settings and import or create your own profile
+4. Lock the role, company, and profile context
+5. Add your own OpenRouter or Groq key; add Tavily only if you want company research
+6. Generate a tailored cover letter
+7. Optionally save a manual cover letter without AI
+8. Ask focused follow-up questions in the same session
+9. Reuse the session later from the control center
 
 ## What’s In This Repo
 
@@ -67,7 +69,11 @@ This repo contains:
 - the static marketing site and account page under `site/`
 - Firebase hosting and Firestore rules for the hosted surfaces
 - branding assets used by the landing page and account page
+- the reproducible Chrome Web Store packaging script under `scripts/`
+- the optional Remotion demo-video source under `video/`
 - a post-approval launch checklist in `TODO.md`
+
+Release history is documented in [CHANGELOG.md](CHANGELOG.md). Security and secret-handling guidance is in [SECURITY.md](SECURITY.md).
 
 ## Quick Start
 
@@ -77,7 +83,9 @@ For a direct install package, use:
 
 - `site/downloads/CoverCraft-extension.zip`
 
-The public ZIP is built from an explicit allowlist of files Chrome needs to run CoverCraft. It includes the extension manifest, icons, runtime scripts, dashboard/options/popup pages, sandbox tooling, vendor libraries, Firebase runtime config, and referenced internal site assets. It intentionally excludes `.git`, local-only API keys, local portfolio data, the hosted download folder, demo pages, unused media, and development metadata.
+The public ZIP is built from an explicit allowlist of files Chrome needs to run CoverCraft. It includes the manifest, icons, runtime pages and scripts, resume-import tooling, vendor libraries, and public Firebase runtime config. The marketing website and branding media remain hosted at `cover-craft.app` and are not duplicated in the extension package.
+
+The production fallback profile is intentionally empty. Each user must import or create their own profile before generating personalized output. No developer profile or provider API key is included in the ZIP.
 
 To install from the ZIP:
 
@@ -97,30 +105,21 @@ If Chrome shows `An unknown error occurred when fetching the script`, re-downloa
 3. Click `Load unpacked`
 4. Select this repo root
 
-### Add local keys
+### Local profile
 
-Copy:
+Copy `src/portfolio.example.js` to `src/portfolio.js` to use local profile data during development.
 
-- `src/config.example.js` to `src/config.js`
-- `src/portfolio.example.js` to `src/portfolio.js`
+Developer-owned provider keys must not be placed in the extension package. Users add their own OpenRouter, Groq, and Tavily keys in CoverCraft Settings; those values stay in extension-local storage and are not placed in Chrome Sync or Firebase.
 
-Then add:
-
-- your OpenRouter key
-- your Groq key
-- your Tavily key
-
-`src/config.js` and `src/portfolio.js` are local-only and are ignored by Git.
+`src/portfolio.js` is local-only and is ignored by Git. Legacy `src/config.js` files are not used by production builds.
 
 ### Optional Firebase setup
 
-If you want Google sign-in and cloud sync, provide your Firebase config in:
-
-- `src/firebase.js`
-
-That file is now ignored by Git on purpose so project-specific auth config stays local unless you intentionally publish it.
+Production Google sign-in and cloud sync are configured in `src/firebase.defaults.js`. A local `src/firebase.js` may override those values during development.
 
 More details are in `firebase/README.md`.
+
+Google sign-in and Firestore sync also require the external Firebase and Google Cloud console configuration documented there. Those console settings and deployed Firestore rules cannot be embedded in or proven solely from the ZIP.
 
 ## Website
 
@@ -148,8 +147,21 @@ node --check src/popup/popup.js
 node --check site/app.js
 ```
 
+Build and verify the same archive uploaded to the Chrome Web Store:
+
+```bash
+./scripts/build-extension.sh
+unzip -t site/downloads/CoverCraft-extension.zip
+```
+
+The build fails if required runtime files are missing or if it detects local configuration, personal portfolio files, environment files, or provider-key patterns.
+
+## Demo Video
+
+The optional product-video source is documented in [video/README.md](video/README.md), with the storyboard in [DEMO_VIDEO_PLAN.md](DEMO_VIDEO_PLAN.md). Its copied media, dependencies, and rendered output are generated locally and excluded from Git.
+
 ## Notes
 
-- Personal keys should stay in `src/config.js`
 - Personal profile data should stay in `src/portfolio.js`
-- Firebase project auth config should stay in `src/firebase.js` unless you intentionally want it public
+- Never package developer-owned provider API keys
+- Build release ZIPs with `./scripts/build-extension.sh`; it rejects local config files and provider-key patterns

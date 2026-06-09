@@ -13,16 +13,7 @@
   var currentCloud = null;
   var currentSettings = null;
   var currentModelHealth = {};
-  var GROQ_BASE_LIMITS = {
-    'groq/llama-3.1-8b-instant': { tpm: '6K', rpd: '14.4K' },
-    'groq/llama-3.3-70b-versatile': { tpm: '12K', rpd: '1K' },
-    'groq/openai/gpt-oss-120b': { tpm: '8K', rpd: '1K' },
-    'groq/openai/gpt-oss-20b': { tpm: '8K', rpd: '1K' },
-    'groq/meta-llama/llama-4-scout-17b-16e-instruct': { tpm: '30K', rpd: '1K' },
-    'groq/qwen/qwen3-32b': { tpm: '6K', rpd: '1K' },
-    'groq/compound-mini': { tpm: '70K', rpd: '250' },
-    'groq/compound': { tpm: '70K', rpd: '250' }
-  };
+  var GROQ_BASE_LIMITS = Core.GROQ_BASE_LIMITS;
   var currentPortfolio = null;
   var currentPortfolioSource = '';
   var triggerObserver = null;

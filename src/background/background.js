@@ -8,36 +8,12 @@ try { importScripts('../firebase.js'); } catch (_) {}
 
 var Core = CoverCraftCore;
 var STORAGE_KEYS = Core.STORAGE_KEYS;
-var numericHeaderValue = Core.numericHeaderValue || function(value) {
-  var text = String(value || '').trim();
-  if (!text) return 0;
-  var multiplier = 1;
-  if (/k$/i.test(text)) multiplier = 1000;
-  if (/m$/i.test(text)) multiplier = 1000000;
-  var parsed = Number(text.replace(/[^\d.]/g, ''));
-  return Number.isFinite(parsed) ? parsed * multiplier : 0;
-};
 var DEFAULT_MODEL = 'openrouter/free';
 var VISION_MODEL = 'google/gemma-3-12b-it:free';
 var FAST_EXTRACT_MODEL = 'google/gemma-3-12b-it:free';
 var FAST_GROQ_EXTRACT_MODEL = 'groq/llama-3.1-8b-instant';
-var ALLOWED_FREE_MODELS = [
-  'openrouter/free',
-  'google/gemma-3-12b-it:free',
-  'meta-llama/llama-3.3-70b-instruct:free',
-  'nvidia/nemotron-3-super-120b-a12b:free',
-  'minimax/minimax-m2.5:free'
-];
-var GROQ_MODELS = [
-  'groq/llama-3.1-8b-instant',
-  'groq/llama-3.3-70b-versatile',
-  'groq/meta-llama/llama-4-scout-17b-16e-instruct',
-  'groq/openai/gpt-oss-120b',
-  'groq/openai/gpt-oss-20b',
-  'groq/qwen/qwen3-32b',
-  'groq/compound',
-  'groq/compound-mini'
-];
+var ALLOWED_FREE_MODELS = Core.KNOWN_MODELS.filter(function(model) { return model.indexOf('groq/') !== 0; });
+var GROQ_MODELS = Core.KNOWN_MODELS.filter(function(model) { return model.indexOf('groq/') === 0; });
 var DISABLED_MODELS = [];
 var GROQ_TPM_LIMITS = {
   'llama-3.1-8b-instant': 6000,
@@ -62,6 +38,7 @@ var MAX_MODEL_USAGE_LOGS = 500;
 var MAX_SESSION_SYNC_WRITES = 25;
 var MAX_MODEL_USAGE_SYNC_WRITES = 50;
 var FIREBASE_CONFIG = typeof COVERCRAFT_FIREBASE === 'object' && COVERCRAFT_FIREBASE ? COVERCRAFT_FIREBASE : {};
+var PROVIDER_KEY_NAMES = ['openrouterKey', 'groqKey', 'tavilyKey'];
 
 var DEFAULT_SETTINGS = {
   openrouterKey: COVERCRAFT_CONFIG && COVERCRAFT_CONFIG.openrouterKey || '',
@@ -76,6 +53,12 @@ var DEFAULT_SETTINGS = {
 var MODEL_HEALTH_CACHE = {};
 var MODEL_USAGE_LOG_CACHE = [];
 var STORAGE_STATUS_PROBE_KEY = 'covercraft_storage_probe_v1';
+
+if (chrome.storage.local && typeof chrome.storage.local.setAccessLevel === 'function') {
+  chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' }, function() {
+    void chrome.runtime.lastError;
+  });
+}
 
 function modelHealthKey(model) {
   return String(model || '').trim() || DEFAULT_MODEL;
@@ -433,8 +416,24 @@ function syncGet(keys) {
 }
 
 function syncSet(obj) {
-  return new Promise(function(resolve) {
+  return new Promise(function(resolve, reject) {
     chrome.storage.sync.set(obj, function() {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message || 'Could not write sync storage.'));
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+function syncRemove(keys) {
+  return new Promise(function(resolve, reject) {
+    chrome.storage.sync.remove(keys, function() {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message || 'Could not remove sync storage values.'));
+        return;
+      }
       resolve();
     });
   });
@@ -449,9 +448,6 @@ function getFirebaseConfig() {
     apiKey: FIREBASE_CONFIG.apiKey || '',
     authDomain: FIREBASE_CONFIG.authDomain || '',
     projectId: FIREBASE_CONFIG.projectId || '',
-    storageBucket: FIREBASE_CONFIG.storageBucket || '',
-    messagingSenderId: FIREBASE_CONFIG.messagingSenderId || '',
-    appId: FIREBASE_CONFIG.appId || '',
     googleClientId: FIREBASE_CONFIG.googleClientId || ''
   };
 }
@@ -488,8 +484,12 @@ async function getCloudAuthSession() {
 }
 
 async function saveCloudAuthSession(auth) {
+  if (!auth) {
+    await localRemove(CLOUD_AUTH_STORAGE_KEY);
+    return;
+  }
   var payload = {};
-  payload[CLOUD_AUTH_STORAGE_KEY] = auth || null;
+  payload[CLOUD_AUTH_STORAGE_KEY] = auth;
   await localSet(payload);
 }
 
@@ -501,8 +501,8 @@ async function saveCloudMeta(meta) {
 }
 
 async function clearCloudAuthSession() {
+  await localRemove(CLOUD_AUTH_STORAGE_KEY);
   var payload = {};
-  payload[CLOUD_AUTH_STORAGE_KEY] = null;
   payload[CLOUD_META_STORAGE_KEY] = Object.assign({}, (await getCloudAuthSession()).meta || {}, {
     lastError: '',
     lastSyncedAt: '',
@@ -517,15 +517,17 @@ async function getPendingCloudAuthFlow() {
 }
 
 async function savePendingCloudAuthFlow(flow) {
+  if (!flow) {
+    await localRemove(CLOUD_AUTH_FLOW_STORAGE_KEY);
+    return;
+  }
   var payload = {};
-  payload[CLOUD_AUTH_FLOW_STORAGE_KEY] = flow || null;
+  payload[CLOUD_AUTH_FLOW_STORAGE_KEY] = flow;
   await localSet(payload);
 }
 
 async function clearPendingCloudAuthFlow() {
-  var payload = {};
-  payload[CLOUD_AUTH_FLOW_STORAGE_KEY] = null;
-  await localSet(payload);
+  await localRemove(CLOUD_AUTH_FLOW_STORAGE_KEY);
 }
 
 function syncableSettings(settings) {
@@ -535,6 +537,20 @@ function syncableSettings(settings) {
     triggerMode: settings.triggerMode || 'manual',
     cloudSyncEnabled: resolveCloudSyncEnabled(settings && settings.cloudSyncEnabled)
   };
+}
+
+function settingsWithoutProviderSecrets(settings) {
+  return Object.assign({}, settings, {
+    openrouterKey: settings.openrouterKey ? 'configured' : '',
+    groqKey: settings.groqKey ? 'configured' : '',
+    tavilyKey: settings.tavilyKey ? 'configured' : ''
+  });
+}
+
+function senderCanReadProviderSecrets(sender) {
+  var senderUrl = String(sender && sender.url || '');
+  return senderUrl.indexOf(chrome.runtime.getURL('src/options/')) === 0 ||
+    senderUrl.indexOf(chrome.runtime.getURL('src/dashboard/')) === 0;
 }
 
 function encodeFirestoreValue(value) {
@@ -969,6 +985,38 @@ function parseJsonSafe(text, fallback) {
   }
 }
 
+function decodeBase64UrlJson(value) {
+  var normalized = String(value || '').replace(/-/g, '+').replace(/_/g, '/');
+  while (normalized.length % 4) normalized += '=';
+  try {
+    return JSON.parse(decodeURIComponent(Array.prototype.map.call(atob(normalized), function(char) {
+      return '%' + ('00' + char.charCodeAt(0).toString(16)).slice(-2);
+    }).join('')));
+  } catch (_) {
+    throw new Error('Google sign-in returned an invalid ID token.');
+  }
+}
+
+function validateGoogleIdToken(idToken, config, expectedNonce) {
+  var parts = String(idToken || '').split('.');
+  if (parts.length !== 3) throw new Error('Google sign-in returned an invalid ID token.');
+  var claims = decodeBase64UrlJson(parts[1]);
+  var issuer = String(claims.iss || '');
+  var audience = claims.aud;
+  var audienceMatches = Array.isArray(audience)
+    ? audience.indexOf(config.googleClientId) !== -1
+    : audience === config.googleClientId;
+  if (claims.nonce !== expectedNonce) throw new Error('Google sign-in nonce verification failed.');
+  if (!audienceMatches) throw new Error('Google sign-in audience verification failed.');
+  if (issuer !== 'https://accounts.google.com' && issuer !== 'accounts.google.com') {
+    throw new Error('Google sign-in issuer verification failed.');
+  }
+  if (!Number(claims.exp) || Number(claims.exp) * 1000 <= Date.now()) {
+    throw new Error('Google sign-in token has expired.');
+  }
+  return claims;
+}
+
 function launchWebAuthFlow(details) {
   return new Promise(function(resolve, reject) {
     chrome.identity.launchWebAuthFlow(details, function(resultUrl) {
@@ -1000,6 +1048,7 @@ async function launchGoogleIdTokenFlow(config) {
   if (result.error) throw new Error(result.error_description || result.error || 'Google sign-in failed.');
   if (!result.id_token) throw new Error('Google sign-in did not return an ID token.');
   if (result.state !== state) throw new Error('Google sign-in state verification failed.');
+  validateGoogleIdToken(result.id_token, config, nonce);
   return {
     idToken: result.id_token,
     redirectUrl: redirectUrl
@@ -1085,20 +1134,57 @@ async function getCloudStatus() {
 }
 
 async function loadSettings() {
-  var data = await syncGet(['openrouterKey', 'groqKey', 'tavilyKey', 'model', 'customModel', 'coverLetterType', 'triggerMode', 'cloudSyncEnabled']);
+  var results = await Promise.all([
+    syncGet(['model', 'customModel', 'coverLetterType', 'triggerMode', 'cloudSyncEnabled']),
+    loadProviderKeys()
+  ]);
+  var data = results[0];
+  var providerKeys = results[1];
   var model = data.model === 'custom' && data.customModel ? data.customModel : (data.model || DEFAULT_SETTINGS.model);
   if (DISABLED_MODELS.indexOf(model) !== -1) model = DEFAULT_SETTINGS.model;
   if (data.model !== 'custom' && ALLOWED_FREE_MODELS.indexOf(model) === -1 && GROQ_MODELS.indexOf(model) === -1) model = DEFAULT_SETTINGS.model;
   return {
-    openrouterKey: data.openrouterKey || DEFAULT_SETTINGS.openrouterKey,
-    groqKey: data.groqKey || DEFAULT_SETTINGS.groqKey,
-    tavilyKey: data.tavilyKey || DEFAULT_SETTINGS.tavilyKey,
+    openrouterKey: providerKeys.openrouterKey,
+    groqKey: providerKeys.groqKey,
+    tavilyKey: providerKeys.tavilyKey,
     model: model,
     customModel: data.customModel || '',
     coverLetterType: data.coverLetterType || DEFAULT_SETTINGS.coverLetterType,
     triggerMode: data.triggerMode || DEFAULT_SETTINGS.triggerMode,
     cloudSyncEnabled: resolveCloudSyncEnabled(data.cloudSyncEnabled)
   };
+}
+
+async function loadProviderKeys() {
+  var results = await Promise.all([
+    localGet(PROVIDER_KEY_NAMES),
+    syncGet(PROVIDER_KEY_NAMES)
+  ]);
+  var localValues = results[0];
+  var legacySyncValues = results[1];
+  var resolved = {};
+  var migration = {};
+  var migratedNames = [];
+
+  PROVIDER_KEY_NAMES.forEach(function(name) {
+    if (Object.prototype.hasOwnProperty.call(localValues, name)) {
+      resolved[name] = String(localValues[name] || '');
+      return;
+    }
+    if (Object.prototype.hasOwnProperty.call(legacySyncValues, name)) {
+      resolved[name] = String(legacySyncValues[name] || '');
+      migration[name] = resolved[name];
+      migratedNames.push(name);
+      return;
+    }
+    resolved[name] = String(DEFAULT_SETTINGS[name] || '');
+  });
+
+  if (migratedNames.length) {
+    await localSet(migration);
+    await syncRemove(migratedNames);
+  }
+  return resolved;
 }
 
 async function getPortfolioBundle() {
@@ -1130,21 +1216,6 @@ function saveSessionState(state) {
   payload[STORAGE_KEYS.sessions] = state.sessions;
   payload[STORAGE_KEYS.sessionOrder] = state.order;
   return localSet(payload);
-}
-
-async function replaceLocalSessionState(nextSessions) {
-  var normalizedSessions = {};
-  (Array.isArray(nextSessions) ? nextSessions : []).forEach(function(session) {
-    if (!session || !session.id) return;
-    normalizedSessions[session.id] = session;
-  });
-  var nextOrder = Object.keys(normalizedSessions).sort(function(a, b) {
-    return localTimeMs(normalizedSessions[b] && normalizedSessions[b].updatedAt) - localTimeMs(normalizedSessions[a] && normalizedSessions[a].updatedAt);
-  });
-  await saveSessionState({
-    sessions: normalizedSessions,
-    order: nextOrder
-  });
 }
 
 async function backupGuestLocalState() {
@@ -1983,17 +2054,6 @@ async function aiChatMessages(messages, options) {
       text.indexOf('overloaded') !== -1;
   }
 
-  function shouldRetryWithDefaultProviderRouting(errorMessage, status) {
-    var text = String(errorMessage || '').toLowerCase();
-    if (status === 429 || status === 502 || status === 503 || status === 504) return true;
-    return text.indexOf('provider returned error') !== -1 ||
-      text.indexOf('guardrail restrictions') !== -1 ||
-      text.indexOf('data policy') !== -1 ||
-      text.indexOf('no endpoints found') !== -1 ||
-      text.indexOf('temporarily unavailable') !== -1 ||
-      text.indexOf('no provider') !== -1;
-  }
-
   function shouldRetryWithFreeRouter(model, errorMessage, status) {
     if (useGroq) return false;
     if (!model || model === DEFAULT_MODEL) return false;
@@ -2015,21 +2075,6 @@ async function aiChatMessages(messages, options) {
     attempt++;
     await wait(250 * attempt);
     result = await runOpenRouterRequest(body);
-  }
-  if (!result.ok) {
-    var routeError = (result.data.error && result.data.error.message) || ('OpenRouter HTTP ' + result.status);
-    if (shouldRetryWithDefaultProviderRouting(routeError, result.status)) {
-      var unpinnedBody = Object.assign({}, body);
-      result = await runOpenRouterRequest(unpinnedBody);
-      var unpinnedAttempt = 0;
-      while (!result.ok && unpinnedAttempt < 1) {
-        var unpinnedError = (result.data.error && result.data.error.message) || ('OpenRouter HTTP ' + result.status);
-        if (!shouldRetrySameModel(unpinnedError, result.status)) break;
-        unpinnedAttempt++;
-        await wait(300);
-        result = await runOpenRouterRequest(unpinnedBody);
-      }
-    }
   }
   if (!result.ok) {
     var primaryError = normalizeOpenRouterError((result.data.error && result.data.error.message) || ('OpenRouter HTTP ' + result.status), result.status, result);
@@ -2154,7 +2199,6 @@ async function runCompanyResearch(job, settings) {
 
   if (!companyName) return result;
   if (!settings.tavilyKey) throw new Error('Missing Tavily API key. Add it in CoverCraft settings.');
-
   result.query1 = companyName + ' mission values culture product technology recent company overview for ' + jobTitle;
   result.query2 = '';
 
@@ -2584,22 +2628,6 @@ function firstVerb(text) {
   return String(text || '').trim().split(/\s+/)[0].replace(/[^a-z]/gi, '').toLowerCase();
 }
 
-function normalizeResumeEducationEntries(rawPortfolio) {
-  return Array.isArray(rawPortfolio && rawPortfolio.education) ? rawPortfolio.education.map(function(entry) {
-    entry = entry || {};
-    return {
-      institution: String(entry.institution || '').trim(),
-      location: String(entry.location || '').trim(),
-      degree: String(entry.degree || '').trim(),
-      duration: String(entry.duration || '').trim(),
-      gpa: String(entry.gpa || '').trim(),
-      highlights: asCleanArray(entry.highlights)
-    };
-  }).filter(function(entry) {
-    return entry.institution || entry.degree || entry.duration || entry.gpa;
-  }) : [];
-}
-
 function normalizeResumeExperiences(rawPortfolio) {
   return Array.isArray(rawPortfolio && rawPortfolio.experiences) ? rawPortfolio.experiences.map(function(entry) {
     entry = entry || {};
@@ -2678,14 +2706,6 @@ function normalizeResumeProjects(rawPortfolio) {
   }).filter(function(project) {
     return project.title || project.description;
   }) : [];
-}
-
-function normalizeResumeLeadership(rawPortfolio) {
-  return asCleanArray(rawPortfolio && (rawPortfolio.leadership || rawPortfolio.achievements || []));
-}
-
-function normalizeResumeCertifications(rawPortfolio) {
-  return asCleanArray(rawPortfolio && rawPortfolio.certifications);
 }
 
 function splitSkillList(skillsText) {
@@ -2932,19 +2952,6 @@ function keywordMatchesForText(text, keywords, limit) {
   return matches.slice(0, limit || 8);
 }
 
-function scoreExperienceForPrompt(experience, keywords) {
-  experience = experience || {};
-  var roleMatches = keywordMatchesForText([
-    experience.role || '',
-    experience.company || ''
-  ].join(' '), keywords, 30);
-  var bulletText = Array.isArray(experience.bullets) ? experience.bullets.join(' ') : '';
-  var bulletMatches = keywordMatchesForText(bulletText, keywords, 30);
-  var score = roleMatches.length * 5 + bulletMatches.length * 2;
-  if (hasResumeImpactSignal(bulletText)) score += 0.5;
-  return score;
-}
-
 function choosePromptExperiences(experiences, rankProfile, limit) {
   return (experiences || []).map(function(experience, index) {
     var roleRank = rankTextAgainstProfile([
@@ -3151,158 +3158,64 @@ function chooseResumeProjects(projects, keywords, limit) {
   });
 }
 
-function buildCanonicalResumeTemplate() {
-  var experiences = [
-    {
-      company: 'HCLTech',
-      location: 'College Station, TX',
-      role: 'Global Engagement Management Intern',
-      duration: 'Feb 2026 -- May 2026',
-      bullets: [
-        'Analyzed network capacity and churn forecasting model outputs (Python, SQL), translating telecom KPI trends into strategic insights and pre-sales frameworks across the TMT sector',
-        'Engineered visualizations for churn risk, network utilization, and automation impact; partnered with cross-functional stakeholders to deliver leadership-ready business cases identifying 65% automation and 75% cost reduction opportunities for $35B+ market'
-      ]
-    },
-    {
-      company: 'Mays Business School, Texas A&M University',
-      location: 'College Station, TX',
-      role: 'Graduate Assistant -- Data Analyst',
-      duration: 'Nov 2025 -- Feb 2026',
-      bullets: [
-        'Architected an analytics platform via Python ETL ingesting 2,400+ admissions records across 7 programs and 3 cohorts into SQLite, cutting 95% of manual reporting (80+ hrs./year saved)',
-        'Deployed a marketing intelligence suite analyzing 585+ expenditure records across 10+ channels with 60-day attribution modeling and timing heatmaps, maximizing ROI on $500K+ annual budget',
-        'Developed a forecasting engine (Prophet, ARIMA, scikit-learn) with calendar-aware seasonality, achieving <15% MAPE for 8-month enrollment predictions and reducing marketing spend inefficiency by 20%'
-      ]
-    },
-    {
-      company: 'Utilities and Energy Services, Texas A&M University',
-      location: 'College Station, TX',
-      role: 'Graduate Assistant -- Data & Automation Engineer',
-      duration: 'May 2025 -- Nov 2025',
-      bullets: [
-        'Constructed Power BI monitoring views for energy, weather, and financial metrics via Python ETL processing 50,000+ daily sensor feeds from 15 sources into structured SQL, cutting 95% manual work (300+ hrs./year)',
-        'Designed a week-ahead forecast workflow integrating ERCOT pricing, weather, and solar generation signals (Selenium, pandas, openpyxl), improving forecast precision 30% and enabling 20% operational cost savings',
-        'Digitized billing via an OCR ingestion layer (pytesseract, pandas) with a YoY reporting view, achieving 97% fidelity, 95% faster processing, and auto-flagging 3% of outliers for review'
-      ]
-    },
-    {
-      company: 'Black Tie Concierge LLC',
-      location: 'Austin, TX',
-      role: 'AI & Data Intern -- Digital Product Strategy',
-      duration: 'May 2025 -- Aug 2025',
-      bullets: [
-        'Translated operational records into actionable intelligence: architected a scalable database for users, rides & payments with real-time ingestion and archival, optimizing query performance ~80% for senior decision-making',
-        'Automated post-booking workflow using AI-powered NLP and low-code (n8n) orchestration -- confirmations, receipts, calendar invites, driver assignment -- compressing cycle time to <1 min and removing ~90% of communication errors',
-        'Launched a luxury travel system (Next.js, Supabase, Stripe) generating $10K+ revenue and 3x traffic growth in 3 months via demand-analytics-driven SEO/GEO strategies and instant-quote automation'
-      ]
-    },
-    {
-      company: 'Tata Consultancy Services (Equifax)',
-      location: 'Ahmedabad, India',
-      role: 'Data Engineer / Migration Analyst',
-      duration: 'Aug 2021 -- Aug 2024',
-      bullets: [
-        'Delivered interactive reporting views replacing 15+ static Excel reports, reducing record errors 90%, accelerating stakeholder decisions 15%, and aligning analytical strategy with organizational goals across teams',
-        'Modernized 60+ legacy SAS scripts to Python (pandas, NumPy), slashing runtime 80%, compute cost 50%, and tripling peak-hour throughput; QA validation workflow compressed test cycles from 3 days to 2 hours',
-        'Migrated on-prem workflows to GCP fabric unifying 7 external aggregators with address standardization and deduplication, boosting hit ratio 45% and removing 93% of lookup latency at 10M+ records/day'
-      ]
-    }
-  ].map(function(entry) {
-    return Object.assign({}, entry, {
-      bulletBudgets: entry.bullets.map(function(bullet) {
-        return Math.max(9, Core.wordCount(bullet));
-      })
+function normalizeResumeEducation(rawPortfolio, normalizedPortfolio) {
+  if (Array.isArray(rawPortfolio && rawPortfolio.education)) {
+    return rawPortfolio.education.map(function(entry) {
+      entry = entry || {};
+      var degree = [entry.degree, entry.field].filter(Boolean).join(' - ');
+      return {
+        institution: String(entry.institution || '').trim(),
+        location: String(entry.location || '').trim(),
+        degree: degree.trim(),
+        duration: String(entry.duration || '').trim(),
+        gpa: String(entry.gpa || '').trim()
+      };
+    }).filter(function(entry) {
+      return entry.institution || entry.degree || entry.duration;
     });
-  });
+  }
+  var educationText = String(normalizedPortfolio && normalizedPortfolio.education || '').trim();
+  return educationText ? [{
+    institution: educationText,
+    location: '',
+    degree: '',
+    duration: '',
+    gpa: ''
+  }] : [];
+}
 
+function buildResumeOwner(rawPortfolio, normalizedPortfolio) {
+  var personal = rawPortfolio && rawPortfolio.personalInfo || {};
+  var social = personal.social || normalizedPortfolio.links || {};
   return {
-    owner: {
-      name: 'Tirth Shah',
-      phone: '(979)~635-2045',
-      email: 'tirth.shah@tamu.edu',
-      linkedin: 'https://linkedin.com/in/tirth-chirayu-shah',
-      website: 'https://tirthcshah.com',
-      title: '',
-      location: ''
-    },
-    education: [
-      {
-        institution: 'Texas A&M University',
-        location: 'College Station, TX',
-        degree: 'Master of Science in Management Information Systems',
-        duration: 'Aug 2024 -- May 2026',
-        gpa: '3.83/4.00'
-      },
-      {
-        institution: 'Gujarat Technological University',
-        location: 'Ahmedabad, India',
-        degree: 'Bachelor of Engineering in Computer Engineering',
-        duration: 'Jun 2017 -- May 2021',
-        gpa: '3.95/4.00'
-      }
-    ],
-    experiences: experiences,
-    projects: [
-      {
-        title: 'Exploratory Data Analytics',
-        description: 'Built Tableau and Excel visualizations translating complex sales and operations records into actionable findings, predicting revenue trends and targeting a 20% increase through storytelling for senior presentations',
-        technologies: ['Tableau', 'Excel'],
-        links: [
-          { url: 'https://github.com/YOUR_LINK', label: 'GitHub' },
-          { url: 'https://youtube.com/YOUR_LINK', label: 'Video' }
-        ],
-        wordBudget: 28
-      },
-      {
-        title: 'Market Basket Analysis',
-        description: 'Constructed an EC2 intelligence platform (MariaDB/MongoDB; SQL views/triggers/stored procedures) and applied ML modeling to expose customer spend patterns, improving efficiency 30% and lifting revenue 30% YoY',
-        technologies: ['EC2', 'MariaDB', 'MongoDB', 'SQL', 'ML'],
-        links: [
-          { url: 'https://medium.com/YOUR_LINK', label: 'Article' }
-        ],
-        wordBudget: 28
-      },
-      {
-        title: 'Document Classifier',
-        description: 'Multi-modal AI classifier (Claude Haiku 3.5, Gemini Flash 2.0) categorizing 100+ regulatory documents at 98% precision across 4 sensitivity levels with PII detection, HITL review, and audit citations',
-        technologies: ['Claude Haiku 3.5', 'Gemini Flash 2.0'],
-        links: [
-          { url: 'https://github.com/YOUR_LINK', label: 'GitHub' },
-          { url: 'https://youtube.com/YOUR_LINK', label: 'Video' }
-        ],
-        wordBudget: 28
-      }
-    ],
-    leadership: [
-      'President, Buddy Connect: Led speaker panels & resume workshops, driving professional development & networking for 80 students',
-      'IGSA: Coordinated 20+ cultural events reaching 10,000+ students, fostering cross-functional collaboration & community engagement'
-    ],
-    certifications: [
-      'Microsoft Azure Associate [DP-203, AZ-104]',
-      'Azure Fundamentals [DP-900, AI-900]',
-      'Professional Scrum Master [PSM I]'
-    ],
-    skillsList: [
-      'Python', 'SQL', 'TypeScript/JS', 'Java', 'Bash',
-      'Tableau', 'Power BI', 'Excel', 'Databricks', 'Salesforce',
-      'pandas', 'NumPy', 'scikit-learn', 'ETL/ELT pipelines', 'Snowflake',
-      'GCP', 'AWS', 'Azure', 'Airflow', 'dbt', 'Docker', 'Postgres/MySQL/SQL Server'
-    ]
+    name: String(normalizedPortfolio.name || '').trim(),
+    phone: String(normalizedPortfolio.phone || '').trim(),
+    email: String(normalizedPortfolio.email || '').trim(),
+    linkedin: String(social.linkedin || '').trim(),
+    website: String(normalizedPortfolio.website || social.portfolio || social.github || '').trim(),
+    title: String(normalizedPortfolio.title || '').trim(),
+    location: String(normalizedPortfolio.location || '').trim()
   };
 }
 
 function buildResumeSource(portfolioBundle, session) {
-  var base = buildCanonicalResumeTemplate();
+  var rawPortfolio = portfolioBundle && portfolioBundle.rawPortfolio || {};
+  var normalizedPortfolio = portfolioBundle && portfolioBundle.portfolio || Core.normalizePortfolio(rawPortfolio).normalized;
   var keywords = buildResumeKeywords(session);
+  var skillsList = splitSkillList(normalizedPortfolio.skills || '');
+  var leadership = dedupeStrings([].concat(
+    Array.isArray(rawPortfolio.leadership) ? rawPortfolio.leadership : [],
+    Array.isArray(normalizedPortfolio.awards) ? normalizedPortfolio.awards : []
+  ));
   return {
-    owner: base.owner,
-    education: base.education,
-    experiences: base.experiences,
-    projects: chooseResumeProjects(base.projects, keywords, 3),
-    leadership: base.leadership,
-    certifications: base.certifications,
-    skillsList: base.skillsList,
-    skills: normalizeResumeSkillString(chooseResumeSkills(base.skillsList, keywords, 20, 260).join(', '), 50),
+    owner: buildResumeOwner(rawPortfolio, normalizedPortfolio),
+    education: normalizeResumeEducation(rawPortfolio, normalizedPortfolio),
+    experiences: normalizeResumeExperiences(rawPortfolio),
+    projects: chooseResumeProjects(normalizeResumeProjects(rawPortfolio), keywords, 3),
+    leadership: leadership,
+    certifications: dedupeStrings(normalizedPortfolio.certifications || rawPortfolio.certifications || []),
+    skillsList: skillsList,
+    skills: normalizeResumeSkillString(chooseResumeSkills(skillsList, keywords, 20, 260).join(', '), 50),
     keywords: keywords
   };
 }
@@ -3727,18 +3640,6 @@ function latexProjectTitle(project) {
   return suffix ? base + ' $|$ ' + suffix : base;
 }
 
-function formatResumeLeadershipLine(item) {
-  var text = String(item || '').trim();
-  if (!text) return '';
-  var separator = text.indexOf(':') !== -1 ? ':' : (text.indexOf(' -- ') !== -1 ? ' -- ' : '');
-  if (!separator) return escapeLatexText(text);
-  var parts = text.split(separator);
-  var label = parts.shift().trim();
-  var detail = parts.join(separator).trim();
-  if (!label || !detail) return escapeLatexText(text);
-  return '\\textbf{' + escapeLatexText(label + ':') + '} ' + escapeLatexText(detail);
-}
-
 function buildResumePreviewText(resumeData) {
   var lines = [];
   var owner = resumeData.owner || {};
@@ -3782,6 +3683,7 @@ function buildResumePreviewText(resumeData) {
 }
 
 function buildResumeLatexSource(resumeData) {
+  var owner = resumeData.owner || {};
   var experienceBlock = (resumeData.experiences || []).slice(0, 5).map(function(entry, entryIndex) {
     var bullets = (entry.bullets || []).map(function(bullet) {
       return '        \\resumeItem{' + escapeLatexText(bullet) + '}';
@@ -3801,9 +3703,38 @@ function buildResumeLatexSource(resumeData) {
     return '    \\resumeProjectInline{' + latexProjectTitle(project) + '}{' + escapeLatexText(project.description || '') + '}';
   }).join('\n');
 
+  var contactItems = [];
+  if (owner.phone) contactItems.push('\\mbox{\\fontsize{10}{12}\\selectfont ' + escapeLatexText(owner.phone) + '}');
+  if (owner.email) {
+    contactItems.push('\\mbox{\\fontsize{10}{12}\\selectfont \\href{mailto:' + escapeLatexHrefTarget(owner.email) + '}{' + escapeLatexText(owner.email) + '}}');
+  }
+  if (owner.linkedin) {
+    contactItems.push('\\mbox{\\fontsize{10}{12}\\selectfont \\href{' + escapeLatexHrefTarget(resumeWebsiteHref(owner.linkedin)) + '}{' + escapeLatexText(owner.linkedin.replace(/^https?:\/\/(www\.)?/i, '').replace(/\/$/, '')) + '}}');
+  }
+  if (owner.website) {
+    contactItems.push('\\mbox{\\fontsize{10}{12}\\selectfont \\href{' + escapeLatexHrefTarget(resumeWebsiteHref(owner.website)) + '}{' + escapeLatexText(owner.website.replace(/^https?:\/\/(www\.)?/i, '').replace(/\/$/, '')) + '}}');
+  }
+  var contactBlock = contactItems.join('\n    ~$\\vert$~\n    ');
+
+  var educationBlock = (resumeData.education || []).slice(0, 3).map(function(entry, index) {
+    var degree = escapeLatexText(String(entry.degree || '').trim());
+    if (entry.gpa) degree += (degree ? '\\enspace--\\enspace' : '') + '\\textbf{GPA: ' + escapeLatexText(entry.gpa) + '}';
+    return [
+      index ? '    \\eduentrygap' : '',
+      '    \\resumeSubheading',
+      '      {' + escapeLatexText(entry.institution || '') + '}{' + escapeLatexText(entry.location || '') + '}',
+      '      {' + degree + '}{' + escapeLatexText(entry.duration || '') + '}'
+    ].filter(Boolean).join('\n');
+  }).join('\n');
+
+  var certificationText = (resumeData.certifications || []).map(escapeLatexText).join(' $|$ ');
+  var leadershipBlock = (resumeData.leadership || []).slice(0, 4).map(function(item, index, items) {
+    return '  ' + escapeLatexText(item) + (index < items.length - 1 ? '\\\\[2pt]' : '%');
+  }).join('\n');
+
   return [
     '%-------------------------',
-    '% Resume in LaTeX — Tirth Shah',
+    '% Resume in LaTeX - ' + String(owner.name || 'Candidate'),
     '% One-page | 5 experiences | Times New Roman | flush left',
     '% Compatible with Overleaf (pdflatex)',
     '%-------------------------',
@@ -3907,27 +3838,15 @@ function buildResumeLatexSource(resumeData) {
     '',
     '%----------HEADER----------',
     '\\begin{center}',
-    '    {\\Huge\\scshape Tirth Shah}\\\\[0pt]',
-    '    \\mbox{\\fontsize{10}{12}\\selectfont (979)~635-2045}',
-    '    ~$\\vert$~',
-    '    \\mbox{\\fontsize{10}{12}\\selectfont \\href{mailto:tirth.shah@tamu.edu}{tirth.shah@tamu.edu}}',
-    '    ~$\\vert$~',
-    '    \\mbox{\\fontsize{10}{12}\\selectfont \\href{https://linkedin.com/in/tirth-chirayu-shah}{linkedin.com/in/tirth-chirayu-shah}}',
-    '    ~$\\vert$~',
-    '    \\mbox{\\fontsize{10}{12}\\selectfont \\href{https://tirthcshah.com}{tirthcshah.com}}',
+    '    {\\Huge\\scshape ' + escapeLatexText(owner.name || 'Candidate') + '}\\\\[0pt]',
+    contactBlock,
     '\\end{center}',
     '\\vspace{-6pt}',
     '',
     '%-----------EDUCATION-----------',
     '\\section{Education}',
     '  \\resumeSubHeadingListStart',
-    '    \\resumeSubheading',
-    '      {Texas A\\&M University}{College Station, TX}',
-    '      {Master of Science in Management Information Systems\\enspace--\\enspace\\textbf{GPA: 3.83/4.00}}{Aug 2024 -- May 2026}',
-    '    \\eduentrygap',
-    '    \\resumeSubheading',
-    '      {Gujarat Technological University}{Ahmedabad, India}',
-    '      {Bachelor of Engineering in Computer Engineering\\enspace--\\enspace\\textbf{GPA: 3.95/4.00}}{Jun 2017 -- May 2021}',
+    educationBlock || '    % No education entries available',
     '  \\resumeSubHeadingListEnd',
     '',
     '%-----------WORK EXPERIENCE-----------',
@@ -3950,7 +3869,7 @@ function buildResumeLatexSource(resumeData) {
     '\\vspace{2pt}',
     '\\noindent\\normalsize{%',
     '  \\textbf{Skills}: ' + escapeLatexText(resumeData.skills || '') + '\\\\[2pt]%',
-    '  \\textbf{Certifications}: Microsoft Azure Associate [DP-203, AZ-104] $|$ Azure Fundamentals [DP-900, AI-900] $|$ Professional Scrum Master [PSM I]%',
+    '  \\textbf{Certifications}: ' + certificationText + '%',
     '}',
     '',
     '%-----------LEADERSHIP & ACHIEVEMENTS-----------',
@@ -3958,8 +3877,7 @@ function buildResumeLatexSource(resumeData) {
     '\\section{Leadership \\& Achievements}',
     '\\vspace{2pt}',
     '\\noindent\\normalsize{%',
-    '  \\textbf{President, Buddy Connect:} Led speaker panels \\& resume workshops, driving professional development \\& networking for 80 students\\\\[2pt]',
-    '  \\textbf{IGSA:} Coordinated 20+ cultural events reaching 10,000+ students, fostering cross-functional collaboration \\& community engagement%',
+    leadershipBlock || '  % No leadership entries available',
     '}',
     '\\end{document}'
   ].join('\n');
@@ -4274,13 +4192,14 @@ chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
     return true;
   }
 
-  if (message.type === 'GET_SETTINGS' || message.type === 'RELOAD_CONFIG') {
+  if (message.type === 'GET_SETTINGS' || message.type === 'GET_PRIVATE_SETTINGS' || message.type === 'RELOAD_CONFIG') {
+    var includeProviderSecrets = message.type === 'GET_PRIVATE_SETTINGS' && senderCanReadProviderSecrets(sender);
     Promise.all([loadSettings(), getPortfolioBundle(), getCloudStatus(), localGet([MODEL_HEALTH_STORAGE_KEY, MODEL_USAGE_LOG_STORAGE_KEY])]).then(function(results) {
       MODEL_HEALTH_CACHE = Object.assign({}, results[3] && results[3][MODEL_HEALTH_STORAGE_KEY] || {}, MODEL_HEALTH_CACHE);
       MODEL_USAGE_LOG_CACHE = Array.isArray(results[3] && results[3][MODEL_USAGE_LOG_STORAGE_KEY]) ? results[3][MODEL_USAGE_LOG_STORAGE_KEY] : MODEL_USAGE_LOG_CACHE;
       rebuildModelHealthFromUsageLogs(MODEL_USAGE_LOG_CACHE);
       sendResponse({
-        settings: results[0],
+        settings: includeProviderSecrets ? results[0] : settingsWithoutProviderSecrets(results[0]),
         portfolio: {
           source: results[1].source,
           owner: results[1].owner,
@@ -4326,28 +4245,9 @@ chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
     return true;
   }
 
-  if (message.type === 'GET_MODEL_USAGE_LOG') {
-    localGet(MODEL_USAGE_LOG_STORAGE_KEY).then(function(data) {
-      MODEL_USAGE_LOG_CACHE = Array.isArray(data && data[MODEL_USAGE_LOG_STORAGE_KEY]) ? data[MODEL_USAGE_LOG_STORAGE_KEY] : MODEL_USAGE_LOG_CACHE;
-      sendResponse({ modelUsageLog: MODEL_USAGE_LOG_CACHE.slice(-MAX_MODEL_USAGE_LOGS) });
-    }).catch(function(err) {
-      sendResponse({ error: err.message });
-    });
-    return true;
-  }
-
   if (message.type === 'GET_CLOUD_STATUS') {
     Promise.all([getCloudStatus(), getExtensionStorageStatus()]).then(function(results) {
       sendResponse({ cloud: results[0], storage: results[1] });
-    }).catch(function(err) {
-      sendResponse({ error: err.message });
-    });
-    return true;
-  }
-
-  if (message.type === 'GET_EXTENSION_STORAGE_STATUS') {
-    getExtensionStorageStatus().then(function(status) {
-      sendResponse({ storage: status, message: describeStorageStatus(status) });
     }).catch(function(err) {
       sendResponse({ error: err.message });
     });

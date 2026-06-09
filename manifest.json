@@ -1,10 +1,9 @@
 {
   "manifest_version": 3,
   "name": "CoverCraft",
-  "version": "3.0",
-  "version_name": "3.0",
+  "version": "3.0.3",
+  "version_name": "3.0.3",
   "description": "AI-powered Chrome extension for cover letters, tailored resumes, and follow-up questions",
-  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0PBDolSL1j3AjYUEQLBIJYyL6yfPNKr73sqpXZHIpNo10MhCVn4GET+PhyfijVromVzugmna8m7Z535jCleMebNlp4IqyfllqeXaBjW6z0JrnzKb31Xk+eyS35B8yJXkdEoYOWm4Hqku/u10yZL72JCaJnjBebkcjtIFlmDC0sEA/RKwp4UwIbLwUkc6/VW4brQq/E9opvI63jzuDsiwxdP72Ts8KJnaJ0H2e6bDjkvM/SIvCjraG4LB+uyARxIwrPGAAFrjHPsZrd6MM53p3dLG5ClOSrE2UX3gG8EbjdqLdxvVsUviiO0qIqEZLI/7KZDNMlv4NodMWPJoGTWmhQIDAQAB",
   "icons": {
     "16":  "icons/icon16.png",
     "48":  "icons/icon48.png",
@@ -22,15 +21,14 @@
     "pages": ["src/tools/ocr-sandbox.html"]
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; frame-src 'self'; connect-src 'self' https://openrouter.ai https://api.groq.com https://api.tavily.com https://app.tavily.com https://firestore.googleapis.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com;",
+    "extension_pages": "script-src 'self'; object-src 'self'; frame-src 'self'; connect-src 'self' https://openrouter.ai https://api.groq.com https://api.tavily.com https://firestore.googleapis.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com;",
     "sandbox": "sandbox allow-scripts allow-forms allow-popups allow-modals; script-src 'self' 'unsafe-inline' 'unsafe-eval'; child-src 'self';"
   },
-  "permissions": ["activeTab", "downloads", "identity", "scripting", "storage", "tabs", "unlimitedStorage"],
+  "permissions": ["activeTab", "downloads", "identity", "scripting", "storage", "unlimitedStorage"],
   "host_permissions": [
     "https://openrouter.ai/*",
     "https://api.groq.com/*",
     "https://api.tavily.com/*",
-    "https://app.tavily.com/*",
     "https://firestore.googleapis.com/*",
     "https://securetoken.googleapis.com/*",
     "https://identitytoolkit.googleapis.com/*"

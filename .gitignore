@@ -23,6 +23,8 @@ desktop.ini
 node_modules/
 npm-debug.log*
 yarn-error.log
+video/public/branding/
+video/out/
 
 # ─── Build/dist artifacts ─────────────────────────────────────────────────────
 dist/
@@ -34,9 +36,6 @@ build/
 
 # ─── Optional local demo/media files ─────────────────────────────────────────
 site/demo-job.html
-branding/DELL P2414H (Area) 2026-04-08 06_51 PM.png
-branding/aayan_tts_audio.mp3
-branding/backgroundmusicforvideos-product-launch-advertising-commercial-music-368052.mp3
 site/branding/DELL P2414H (Area) 2026-04-08 06_51 PM.png
 site/branding/aayan_tts_audio.mp3
 site/branding/backgroundmusicforvideos-product-launch-advertising-commercial-music-368052.mp3

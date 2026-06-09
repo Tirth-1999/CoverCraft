@@ -1,6 +1,32 @@
 (function(global) {
   'use strict';
 
+  var KNOWN_MODELS = [
+    'openrouter/free',
+    'google/gemma-3-12b-it:free',
+    'meta-llama/llama-3.3-70b-instruct:free',
+    'nvidia/nemotron-3-super-120b-a12b:free',
+    'minimax/minimax-m2.5:free',
+    'groq/llama-3.1-8b-instant',
+    'groq/llama-3.3-70b-versatile',
+    'groq/openai/gpt-oss-120b',
+    'groq/openai/gpt-oss-20b',
+    'groq/meta-llama/llama-4-scout-17b-16e-instruct',
+    'groq/qwen/qwen3-32b',
+    'groq/compound-mini',
+    'groq/compound'
+  ];
+  var GROQ_BASE_LIMITS = {
+    'groq/llama-3.1-8b-instant': { tpm: '6K', rpd: '14.4K' },
+    'groq/llama-3.3-70b-versatile': { tpm: '12K', rpd: '1K' },
+    'groq/openai/gpt-oss-120b': { tpm: '8K', rpd: '1K' },
+    'groq/openai/gpt-oss-20b': { tpm: '8K', rpd: '1K' },
+    'groq/meta-llama/llama-4-scout-17b-16e-instruct': { tpm: '30K', rpd: '1K' },
+    'groq/qwen/qwen3-32b': { tpm: '6K', rpd: '1K' },
+    'groq/compound-mini': { tpm: '70K', rpd: '250' },
+    'groq/compound': { tpm: '70K', rpd: '250' }
+  };
+
   function clone(value) {
     return JSON.parse(JSON.stringify(value));
   }
@@ -386,6 +412,8 @@
     lookupModelHealth: lookupModelHealth,
     sessionTitle: sessionTitle,
     createEmptySession: createEmptySession,
+    KNOWN_MODELS: KNOWN_MODELS.slice(),
+    GROQ_BASE_LIMITS: clone(GROQ_BASE_LIMITS),
     STORAGE_KEYS: {
       sessions: 'covercraft_sessions_v3',
       sessionOrder: 'covercraft_session_order_v3',

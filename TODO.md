@@ -2,19 +2,18 @@
 
 ## Post-Approval Checklist
 
-Complete these steps after the Chrome Web Store listing is approved and the published extension ID is available.
+Complete these steps for the production Chrome Web Store extension ID `apnbkjkgobikeejmfjgnmbflonmbgffg`.
 
 ### Extension Identity
 
-- Get the final published Chrome Web Store extension ID.
 - Confirm the published install uses the same permanent ID across machines.
 - Decide whether to add a manifest `key` field for stable local development IDs.
 
 ### Google OAuth And Firebase
 
 - Add the published redirect URI to Google Cloud OAuth:
-  - `https://<PUBLISHED_EXTENSION_ID>.chromiumapp.org/firebase`
-- Confirm the correct Google OAuth client ID is present in local [src/firebase.js](/Users/tirthcshah/Desktop/Tirth%20Shah/Projects/CoverCraft/src/firebase.js).
+  - `https://apnbkjkgobikeejmfjgnmbflonmbgffg.chromiumapp.org/firebase`
+- Confirm the production Google OAuth client ID in `src/firebase.defaults.js` owns that redirect URI.
 - Recheck Firebase Auth settings and authorized domains.
 - Verify Firestore rules are deployed for signed-in user isolation.
 

@@ -85,7 +85,7 @@
               <input type="password" id="openrouter-key" class="mono" placeholder="sk-or-v1-…" autocomplete="off">
               <button class="btn" id="test-openrouter-btn">Test</button>
             </div>
-            <div class="hint">Optional when using Groq. Required for OpenRouter free-routing, Gemma, Nemotron, MiniMax, and Tavily-backed generation fallback. Get one at <a href="https://openrouter.ai/keys" target="_blank">openrouter.ai/keys</a>.</div>
+            <div class="hint">Optional when using Groq. Required for OpenRouter models. Get one at <a href="https://openrouter.ai/keys" target="_blank">openrouter.ai/keys</a>.</div>
             <div id="openrouter-status" class="status"></div>
           </div>
           <div class="field">
@@ -94,7 +94,7 @@
               <input type="password" id="groq-key" class="mono" placeholder="gsk-…" autocomplete="off">
               <button class="btn" id="test-groq-btn">Test</button>
             </div>
-            <div class="hint">Use Groq for free hosted chat models when you do not want to depend on OpenRouter routing.</div>
+            <div class="hint">Required when using a Groq model.</div>
             <div id="groq-status" class="status"></div>
           </div>
           <div class="field">
@@ -103,7 +103,7 @@
               <input type="password" id="tavily-key" class="mono" placeholder="tvly-dev-…" autocomplete="off">
               <button class="btn" id="test-tavily-btn">Test</button>
             </div>
-            <div class="hint">Required for company research caching. Get one at <a href="https://app.tavily.com" target="_blank">app.tavily.com</a>.</div>
+            <div class="hint">Required for company research. Get one at <a href="https://app.tavily.com" target="_blank">app.tavily.com</a>.</div>
             <div id="tavily-status" class="status"></div>
           </div>
         </div>
@@ -175,7 +175,7 @@
           <input type="checkbox" id="cloud-sync-enabled">
           <label for="cloud-sync-enabled">Enable cloud sync for sessions and portfolio</label>
         </div>
-        <div class="hint">API keys stay local. Signed-in users can sync sessions, research, cover letters, and the active portfolio to Firebase.</div>
+        <div class="hint">API keys stay in extension-local storage and are not placed in Chrome Sync or Firebase. Google sign-in is optional.</div>
         <div class="source-box" style="margin-top:14px">
           <h3>Google Cloud Account</h3>
           <p id="cloud-auth-summary">Checking cloud status…</p>

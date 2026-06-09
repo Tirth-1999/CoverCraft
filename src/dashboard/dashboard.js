@@ -18,31 +18,8 @@ var currentModelUsageLog = [];
 var dashboardChartState = {};
 var currentModelHealth = {};
 var modelHealthTickTimer = null;
-var KNOWN_MODELS = [
-  'openrouter/free',
-  'google/gemma-3-12b-it:free',
-  'meta-llama/llama-3.3-70b-instruct:free',
-  'nvidia/nemotron-3-super-120b-a12b:free',
-  'minimax/minimax-m2.5:free',
-  'groq/llama-3.1-8b-instant',
-  'groq/llama-3.3-70b-versatile',
-  'groq/openai/gpt-oss-120b',
-  'groq/openai/gpt-oss-20b',
-  'groq/meta-llama/llama-4-scout-17b-16e-instruct',
-  'groq/qwen/qwen3-32b',
-  'groq/compound-mini',
-  'groq/compound'
-];
-var GROQ_BASE_LIMITS = {
-  'groq/llama-3.1-8b-instant': { tpm: '6K', rpd: '14.4K' },
-  'groq/llama-3.3-70b-versatile': { tpm: '12K', rpd: '1K' },
-  'groq/openai/gpt-oss-120b': { tpm: '8K', rpd: '1K' },
-  'groq/openai/gpt-oss-20b': { tpm: '8K', rpd: '1K' },
-  'groq/meta-llama/llama-4-scout-17b-16e-instruct': { tpm: '30K', rpd: '1K' },
-  'groq/qwen/qwen3-32b': { tpm: '6K', rpd: '1K' },
-  'groq/compound-mini': { tpm: '70K', rpd: '250' },
-  'groq/compound': { tpm: '70K', rpd: '250' }
-};
+var KNOWN_MODELS = Core.KNOWN_MODELS;
+var GROQ_BASE_LIMITS = Core.GROQ_BASE_LIMITS;
 
 function mk(tag, cls, text) {
   var el = document.createElement(tag);
@@ -1054,12 +1031,6 @@ function svgNode(tag, attrs) {
     el.setAttribute(key, attrs[key]);
   });
   return el;
-}
-
-function sumSeries(points, key) {
-  return points.reduce(function(total, point) {
-    return total + (Number(point[key]) || 0);
-  }, 0);
 }
 
 function maxSeries(points, keys) {
@@ -2298,7 +2269,7 @@ function startDashboardAutoRefresh() {
 }
 
 function loadSettingsSurface() {
-  chrome.runtime.sendMessage({ type: 'GET_SETTINGS' }, function(response) {
+  chrome.runtime.sendMessage({ type: 'GET_PRIVATE_SETTINGS' }, function(response) {
     var settings = response && response.settings || {};
     document.getElementById('openrouter-key').value = settings.openrouterKey || '';
     document.getElementById('groq-key').value = settings.groqKey || '';
@@ -2410,32 +2381,52 @@ async function testTavily() {
 }
 
 function saveRuntimeSettings() {
-  chrome.storage.sync.set({
+  var providerKeys = {
     openrouterKey: document.getElementById('openrouter-key').value.trim(),
     groqKey: document.getElementById('groq-key').value.trim(),
-    tavilyKey: document.getElementById('tavily-key').value.trim(),
+    tavilyKey: document.getElementById('tavily-key').value.trim()
+  };
+  var runtimeSettings = {
     model: document.getElementById('model-select').value === 'custom' ? 'custom' : document.getElementById('model-select').value,
     customModel: document.getElementById('custom-model-input').value.trim(),
     coverLetterType: document.getElementById('default-type').value,
     triggerMode: document.getElementById('trigger-mode').value,
     cloudSyncEnabled: document.getElementById('cloud-sync-enabled').checked
-  }, function() {
-    chrome.runtime.sendMessage({ type: 'RELOAD_CONFIG' }, function() {
-      setStatus('save-status', 'ok', 'Runtime settings saved.');
-      if (document.getElementById('cloud-sync-enabled').checked) {
-        chrome.runtime.sendMessage({ type: 'SYNC_CLOUD_NOW' }, function() {
-          loadCloudStatus();
-        });
-      } else {
-        loadCloudStatus();
+  };
+
+  chrome.storage.local.set(providerKeys, function() {
+    if (chrome.runtime.lastError) {
+      setStatus('save-status', 'error', chrome.runtime.lastError.message || 'Could not save provider keys.');
+      return;
+    }
+    chrome.storage.sync.remove(['openrouterKey', 'groqKey', 'tavilyKey'], function() {
+      if (chrome.runtime.lastError) {
+        setStatus('save-status', 'error', chrome.runtime.lastError.message || 'Could not remove legacy synced keys.');
+        return;
       }
-      setTimeout(function() { setStatus('save-status', '', ''); }, 2200);
+      chrome.storage.sync.set(runtimeSettings, function() {
+        if (chrome.runtime.lastError) {
+          setStatus('save-status', 'error', chrome.runtime.lastError.message || 'Could not save runtime settings.');
+          return;
+        }
+        chrome.runtime.sendMessage({ type: 'RELOAD_CONFIG' }, function() {
+          setStatus('save-status', 'ok', 'Runtime settings saved.');
+          if (document.getElementById('cloud-sync-enabled').checked) {
+            chrome.runtime.sendMessage({ type: 'SYNC_CLOUD_NOW' }, function() {
+              loadCloudStatus();
+            });
+          } else {
+            loadCloudStatus();
+          }
+          setTimeout(function() { setStatus('save-status', '', ''); }, 2200);
+        });
+      });
     });
   });
 }
 
 function openWebsite() {
-  chrome.tabs.create({ url: chrome.runtime.getURL('site/index.html') });
+  chrome.tabs.create({ url: 'https://cover-craft.app/' });
 }
 
 function handleImportedDraft(response, successLabel) {

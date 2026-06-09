@@ -169,7 +169,7 @@
 
   bind('website-link', 'click', function(event) {
     event.preventDefault();
-    chrome.tabs.create({ url: chrome.runtime.getURL('site/index.html') }, function() {
+    chrome.tabs.create({ url: 'https://cover-craft.app/' }, function() {
       if (!chrome.runtime.lastError) window.close();
     });
   });
