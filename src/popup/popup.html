@@ -104,6 +104,25 @@
     background:rgba(255,255,255,.04);
     border:1px solid rgba(255,255,255,.08);
   }
+  .account-action{
+    appearance:none;
+    width:100%;
+    margin-top:8px;
+    padding:10px 12px;
+    border-radius:14px;
+    border:1px solid rgba(129,140,248,.28);
+    background:linear-gradient(135deg,rgba(99,102,241,.18),rgba(139,92,246,.14));
+    color:#e0e7ff;
+    font:800 11px/1.2 Inter,system-ui,sans-serif;
+    cursor:pointer;
+    transition:transform .15s ease,background .15s ease,border-color .15s ease;
+  }
+  .account-action:hover{
+    transform:translateY(-1px);
+    background:linear-gradient(135deg,rgba(99,102,241,.25),rgba(139,92,246,.2));
+    border-color:rgba(129,140,248,.4);
+  }
+  .account-action:disabled{opacity:.6;cursor:wait;transform:none}
   .account-avatar{
     width:34px;
     height:34px;
@@ -240,6 +259,7 @@
         <div class="account-sub" id="account-sub">Not signed in</div>
       </div>
     </div>
+    <button class="account-action" id="account-action-btn" type="button">Open Account</button>
   </header>
 
   <section class="panel">

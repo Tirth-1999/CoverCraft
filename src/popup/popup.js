@@ -1,4 +1,6 @@
 (function() {
+  var currentCloud = null;
+
   function byId(id) {
     return document.getElementById(id);
   }
@@ -56,9 +58,11 @@
   }
 
   function renderAccount(cloud) {
+    currentCloud = cloud || null;
     var avatar = byId('account-avatar');
     var name = byId('account-name');
     var sub = byId('account-sub');
+    var accountAction = byId('account-action-btn');
     if (!avatar || !name || !sub) return;
     avatar.innerHTML = '';
     var installation = cloud && cloud.installation || null;
@@ -68,6 +72,7 @@
       avatar.textContent = 'L';
       name.textContent = 'Local ZIP mode';
       sub.textContent = 'BYOK and local storage only';
+      if (accountAction) accountAction.textContent = 'Open Local Profile & Keys';
       return;
     }
     if (cloud && cloud.signedIn && cloud.user) {
@@ -81,11 +86,13 @@
       }
       name.textContent = cloud.user.displayName || 'Signed in';
       sub.textContent = cloud.user.email || 'Account connected';
+      if (accountAction) accountAction.textContent = 'Manage Account';
       return;
     }
     avatar.textContent = 'G';
     name.textContent = 'Guest';
     sub.textContent = 'Not signed in';
+    if (accountAction) accountAction.textContent = 'Sign In With Google';
   }
 
   function injectPanelScripts(tabId, callback) {
@@ -173,6 +180,36 @@
   bind('settings-btn', 'click', function() {
     chrome.tabs.create({ url: chrome.runtime.getURL('src/dashboard/dashboard.html#profile') }, function() {
       window.close();
+    });
+  });
+
+  bind('account-action-btn', 'click', function() {
+    var button = byId('account-action-btn');
+    var installation = currentCloud && currentCloud.installation;
+    if (!installation || !installation.official || currentCloud.signedIn) {
+      chrome.tabs.create({ url: chrome.runtime.getURL('src/dashboard/dashboard.html#profile') }, function() {
+        window.close();
+      });
+      return;
+    }
+
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Opening Google Sign-In...';
+    }
+    showStatus('');
+    chrome.runtime.sendMessage({ type: 'CLOUD_SIGN_IN' }, function(response) {
+      if (!response || response.error) {
+        if (button) {
+          button.disabled = false;
+          button.textContent = 'Sign In With Google';
+        }
+        showStatus(response && response.error || 'Google sign-in failed.');
+        return;
+      }
+      renderAccount(response.cloud || null);
+      if (button) button.disabled = false;
+      showStatus(response.syncPending ? 'Signed in. Cloud sync is finishing in the background.' : 'Signed in.');
     });
   });
 

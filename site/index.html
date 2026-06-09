@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CoverCraft | Faster applications from the job page</title>
   <meta name="description" content="CoverCraft turns job pages into a faster workspace for cover letters, tailored resumes, and follow-up answers.">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=3.0.5">
 </head>
 <body>
   <div class="bg-orb orb-a"></div>
@@ -68,20 +68,49 @@
     </section>
 
     <section class="section download-section" id="local-install">
-      <div class="panel download-shell reveal">
-        <div class="download-copy">
-          <div class="eyebrow">Developer / Local Install</div>
-          <h2>Need the unpacked ZIP?</h2>
-          <p>The ZIP supports BYOK generation, local profiles, sessions, and exports. Google sign-in and Firebase sync are available only in the official Chrome Web Store installation.</p>
-        </div>
-        <div class="download-actions">
-          <a class="primary-btn download-btn" href="./downloads/CoverCraft-extension.zip" download>
+      <div class="section-head reveal install-section-head">
+        <div class="eyebrow">Choose Your Setup</div>
+        <h2>One product. Two installation paths.</h2>
+        <p>Use the Store version for the complete account experience, or the local package when you want a self-managed BYOK workspace.</p>
+      </div>
+      <div class="install-choice-grid">
+        <article class="panel install-choice install-choice--featured reveal">
+          <div class="install-choice-top">
+            <span class="install-choice-icon">✦</span>
+            <span class="install-choice-badge">Recommended</span>
+          </div>
+          <div>
+            <div class="eyebrow">Chrome Web Store</div>
+            <h3>Full CoverCraft experience</h3>
+            <p>Use Google sign-in, optional Firebase sync, and the complete extension account flow with the permanent Store identity.</p>
+          </div>
+          <ul class="install-feature-list">
+            <li>Google sign-in from the popup or Profile</li>
+            <li>Optional cross-device session and profile sync</li>
+            <li>Your provider keys still remain extension-local</li>
+          </ul>
+          <a class="primary-btn install-choice-btn" href="https://chromewebstore.google.com/detail/apnbkjkgobikeejmfjgnmbflonmbgffg" target="_blank" rel="noopener">Install Official Extension</a>
+        </article>
+        <article class="panel install-choice reveal">
+          <div class="install-choice-top">
+            <span class="install-choice-icon install-choice-icon--local">⌁</span>
+            <span class="install-choice-badge install-choice-badge--muted">Local mode</span>
+          </div>
+          <div>
+            <div class="eyebrow">Developer ZIP</div>
+            <h3>Private, self-managed workspace</h3>
+            <p>Run CoverCraft unpacked with your own provider keys. Profiles, sessions, generated work, and exports stay in that local installation.</p>
+          </div>
+          <ul class="install-feature-list">
+            <li>BYOK generation with OpenRouter or Groq</li>
+            <li>Optional Tavily research</li>
+            <li>No production Google sign-in or Firebase sync</li>
+          </ul>
+          <a class="secondary-btn install-choice-btn download-btn" href="./downloads/CoverCraft-extension.zip" download>
             <span class="download-icon" aria-hidden="true">↓</span>
-            Download ZIP (Local Mode)
+            Download Local ZIP
           </a>
-          <a class="secondary-btn" href="https://chromewebstore.google.com/detail/apnbkjkgobikeejmfjgnmbflonmbgffg" target="_blank" rel="noopener">Install Official Version</a>
-          <div class="download-meta">The package contains no developer API keys. Each local user supplies their own OpenRouter, Groq, and optional Tavily key.</div>
-        </div>
+        </article>
       </div>
     </section>
 

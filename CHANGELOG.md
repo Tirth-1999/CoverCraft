@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.0.5 - 2026-06-09
+
+### Account Experience
+
+- Added direct Google sign-in to the official extension popup.
+- Added account-aware popup actions for signed-in, signed-out, and local ZIP users.
+- Rebuilt the website installation comparison as polished Store and local-mode product cards.
+- Reworked the account page around the actual extension sign-in flow and removed misleading website-login presentation.
+
 ## 3.0.4 - 2026-06-09
 
 ### Installation Identity

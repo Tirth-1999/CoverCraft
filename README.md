@@ -2,7 +2,7 @@
 
 CoverCraft is a Chrome extension for faster job applications.
 
-Current release: `3.0.4`
+Current release: `3.0.5`
 
 It turns a live job page into a reusable workspace where you can generate a tailored cover letter, ask focused follow-up questions, keep profile context ready, and move into a reusable control center without breaking flow.
 
@@ -84,6 +84,8 @@ Use the official listing for Google sign-in and optional Firebase sync:
 - `https://chromewebstore.google.com/detail/apnbkjkgobikeejmfjgnmbflonmbgffg`
 
 The production extension ID is `apnbkjkgobikeejmfjgnmbflonmbgffg`. CoverCraft enables production OAuth only when `chrome.runtime.id` matches that ID.
+
+Official Store users can sign in directly from the extension popup. The same controls remain available under `Dashboard → Profile`.
 
 ### Local ZIP installation
 

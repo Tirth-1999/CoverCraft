@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CoverCraft | Account</title>
   <meta name="description" content="Learn which CoverCraft installation supports Google sign-in, Firebase sync, and local BYOK mode.">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=3.0.5">
 </head>
 <body>
   <div class="bg-orb orb-a"></div>
@@ -29,75 +29,69 @@
 
   <main id="top">
     <section class="section account-top">
-      <div class="panel reveal account-center-shell">
-        <div class="section-head account-head">
-          <div class="eyebrow eyebrow-hero">Account</div>
-          <h2>Choose the installation mode that fits your workflow.</h2>
-          <p>Account actions run inside the extension Dashboard. The website does not read or control extension account data.</p>
+      <div class="account-access-hero reveal">
+        <div class="account-access-copy">
+          <div class="eyebrow eyebrow-hero">CoverCraft Account</div>
+          <h1>Sign in where your work actually lives.</h1>
+          <p>CoverCraft authentication runs inside the official extension, not on this website. That keeps your account state connected to the browser workspace that stores your profile and sessions.</p>
+          <div class="hero-actions account-access-actions">
+            <a class="primary-btn" href="https://chromewebstore.google.com/detail/apnbkjkgobikeejmfjgnmbflonmbgffg" target="_blank" rel="noopener">Install Official Extension</a>
+            <a class="secondary-btn" href="index.html#local-install">Compare Install Options</a>
+          </div>
         </div>
-        <div class="account-summary-card account-summary-card-lg">
-          <div class="account-summary-top account-summary-top-lg">
-            <div class="account-avatar account-avatar-lg" id="site-account-avatar">G</div>
-            <div class="account-identity-copy">
-              <div class="account-name account-name-lg">Official Store installation</div>
-              <div class="account-sub">Google sign-in and optional Firebase sync</div>
-              <div class="account-status-row"><span class="account-status-pill">Production ID verified</span></div>
+        <div class="panel account-path-card">
+          <div class="account-path-header">
+            <span class="account-path-logo">G</span>
+            <div>
+              <span class="account-path-kicker">Official extension</span>
+              <strong>Google account access</strong>
             </div>
           </div>
-        </div>
-        <div class="sync-action-bar">
-          <a class="site-action-btn site-action-btn--primary" href="https://chromewebstore.google.com/detail/apnbkjkgobikeejmfjgnmbflonmbgffg" target="_blank" rel="noopener">Install Official Extension</a>
-          <a class="site-action-btn site-action-btn--secondary" href="index.html#setup">Open Setup Guide</a>
-        </div>
-      </div>
-    </section>
-
-    <section class="section">
-      <div class="panel reveal account-editor-shell">
-        <div class="editor-head">
-          <div>
-            <div class="eyebrow">Local ZIP Mode</div>
-            <h2>BYOK generation stays available.</h2>
-            <p class="account-editor-copy">The downloadable ZIP supports user-provided OpenRouter, Groq, and Tavily keys, local profiles, sessions, and exports. It does not support production Google sign-in or Firebase sync.</p>
-          </div>
-        </div>
-        <div class="account-editor-sections" id="site-profile-sections">
-          <div class="account-editor-section">
-            <div class="editor-section-head">
-              <h3>Why the distinction exists</h3>
-              <p>Chrome assigns unpacked extensions a different ID. OAuth redirects are bound to the official Web Store ID, so CoverCraft blocks production login from other IDs.</p>
-            </div>
-          </div>
-          <div class="account-editor-section">
-            <div class="editor-section-head">
-              <h3>Where to manage your profile</h3>
-              <p>Open CoverCraft Dashboard, then Profile. Official installs show sign-in and sync controls; local ZIP installs show local-mode status and continue to support profile import.</p>
-            </div>
-          </div>
+          <div class="account-path-status"><span></span> Available in Store installs</div>
+          <p>After installing, click the CoverCraft icon and choose <strong>Sign In With Google</strong>. You can also use <strong>Dashboard → Profile</strong>.</p>
         </div>
       </div>
     </section>
 
     <section class="section">
       <div class="section-head reveal">
-        <div class="eyebrow">Website Surfaces</div>
-        <h2>The account pages on the site.</h2>
+        <div class="eyebrow">Sign-In Flow</div>
+        <h2>Three steps from install to sync.</h2>
+        <p>The website is the guide. The extension popup and Profile surface are the account controls.</p>
       </div>
-      <div class="shot-grid account-shot-grid">
-        <article class="panel reveal shot-card">
-          <div class="eyebrow">Account</div>
-          <h3>Identity, sync, and top-line usage.</h3>
-          <div class="shot-frame account-shot-frame">
-            <img src="./branding/website-account-overview.jpeg" alt="CoverCraft website account overview">
-          </div>
+      <div class="account-step-grid">
+        <article class="panel account-step reveal">
+          <span class="account-step-num">01</span>
+          <h3>Install from the Store</h3>
+          <p>The permanent Web Store ID is what connects CoverCraft to its approved Google OAuth redirect.</p>
         </article>
-        <article class="panel reveal shot-card">
-          <div class="eyebrow">Profile</div>
-          <h3>Editable profile details for exports.</h3>
-          <div class="shot-frame account-shot-frame">
-            <img src="./branding/website-profile-details.jpeg" alt="CoverCraft website profile details">
-          </div>
+        <article class="panel account-step reveal">
+          <span class="account-step-num">02</span>
+          <h3>Open the extension popup</h3>
+          <p>Click <strong>Sign In With Google</strong> directly below the account status. No website login page is required.</p>
         </article>
+        <article class="panel account-step reveal">
+          <span class="account-step-num">03</span>
+          <h3>Manage sync in Profile</h3>
+          <p>Open Dashboard → Profile to sync now, sign out, inspect storage status, or manage your active identity.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="panel account-mode-panel reveal">
+        <div class="account-mode-copy">
+          <div class="eyebrow">Local ZIP</div>
+          <h2>No account required.</h2>
+          <p>Local mode remains a complete BYOK workflow for generation, profile imports, saved sessions, and exports. It intentionally does not connect to production Google sign-in or Firebase sync.</p>
+        </div>
+        <div class="account-mode-pills">
+          <span>OpenRouter / Groq</span>
+          <span>Optional Tavily</span>
+          <span>Local profiles</span>
+          <span>Local sessions</span>
+          <span>PDF and LaTeX exports</span>
+        </div>
       </div>
     </section>
 
@@ -130,7 +124,7 @@
         <button class="faq-item reveal" data-faq>
           <span>Can I use this page without signing in?</span>
           <span class="faq-icon">+</span>
-          <div class="faq-body">Yes, but signed-in users get sync controls and editable profile details tied to the active account.</div>
+          <div class="faq-body">Yes. This page only explains account access. Sign-in and profile controls are inside the official extension.</div>
         </button>
         <button class="faq-item reveal" data-faq>
           <span>What changes when cloud sync is off?</span>
