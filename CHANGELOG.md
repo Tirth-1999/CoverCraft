@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.0.11 - 2026-06-21
+
+### Fixes
+
+- Increased OpenAI output budgets for extraction, cover-letter, Q&A, and resume workflows so reasoning models have room to finish.
+- Kept model-tier caps in place while raising them enough to avoid premature `max_output_tokens` failures.
+
 ## 3.0.10 - 2026-06-21
 
 ### Fixes

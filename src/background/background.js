@@ -1930,10 +1930,10 @@ async function aiChatMessages(messages, options) {
   }
 
   function clampOpenAIMaxTokens(modelId, requested) {
-    var safeRequested = Math.max(16, Number(requested) || 1200);
-    if (/nano/i.test(modelId)) return Math.min(safeRequested, 900);
-    if (/mini|4o-mini/i.test(modelId)) return Math.min(safeRequested, 1800);
-    return Math.min(safeRequested, 2600);
+    var safeRequested = Math.max(1800, Number(requested) || 1800);
+    if (/nano/i.test(modelId)) return Math.min(safeRequested, 3500);
+    if (/mini|4o-mini|4\.1-mini/i.test(modelId)) return Math.min(safeRequested, 6000);
+    return Math.min(safeRequested, 9000);
   }
 
   var estimatedInputTokens = estimateTokensFromMessages(messages);
@@ -2092,7 +2092,8 @@ async function aiChatMessages(messages, options) {
     var message = String(errorMessage || '').trim() || (providerLabel + ' HTTP ' + status);
     if (useOpenAI && resultInfo && resultInfo.data && resultInfo.data.status === 'incomplete') {
       var reason = resultInfo.data.incomplete_details && resultInfo.data.incomplete_details.reason || 'incomplete';
-      return 'OpenAI stopped before finishing the response (' + reason + '). Try a cheaper/faster model such as GPT-5 Mini or increase the output budget for this workflow.';
+      var requestedBudget = resultInfo.usage && resultInfo.usage.requestedOutputTokens || maxTokens;
+      return 'OpenAI stopped before finishing the response (' + reason + ') after a ' + requestedBudget + '-token output budget. Try GPT-5 Mini/Nano for lower reasoning overhead, or use a non-reasoning model such as GPT-4.1 Mini for this workflow.';
     }
     var requestedModelLabel = requestedModel.replace(/^groq\//, '');
     if (useOpenAI) requestedModelLabel = requestedModelLabel.replace(/^openai\//, '');
@@ -2255,7 +2256,7 @@ async function extractJobDetails(rawText, hints, model) {
   var usedAi = false;
   var usedHeuristic = false;
   try {
-    response = await aiChat(systemPrompt, userPrompt, 0, 420, model);
+    response = await aiChat(systemPrompt, userPrompt, 0, 1600, model);
     parsed = safeParseJson(response.content, 'CoverCraft could not parse the extracted job details. Please refresh and try again.');
     usedAi = true;
   } catch (_) {
@@ -2428,7 +2429,7 @@ async function repairCoverLetterQuality(text, issues, portfolio, model) {
     'Draft:',
     String(text || '')
   ].join('\n');
-  var response = await aiChat(systemPrompt, userPrompt, 0.18, 1800, model);
+  var response = await aiChat(systemPrompt, userPrompt, 0.18, 3600, model);
   return {
     text: stripFormatting(response.content, portfolio),
     model: response.model,
@@ -2609,7 +2610,7 @@ async function generateCoverLetter(session, style, model, portfolio) {
       systemPrompt,
       userPrompt,
       attempts === 1 ? 0.48 : 0.32,
-      2200,
+      5200,
       model
     );
     tokenUsage = mergeTokenUsage(tokenUsage, response.usage);
@@ -2695,7 +2696,7 @@ async function answerQuestion(session, question, model, portfolio) {
     buildAskSystemPrompt(portfolio),
     buildAskUserPrompt(session, question, portfolio),
     0.35,
-    900,
+    2200,
     model
   );
   var answer = normalizePlainAnswer(response.content || '');
@@ -4214,7 +4215,7 @@ async function generateResumeArtifact(session, model, portfolioBundle, options) 
 	      { role: 'user', content: buildResumeUserPrompt(session, resumeSource, formatProfile) }
 	    ], {
 	      temperature: 0.08,
-	      maxTokens: 2600,
+	      maxTokens: 6500,
 	      model: model,
 	      responseSchemaName: 'tailored_resume',
 	      responseSchema: Core.providerForModel(model) === 'openai' ? buildResumeDraftSchema() : null
