@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.0.10 - 2026-06-21
+
+### Fixes
+
+- Fixed OpenAI generation by returning Responses API `output_text` instead of reading chat-completion `choices`.
+- Treat OpenAI Responses API incomplete outputs as provider failures with a clearer error message.
+
 ## 3.0.9 - 2026-06-21
 
 ### Settings

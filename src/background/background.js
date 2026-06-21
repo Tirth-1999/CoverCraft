@@ -2037,17 +2037,19 @@ async function aiChatMessages(messages, options) {
       ? openAIResponseText(data)
       : ((data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '');
     var normalizedUsage = normalizeTokenUsage(data, responseText, rateLimit);
+    var providerOk = response.ok && !(useOpenAI && data && data.status === 'incomplete');
     var resultObject = {
-      ok: response.ok,
+      ok: providerOk,
       status: response.status,
       data: data,
+      content: responseText,
       rateLimit: rateLimit,
       usage: normalizedUsage
     };
     await rememberModelHealth(requestedModel, {
       provider: provider,
       apiModel: requestBody.model,
-      ok: response.ok,
+      ok: providerOk,
       status: response.status,
       error: data && data.error && data.error.message || '',
       rateLimit: resultObject.rateLimit,
@@ -2088,6 +2090,10 @@ async function aiChatMessages(messages, options) {
   function normalizeOpenRouterError(errorMessage, status, resultInfo) {
     var providerLabel = useGroq ? 'Groq' : (useOpenAI ? 'OpenAI' : 'OpenRouter');
     var message = String(errorMessage || '').trim() || (providerLabel + ' HTTP ' + status);
+    if (useOpenAI && resultInfo && resultInfo.data && resultInfo.data.status === 'incomplete') {
+      var reason = resultInfo.data.incomplete_details && resultInfo.data.incomplete_details.reason || 'incomplete';
+      return 'OpenAI stopped before finishing the response (' + reason + '). Try a cheaper/faster model such as GPT-5 Mini or increase the output budget for this workflow.';
+    }
     var requestedModelLabel = requestedModel.replace(/^groq\//, '');
     if (useOpenAI) requestedModelLabel = requestedModelLabel.replace(/^openai\//, '');
     var loweredMessage = message.toLowerCase();
@@ -2196,7 +2202,7 @@ async function aiChatMessages(messages, options) {
         throw new Error(fallbackError);
       }
       return {
-        content: (fallback.data.choices && fallback.data.choices[0] && fallback.data.choices[0].message && fallback.data.choices[0].message.content) || '',
+        content: fallback.content || '',
         model: displayModelFromResponse(fallback, fallbackBody.model),
         usage: fallback.usage || {}
       };
@@ -2205,7 +2211,7 @@ async function aiChatMessages(messages, options) {
   }
 
   return {
-    content: (result.data.choices && result.data.choices[0] && result.data.choices[0].message && result.data.choices[0].message.content) || '',
+    content: result.content || '',
     model: displayModelFromResponse(result, body.model),
     usage: result.usage || {}
   };
