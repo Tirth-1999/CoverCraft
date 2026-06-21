@@ -3164,6 +3164,98 @@ function choosePromptProjects(projects, rankProfile, limit) {
   });
 }
 
+function rankResumeExperienceCandidates(experiences, rankProfile, limit) {
+  return (experiences || []).map(function(experience, index) {
+    var roleRank = rankTextAgainstProfile([
+      experience.role || '',
+      experience.company || '',
+      experience.location || ''
+    ].join(' '), rankProfile, 1.8);
+    var bulletRanks = (experience.bullets || []).map(function(bullet, bulletIndex) {
+      var rank = rankTextAgainstProfile(bullet, rankProfile, 1);
+      var impactBonus = hasResumeImpactSignal(bullet) ? 2.5 : 0;
+      return {
+        text: bullet,
+        index: bulletIndex,
+        score: Math.round((rank.score + impactBonus) * 10) / 10,
+        matchedTerms: rank.matchedTerms.slice(0, 7),
+        hasImpact: impactBonus > 0
+      };
+    }).sort(function(a, b) {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.index - b.index;
+    });
+    var topBullets = bulletRanks.slice(0, 5);
+    var score = roleRank.score + topBullets.reduce(function(total, bullet) {
+      return total + bullet.score;
+    }, 0) + Math.max(0, 5 - index) * 0.15;
+    if (topBullets.some(function(bullet) { return bullet.hasImpact; })) score += 1.5;
+    var matchedTerms = [].concat(roleRank.matchedTerms, topBullets.reduce(function(all, bullet) {
+      return all.concat(bullet.matchedTerms || []);
+    }, []));
+    var seen = {};
+    matchedTerms = matchedTerms.filter(function(match) {
+      var key = normalizeRankTerm(match.term);
+      if (!key || seen[key]) return false;
+      seen[key] = true;
+      return true;
+    }).slice(0, 10);
+    return Object.assign({}, experience, {
+      selectionRank: index + 1,
+      relevanceScore: Math.round(score * 10) / 10,
+      matchedKeywords: matchedTerms.map(function(match) { return match.term; }).slice(0, 8),
+      whyCandidate: rankWhy([
+        matchedTerms.length ? 'Matches ' + matchedTerms.slice(0, 4).map(function(match) { return match.term; }).join(', ') + '.' : '',
+        topBullets.some(function(bullet) { return bullet.hasImpact; }) ? 'Contains quantified impact evidence.' : '',
+        roleRank.matchedTerms.length ? 'Role/company context supports target role.' : ''
+      ]),
+      rankedBullets: topBullets.map(function(bullet) {
+        return {
+          sourceText: bullet.text,
+          sourceIndex: bullet.index,
+          sourceWordCount: Core.wordCount(bullet.text),
+          targetWordCount: Core.wordCount(bullet.text),
+          minWordCount: Math.max(10, Core.wordCount(bullet.text) - 5),
+          maxWordCount: experience.bulletBudgets && experience.bulletBudgets[bullet.index] || 34,
+          score: bullet.score,
+          matchedKeywords: (bullet.matchedTerms || []).map(function(match) { return match.term; }).slice(0, 6),
+          hasImpact: bullet.hasImpact
+        };
+      })
+    });
+  }).sort(function(a, b) {
+    return b.relevanceScore - a.relevanceScore;
+  }).slice(0, limit || 6).map(function(entry, index) {
+    entry.selectionRank = index + 1;
+    return entry;
+  });
+}
+
+function rankResumeProjectCandidates(projects, rankProfile, limit) {
+  return (projects || []).map(function(project, index) {
+    var rank = rankTextAgainstProfile([
+      project.title || '',
+      project.description || '',
+      (project.technologies || []).join(' ')
+    ].join(' '), rankProfile, 1);
+    var score = rank.score + (hasResumeImpactSignal(project.description) ? 1.5 : 0) + Math.max(0, 5 - index) * 0.1;
+    return Object.assign({}, project, {
+      selectionRank: index + 1,
+      relevanceScore: Math.round(score * 10) / 10,
+      matchedKeywords: rank.matchedTerms.map(function(match) { return match.term; }).slice(0, 8),
+      whyCandidate: rankWhy([
+        rank.matchedTerms.length ? 'Matches ' + rank.matchedTerms.slice(0, 4).map(function(match) { return match.term; }).join(', ') + '.' : '',
+        hasResumeImpactSignal(project.description) ? 'Contains measurable project impact.' : ''
+      ])
+    });
+  }).sort(function(a, b) {
+    return b.relevanceScore - a.relevanceScore;
+  }).slice(0, limit || 6).map(function(entry, index) {
+    entry.selectionRank = index + 1;
+    return entry;
+  });
+}
+
 function choosePromptAchievements(achievements, rankProfile, limit) {
   return dedupeStrings(achievements || []).map(function(item, index) {
     var rank = rankTextAgainstProfile(item, rankProfile, 1);
@@ -3318,21 +3410,25 @@ function buildResumeSource(portfolioBundle, session, formatProfile) {
   var normalizedPortfolio = portfolioBundle && portfolioBundle.portfolio || Core.normalizePortfolio(rawPortfolio).normalized;
   var keywords = buildResumeKeywords(session);
   var skillsList = splitSkillList(normalizedPortfolio.skills || '');
-  var leadership = dedupeStrings([].concat(
-    Array.isArray(rawPortfolio.leadership) ? rawPortfolio.leadership : [],
-    Array.isArray(normalizedPortfolio.awards) ? normalizedPortfolio.awards : []
-  ));
+  var rankProfile = buildJobRankProfile(session);
+  var allExperiences = normalizeResumeExperiences(rawPortfolio);
+  var allProjects = normalizeResumeProjects(rawPortfolio);
   return {
 	    owner: buildResumeOwner(rawPortfolio, normalizedPortfolio),
 	    summary: normalizeResumeOutputText((rawPortfolio.about && rawPortfolio.about.bio && rawPortfolio.about.bio[0]) || normalizedPortfolio.summary || ''),
 	    education: normalizeResumeEducation(rawPortfolio, normalizedPortfolio),
-    experiences: normalizeResumeExperiences(rawPortfolio),
-	    projects: chooseResumeProjects(normalizeResumeProjects(rawPortfolio), keywords, 3, formatProfile),
-    leadership: leadership,
+    experiences: rankResumeExperienceCandidates(allExperiences, rankProfile, 7),
+	    projects: rankResumeProjectCandidates(allProjects, rankProfile, 6),
     certifications: dedupeStrings(normalizedPortfolio.certifications || rawPortfolio.certifications || []),
     skillsList: skillsList,
     skills: normalizeResumeSkillString(chooseResumeSkills(skillsList, keywords, 20, 260).join(', '), 50),
-    keywords: keywords
+    keywords: keywords,
+    rankProfile: rankProfile,
+    selectionPolicy: {
+      maxExperiences: 4,
+      maxProjects: 3,
+      leadershipIncluded: false
+    }
 	  };
 	}
 
@@ -3420,18 +3516,58 @@ function buildResumeDraftSchema() {
   return {
     type: 'object',
     additionalProperties: false,
-    required: ['summary', 'experiences', 'projects', 'skills', 'comments'],
+    required: ['jobAnalysis', 'summary', 'experiences', 'projects', 'skills', 'omitted', 'comments'],
     properties: {
-      summary: { type: 'string' },
+      jobAnalysis: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['targetTitle', 'roleFamily', 'topKeywords', 'requiredTools', 'selectionStrategy'],
+        properties: {
+          targetTitle: { type: 'string' },
+          roleFamily: { type: 'string' },
+          topKeywords: { type: 'array', items: { type: 'string' } },
+          requiredTools: { type: 'array', items: { type: 'string' } },
+          selectionStrategy: { type: 'string' }
+        }
+      },
+      summary: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['targetIdentity', 'text', 'justification'],
+        properties: {
+          targetIdentity: { type: 'string' },
+          text: { type: 'string' },
+          justification: { type: 'string' }
+        }
+      },
       experiences: {
         type: 'array',
         items: {
           type: 'object',
           additionalProperties: false,
-          required: ['company', 'bullets'],
+          required: ['company', 'location', 'role', 'duration', 'selectionRank', 'whySelected', 'matchedKeywords', 'bullets'],
           properties: {
             company: { type: 'string' },
-            bullets: { type: 'array', items: { type: 'string' } }
+            location: { type: 'string' },
+            role: { type: 'string' },
+            duration: { type: 'string' },
+            selectionRank: { type: 'number' },
+            whySelected: { type: 'string' },
+            matchedKeywords: { type: 'array', items: { type: 'string' } },
+            bullets: {
+              type: 'array',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['text', 'sourceEvidence', 'xyzCheck', 'matchedKeywords'],
+                properties: {
+                  text: { type: 'string' },
+                  sourceEvidence: { type: 'string' },
+                  xyzCheck: { type: 'string' },
+                  matchedKeywords: { type: 'array', items: { type: 'string' } }
+                }
+              }
+            }
           }
         }
       },
@@ -3440,14 +3576,59 @@ function buildResumeDraftSchema() {
         items: {
           type: 'object',
           additionalProperties: false,
-          required: ['title', 'description'],
+          required: ['title', 'selectionRank', 'description', 'whySelected', 'matchedKeywords'],
           properties: {
             title: { type: 'string' },
-            description: { type: 'string' }
+            selectionRank: { type: 'number' },
+            description: { type: 'string' },
+            whySelected: { type: 'string' },
+            matchedKeywords: { type: 'array', items: { type: 'string' } }
           }
         }
       },
-      skills: { type: 'array', items: { type: 'string' } },
+      skills: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['skillsText', 'certifications', 'matchedKeywords', 'whyTheseSkills'],
+        properties: {
+          skillsText: { type: 'string' },
+          certifications: { type: 'array', items: { type: 'string' } },
+          matchedKeywords: { type: 'array', items: { type: 'string' } },
+          whyTheseSkills: { type: 'string' }
+        }
+      },
+      omitted: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['experiences', 'projects', 'leadershipSkippedReason'],
+        properties: {
+          experiences: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['company', 'reason'],
+              properties: {
+                company: { type: 'string' },
+                reason: { type: 'string' }
+              }
+            }
+          },
+          projects: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['title', 'reason'],
+              properties: {
+                title: { type: 'string' },
+                reason: { type: 'string' }
+              }
+            }
+          },
+          leadershipSkippedReason: { type: 'string' }
+        }
+      },
       comments: {
         type: 'array',
         items: {
@@ -3470,62 +3651,66 @@ function buildResumeDraftSchema() {
 function buildResumeSystemPrompt(formatProfile) {
   formatProfile = formatProfile || resumeFormatProfile('balanced');
   return [
-    'You tailor ATS-safe resume bullet points for a specific job posting.',
+    'You are a FAANG-level resume strategist, ATS optimization specialist, and strict LaTeX-safe resume content planner.',
+    'Your task is to create a one-page, job-targeted resume from ranked portfolio evidence and a job description.',
     'Return ONLY valid JSON.',
     'Do not include markdown or commentary.',
-    'Preserve the exact experience ordering, company names, role titles, duration labels, location labels, and bullet counts.',
-    'Some experiences have exactly 2 bullets and some have exactly 3 bullets. Never add or remove bullets.',
-    'Do not change the header, education, certifications, leadership, company names, role titles, dates, or locations.',
-    'Only tailor the experience bullet text, the project descriptions, and the skills selection/order.',
-    'Do not change project titles or project links.',
-    'Every bullet must follow FAANG resume style and the X-Y-Z rule: accomplished X, measured by Y, by doing Z.',
-    'Every rewritten bullet must start with a strong action verb, include method/tool/domain context, and include quantified or business impact when grounded in the source.',
-    'Avoid weak verbs: worked on, helped, assisted, responsible for, involved in, participated in, used, did, made.',
-    'Never use em dashes or en dashes. Use commas, parentheses, semicolons, or ASCII hyphens only.',
-    'Normalize symbols into plain ATS-safe text: use <, >, <=, >=, ~, %, $, and ASCII hyphen.',
-    'Add a 2-line targeted summary using the target identity "' + formatProfile.summaryIdentity + '" and only truthful strengths.',
-    'Use the provided source bullets as the style anchor. Learn from their tone, density, and structure before changing anything.',
-    'Be conservative. If a source bullet is already relevant or somewhat relevant, keep it unchanged.',
-    'Silently decide KEEP or REWRITE for each source bullet before drafting.',
-    'If a bullet already carries the right domain, business context, or keyword overlap, KEEP it.',
-    'Only rewrite a bullet when the job context clearly justifies a stronger emphasis or keyword alignment.',
-    'Each source bullet is provided with its original text, source word count, target word count, minimum acceptable word count, and hard max word count. Respect those limits literally.',
-    'Treat sourceWordCount and targetWordCount as the intended length pattern. Keep every tailored bullet close to that length, never above maxWordCount, and almost never below minWordCount.',
-    'Do not compress strong bullets into short generic one-liners. Preserve the original density, specificity, quantified impact, and pacing unless the source bullet is genuinely weak.',
-    'Imitate the source bullet anatomy: action verb, technical/business context, then measurable impact or outcome. Do not collapse multi-part source bullets into thin summaries.',
-    'Projects must remain one sentence, concise, and within the provided word budgets. Project references stay fixed.',
-    'Skills must be chosen only from the provided skill inventory.',
-    'Do not repeat the same opening action verb more than twice across all returned bullets.',
-    'Never invent metrics, technologies, employers, titles, dates, or projects.',
-    'Provide concise comments explaining each KEEP or REWRITE decision for later review.',
-    'Return exactly this shape:',
-    '{"summary":"","experiences":[{"company":"","bullets":[""]}],"projects":[{"title":"","description":""}],"skills":[""],"comments":[{"company":"","bulletIndex":0,"decision":"KEEP","matchedKeywords":[""],"justification":""}]}'
+    'Optimize for ATS keyword match, truthful evidence-backed relevance, one-page density, FAANG-style bullet quality, and clean LaTeX rendering.',
+    'Do not invent employers, titles, dates, locations, tools, metrics, certifications, projects, links, domains, or outcomes.',
+    'Never use em dashes or en dashes. Use commas, semicolons, parentheses, ASCII hyphens, or plain words.',
+    'Normalize symbols into ATS-safe text: use <, >, <=, >=, ~, %, $, and ASCII hyphen.',
+    'Do not include Leadership & Achievements. The one-page resume must end after Technical Skills & Certifications.',
+    '',
+    'First analyze the job description. Identify exact target job title, role family, top ATS keywords, required tools, domain keywords, business outcome keywords, seniority expectation, must-have skills, and nice-to-have skills.',
+    '',
+    'SUMMARY RULES:',
+    'Write a 2-line maximum summary. The first phrase must align with the target job title or closest truthful identity. Preferred identity for this selected format: ' + formatProfile.summaryIdentity + '.',
+    'Use 4-6 relevant strengths grounded in evidence. No generic phrases, unsupported seniority claims, passion language, or self-rating.',
+    '',
+    'EDUCATION RULES:',
+    'Education is fixed outside your output. Do not rewrite education. The renderer will keep institution left, location right, degree/GPA left, and date right.',
+    '',
+    'WORK EXPERIENCE RULES:',
+    'Rank all provided experience candidates. Select only the top 4 experiences for this job unless fewer candidates are available.',
+    'Selection must be based on direct keyword overlap, domain overlap, tool overlap, metric strength, and business relevance.',
+    'For each selected experience, preserve source company, location, role, and duration. If your returned metadata differs, it must still be a truthful source value.',
+    'Write 2-3 bullets per selected experience. Prefer 3 bullets for the highest-relevance roles and 2 bullets for lower-relevance roles.',
+    'Every bullet must follow the X-Y-Z rule: accomplished X, measured by Y, by doing Z.',
+    'Every bullet must start with a strong action verb, include method/tool/domain context, and include measurable impact when grounded.',
+    'Use job keywords only when source evidence supports them. Do not copy job-description language mechanically.',
+    'Rewrite for relevance and density. Do not copy old bullets blindly. Do not weaken strong source bullets.',
+    'Keep each bullet one sentence. Avoid weak openings: worked on, helped, assisted, responsible for, involved in, participated in, used, did, made.',
+    'Do not repeat the same opening action verb more than twice.',
+    '',
+    'PROJECT RULES:',
+    'Rank all project candidates. Select top 2-3 projects only.',
+    'Use projects to cover job keyword gaps not already covered by experience. Preserve project titles and real links.',
+    'Each project description must be one compact sentence within the provided word budget.',
+    '',
+    'SKILLS & CERTIFICATIONS RULES:',
+    'This section is for ATS keyword matching. Select skills only from the source inventory.',
+    'Prioritize exact job-description tools and adjacent truthful tools. Keep the skills line dense and role-specific.',
+    'Keep certifications only if relevant or space allows. Do not invent certifications.',
+    '',
+    'COMMENTS RULES:',
+    'Explain why each selected experience/project was selected and why each omitted experience/project was omitted.',
+    'For each bullet comment, include KEEP or REWRITE, matched keywords, source evidence, and a concise justification.',
+    'Return the exact requested JSON shape.'
   ].join('\n');
 }
 
 function buildResumeUserPrompt(session, resumeSource, formatProfile) {
   formatProfile = formatProfile || resumeFormatProfile('balanced');
   return [
-    'Tailor this resume for the job below.',
-    'Header, education, certifications, leadership, dates, locations, company names, and role titles stay fixed outside this output.',
-    'The output must preserve the exact number of bullets for every experience. If the source has 2 bullets, return 2. If the source has 3 bullets, return 3.',
-    'If a source bullet is already ideal, relevant, or even somewhat relevant, keep it unchanged.',
-    'Only use a rewrite when it creates a clearly better match to the target role without weakening the bullet.',
-    'Rewrite only the bullets that truly need better alignment for this specific job.',
-    'Use FAANG-style bullet quality: action verb first, then what was built or improved, then impact and quantification when grounded in the source.',
-    'Use the X-Y-Z rule where possible: accomplished X, measured by Y, by doing Z.',
-    'For summary language, match this role family: ' + formatProfile.label + '.',
+    'Create a one-page targeted resume for this job using ranked evidence below.',
+    'Selected resume format: ' + formatProfile.label + '.',
     'Summary focus terms, only when truthful: ' + formatProfile.summaryFocus.join(', ') + '.',
     'Project selection hints for this profile: ' + formatProfile.projectHints.join(' | ') + '.',
-    'Do not let any bullet exceed its hard max word count.',
-    'Treat targetWordCount as the intended length and minWordCount as the minimum acceptable density for a rewrite.',
-    'Use the source bullet text itself as the pattern to imitate. Match its specificity, pacing, density, and sentence rhythm.',
-    'If you rewrite a bullet, preserve the source bullet architecture: action verb -> scope/method -> outcome/impact.',
-    'If a rewrite would become shorter but weaker, keep the original bullet unchanged.',
-    'Do not add new metrics, dates, tools, project names, or company details.',
-    'Project titles and references stay fixed; you may only rewrite project descriptions.',
-    'Skills must be a subset of the provided inventory, reordered or trimmed to fit tightly, and should usually keep 15 to 20 skills when possible.',
-    'For comments, explain why each bullet was kept or rewritten, which target keywords it supports, and what source evidence grounded it.',
+    'Select exactly the strongest 4 experiences when possible. Select 2-3 projects. Do not include leadership.',
+    'Respect every source word budget. Do not let a bullet exceed maxWordCount. Do not let a project exceed wordBudget.',
+    'Use source bullets as evidence, not as mandatory final wording. Rewrite when relevance improves, but preserve metrics/tools/scope.',
+    'If a candidate is not selected, list it under omitted with a clear reason.',
+    'Skills must be selected from skillsInventory only and should maximize truthful job-keyword coverage.',
     '',
     'Job context:',
     JSON.stringify({
@@ -3534,29 +3719,25 @@ function buildResumeUserPrompt(session, resumeSource, formatProfile) {
       scrapePreview: session.scrape && session.scrape.preview || ''
     }),
     '',
-    'Resume source:',
+    'Ranked resume source:',
     JSON.stringify({
-      experiences: resumeSource.experiences.map(function(entry) {
+      selectionPolicy: resumeSource.selectionPolicy,
+      jobRankProfile: resumeSource.rankProfile,
+      education: resumeSource.education,
+      experienceCandidates: resumeSource.experiences.map(function(entry) {
         return {
           company: entry.company,
           role: entry.role,
           duration: entry.duration,
           location: entry.location,
-          bullets: entry.bullets.map(function(bullet, index) {
-            var sourceWordCount = Core.wordCount(bullet);
-            var maxWordCount = entry.bulletBudgets[index];
-            return {
-              sourceText: bullet,
-              sourceWordCount: sourceWordCount,
-              targetWordCount: sourceWordCount,
-              minWordCount: Math.min(maxWordCount, Math.max(9, sourceWordCount - 4)),
-              maxWordCount: maxWordCount,
-              matchedKeywords: keywordMatchesForText(bullet, resumeSource.keywords, 6)
-            };
-          })
+          selectionRank: entry.selectionRank,
+          relevanceScore: entry.relevanceScore,
+          whyCandidate: entry.whyCandidate,
+          matchedKeywords: entry.matchedKeywords,
+          rankedBullets: entry.rankedBullets
         };
       }),
-      projects: resumeSource.projects.map(function(project) {
+      projectCandidates: resumeSource.projects.map(function(project) {
         var sourceWordCount = Core.wordCount(project.description);
         return {
           title: project.title,
@@ -3568,6 +3749,9 @@ function buildResumeUserPrompt(session, resumeSource, formatProfile) {
           technologies: project.technologies,
           links: project.links,
           wordBudget: project.wordBudget,
+          selectionRank: project.selectionRank,
+          relevanceScore: project.relevanceScore,
+          whyCandidate: project.whyCandidate,
           matchedKeywords: keywordMatchesForText([
             project.title,
             project.description,
@@ -3576,6 +3760,7 @@ function buildResumeUserPrompt(session, resumeSource, formatProfile) {
         };
       }),
 	      skillsInventory: resumeSource.skillsList,
+      certificationsInventory: resumeSource.certifications,
 	      targetKeywords: resumeSource.keywords,
 	      roleFamily: formatProfile.label
 	    })
@@ -3762,16 +3947,19 @@ function buildResumeModificationSummary(resumeSource, resumeData) {
 	    return total + (Array.isArray(item.qualityIssues) ? item.qualityIssues.length : 0);
 	  }, 0);
 
-  (resumeData && resumeData.experiences || []).forEach(function(entry, index) {
-    var source = resumeSource.experiences[index] || {};
+  (resumeData && resumeData.experiences || []).forEach(function(entry) {
+    var source = findResumeSourceExperience(resumeSource, entry.company) || {};
+    var sourceBullets = (source.rankedBullets && source.rankedBullets.length
+      ? source.rankedBullets.map(function(item) { return item.sourceText; })
+      : source.bullets || []);
     var changed = 0;
     (entry.bullets || []).forEach(function(bullet, bulletIndex) {
-      var sourceBullet = String(source.bullets && source.bullets[bulletIndex] || '').trim();
+      var sourceBullet = String(sourceBullets[bulletIndex] || '').trim();
       if (normalizeResumeComparisonText(sourceBullet) !== normalizeResumeComparisonText(bullet)) changed += 1;
     });
     if (!changed) return;
     summary.modifiedBulletCount += changed;
-    summary.modifiedExperienceTitles.push(entry.role || source.role || ('Experience ' + (index + 1)));
+    summary.modifiedExperienceTitles.push(entry.role || source.role || entry.company || 'Selected experience');
     summary.modifiedExperienceCompanies.push(entry.company || source.company || '');
     summary.experienceChanges.push({
       role: entry.role || source.role || '',
@@ -3781,6 +3969,25 @@ function buildResumeModificationSummary(resumeSource, resumeData) {
   });
 
   return summary;
+}
+
+function findResumeSourceExperience(resumeSource, company) {
+  var companyKey = String(company || '').trim().toLowerCase();
+  return (resumeSource.experiences || []).find(function(entry) {
+    return String(entry.company || '').trim().toLowerCase() === companyKey;
+  }) || null;
+}
+
+function findResumeSourceProject(resumeSource, title) {
+  var titleKey = String(title || '').trim().toLowerCase();
+  return (resumeSource.projects || []).find(function(entry) {
+    return String(entry.title || '').trim().toLowerCase() === titleKey;
+  }) || null;
+}
+
+function draftBulletText(item) {
+  if (item && typeof item === 'object') return String(item.text || '').trim();
+  return String(item || '').trim();
 }
 
 function coerceResumeDraft(aiDraft, resumeSource) {
@@ -3794,18 +4001,34 @@ function coerceResumeDraft(aiDraft, resumeSource) {
     return found || null;
   }
   var comments = [];
-  var normalizedExperiences = resumeSource.experiences.map(function(sourceExperience) {
-    var matched = Array.isArray(draft.experiences) ? draft.experiences.find(function(entry) {
-      return entry && String(entry.company || '').trim().toLowerCase() === sourceExperience.company.toLowerCase();
-    }) : null;
-    var bullets = Array.isArray(matched && matched.bullets) ? matched.bullets.map(function(item) {
-      return String(item || '').trim();
-    }).filter(Boolean) : [];
-    while (bullets.length < sourceExperience.bullets.length) bullets.push(sourceExperience.bullets[bullets.length]);
-    bullets = bullets.slice(0, sourceExperience.bullets.length).map(function(bullet, index) {
-      var sourceBullet = normalizeResumeOutputText(sourceExperience.bullets[index]);
-      var clipped = clipWords(normalizeResumeOutputText(bullet), sourceExperience.bulletBudgets[index]);
-      if (shouldPreserveResumeSourceText(sourceExperience.bullets[index], clipped, resumeSource.keywords)) {
+  var draftExperiences = Array.isArray(draft.experiences) ? draft.experiences : [];
+  var selectedDraftExperiences = draftExperiences.map(function(entry) {
+    var source = findResumeSourceExperience(resumeSource, entry && entry.company);
+    return source ? { draft: entry, source: source } : null;
+  }).filter(Boolean).slice(0, resumeSource.selectionPolicy && resumeSource.selectionPolicy.maxExperiences || 4);
+  if (!selectedDraftExperiences.length) {
+    selectedDraftExperiences = (resumeSource.experiences || []).slice(0, resumeSource.selectionPolicy && resumeSource.selectionPolicy.maxExperiences || 4).map(function(source) {
+      return { draft: null, source: source };
+    });
+  }
+
+  var normalizedExperiences = selectedDraftExperiences.map(function(pair) {
+    var matched = pair.draft || {};
+    var sourceExperience = pair.source;
+    var sourceBullets = (sourceExperience.rankedBullets && sourceExperience.rankedBullets.length
+      ? sourceExperience.rankedBullets.map(function(item) { return item.sourceText; })
+      : sourceExperience.bullets || []).filter(Boolean);
+    var budgets = (sourceExperience.rankedBullets && sourceExperience.rankedBullets.length
+      ? sourceExperience.rankedBullets.map(function(item) { return item.maxWordCount; })
+      : sourceExperience.bulletBudgets || []);
+    var bullets = Array.isArray(matched.bullets) ? matched.bullets.map(draftBulletText).filter(Boolean) : [];
+    var targetCount = Math.max(2, Math.min(3, bullets.length || sourceBullets.length || 2));
+    while (bullets.length < targetCount && sourceBullets[bullets.length]) bullets.push(sourceBullets[bullets.length]);
+    bullets = bullets.slice(0, targetCount).map(function(bullet, index) {
+      var sourceBullet = normalizeResumeOutputText(sourceBullets[index] || sourceBullets[0] || '');
+      var budget = budgets[index] || 34;
+      var clipped = clipWords(normalizeResumeOutputText(bullet), budget);
+      if (sourceBullet && shouldPreserveResumeSourceText(sourceBullet, clipped, resumeSource.keywords)) {
         clipped = sourceBullet;
       }
       var explicitComment = commentFor(sourceExperience.company, index);
@@ -3833,14 +4056,26 @@ function coerceResumeDraft(aiDraft, resumeSource) {
       role: sourceExperience.role,
       duration: sourceExperience.duration,
       location: sourceExperience.location,
+      selectionRank: Number(matched.selectionRank || sourceExperience.selectionRank || 0) || 0,
+      whySelected: normalizeResumeOutputText(matched.whySelected || sourceExperience.whyCandidate || ''),
+      matchedKeywords: Array.isArray(matched.matchedKeywords) ? matched.matchedKeywords : (sourceExperience.matchedKeywords || []),
       bullets: bullets
     };
   });
 
-  var normalizedProjects = resumeSource.projects.map(function(project) {
-    var matched = Array.isArray(draft.projects) ? draft.projects.find(function(entry) {
-      return entry && String(entry.title || '').trim().toLowerCase() === project.title.toLowerCase();
-    }) : null;
+  var draftProjects = Array.isArray(draft.projects) ? draft.projects : [];
+  var selectedDraftProjects = draftProjects.map(function(entry) {
+    var source = findResumeSourceProject(resumeSource, entry && entry.title);
+    return source ? { draft: entry, source: source } : null;
+  }).filter(Boolean).slice(0, resumeSource.selectionPolicy && resumeSource.selectionPolicy.maxProjects || 3);
+  if (!selectedDraftProjects.length) {
+    selectedDraftProjects = (resumeSource.projects || []).slice(0, resumeSource.selectionPolicy && resumeSource.selectionPolicy.maxProjects || 3).map(function(source) {
+      return { draft: null, source: source };
+    });
+  }
+  var normalizedProjects = selectedDraftProjects.map(function(pair) {
+    var matched = pair.draft || {};
+    var project = pair.source;
     var description = normalizeResumeOutputText(matched && matched.description || project.description || '') || project.description;
     if (shouldPreserveResumeSourceText(project.description, description, resumeSource.keywords)) {
       description = project.description;
@@ -3850,11 +4085,17 @@ function coerceResumeDraft(aiDraft, resumeSource) {
       description: clipWords(normalizeResumeOutputText(description), project.wordBudget),
       technologies: project.technologies,
       url: project.url,
-      links: project.links
+      links: project.links,
+      selectionRank: Number(matched.selectionRank || project.selectionRank || 0) || 0,
+      whySelected: normalizeResumeOutputText(matched.whySelected || project.whyCandidate || ''),
+      matchedKeywords: Array.isArray(matched.matchedKeywords) ? matched.matchedKeywords : (project.matchedKeywords || [])
     };
   });
 
-  var requestedSkills = Array.isArray(draft.skills) ? draft.skills : String(draft.skills || '').split(/[,\n]/);
+  var draftSkills = draft.skills && typeof draft.skills === 'object' && !Array.isArray(draft.skills) ? draft.skills : {};
+  var requestedSkills = Array.isArray(draft.skills)
+    ? draft.skills
+    : (draftSkills.skillsText ? String(draftSkills.skillsText).split(/[,\n]/) : String(draft.skills || '').split(/[,\n]/));
   var allowedSkills = {};
   (resumeSource.skillsList || []).forEach(function(skill) {
     allowedSkills[String(skill || '').trim().toLowerCase()] = String(skill || '').trim();
@@ -3870,13 +4111,25 @@ function coerceResumeDraft(aiDraft, resumeSource) {
     selectedSkills = chooseResumeSkills(resumeSource.skillsList, resumeSource.keywords, 20, 260);
   }
 
-  var summary = normalizeResumeOutputText(draft.summary || resumeSource.summary || '');
+  var summaryDraft = draft.summary && typeof draft.summary === 'object' ? draft.summary.text : draft.summary;
+  var summary = normalizeResumeOutputText(summaryDraft || resumeSource.summary || '');
   if (!summary) {
     summary = clipWords([
       resumeSource.owner.title || 'Technical professional',
       'with experience across analytics platforms, AI-enabled workflows, data systems, and stakeholder-facing delivery.'
     ].join(' '), 38);
   }
+  var certMap = {};
+  (resumeSource.certifications || []).forEach(function(cert) {
+    certMap[String(cert || '').trim().toLowerCase()] = String(cert || '').trim();
+  });
+  var selectedCertifications = [];
+  (Array.isArray(draftSkills.certifications) && draftSkills.certifications.length ? draftSkills.certifications : resumeSource.certifications).forEach(function(cert) {
+    var key = String(cert || '').trim().toLowerCase();
+    if (!key || !certMap[key] || selectedCertifications.indexOf(certMap[key]) !== -1) return;
+    selectedCertifications.push(certMap[key]);
+  });
+  if (!selectedCertifications.length) selectedCertifications = (resumeSource.certifications || []).slice(0, 4);
 
   return {
     owner: resumeSource.owner,
@@ -3884,10 +4137,11 @@ function coerceResumeDraft(aiDraft, resumeSource) {
     education: resumeSource.education,
     experiences: normalizedExperiences,
     projects: normalizedProjects,
-    leadership: resumeSource.leadership,
-    certifications: resumeSource.certifications,
+    certifications: selectedCertifications.slice(0, 4),
     skills: normalizeResumeSkillString(selectedSkills.slice(0, 20).join(', '), 50),
-    comments: comments
+    comments: comments,
+    jobAnalysis: draft.jobAnalysis || {},
+    omitted: draft.omitted || { experiences: [], projects: [], leadershipSkippedReason: 'Skipped to preserve one-page resume density.' }
   };
 }
 
@@ -3984,17 +4238,12 @@ function buildResumePreviewText(resumeData) {
       lines.push('- ' + item);
     });
   }
-  lines.push('');
-  lines.push('LEADERSHIP & ACHIEVEMENTS');
-  (resumeData.leadership || []).forEach(function(item) {
-    lines.push('- ' + item);
-  });
   return lines.join('\n').trim();
 }
 
 function buildResumeLatexSource(resumeData) {
   var owner = resumeData.owner || {};
-  var experienceBlock = (resumeData.experiences || []).slice(0, 5).map(function(entry, entryIndex) {
+  var experienceBlock = (resumeData.experiences || []).slice(0, 4).map(function(entry, entryIndex) {
     var bullets = (entry.bullets || []).map(function(bullet) {
       return '        \\resumeItem{' + escapeLatexText(bullet) + '}';
     }).join('\n');
@@ -4027,7 +4276,7 @@ function buildResumeLatexSource(resumeData) {
 	  var contactBlock = contactItems.join('\n    ~$\\vert$~\n    ');
 	  var summaryText = escapeLatexText(resumeData.summary || '');
 
-  var educationBlock = (resumeData.education || []).slice(0, 3).map(function(entry, index) {
+  var educationBlock = (resumeData.education || []).slice(0, 2).map(function(entry, index) {
     var degree = escapeLatexText(String(entry.degree || '').trim());
     if (entry.gpa) degree += (degree ? '\\enspace--\\enspace' : '') + '\\textbf{GPA: ' + escapeLatexText(entry.gpa) + '}';
     return [
@@ -4039,14 +4288,11 @@ function buildResumeLatexSource(resumeData) {
   }).join('\n');
 
   var certificationText = (resumeData.certifications || []).map(escapeLatexText).join(' $|$ ');
-  var leadershipBlock = (resumeData.leadership || []).slice(0, 4).map(function(item, index, items) {
-    return '  ' + escapeLatexText(item) + (index < items.length - 1 ? '\\\\[2pt]' : '%');
-  }).join('\n');
 
   return [
     '%-------------------------',
     '% Resume in LaTeX - ' + String(owner.name || 'Candidate'),
-    '% One-page | 5 experiences | Times New Roman | flush left',
+    '% One-page | targeted resume | Times New Roman | flush left',
     '% Compatible with Overleaf (pdflatex)',
     '%-------------------------',
     '',
@@ -4185,14 +4431,6 @@ function buildResumeLatexSource(resumeData) {
     '\\noindent\\normalsize{%',
     '  \\textbf{Skills}: ' + escapeLatexText(resumeData.skills || '') + '\\\\[2pt]%',
     '  \\textbf{Certifications}: ' + certificationText + '%',
-    '}',
-    '',
-    '%-----------LEADERSHIP & ACHIEVEMENTS-----------',
-    '\\sectiongap',
-    '\\section{Leadership \\& Achievements}',
-    '\\vspace{2pt}',
-    '\\noindent\\normalsize{%',
-    leadershipBlock || '  % No leadership entries available',
     '}',
     '\\end{document}'
   ].join('\n');

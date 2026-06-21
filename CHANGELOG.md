@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.12 - 2026-06-21
+
+### Resume Automation
+
+- Reworked resume generation into a section-aware ATS planner that analyzes the job, selects ranked experience/project evidence, and writes dense XYZ bullets.
+- Resume output now selects up to 4 strongest experiences and 2-3 strongest projects instead of preserving the full original order.
+- Removed Leadership & Achievements from generated one-page resume output and tightened LaTeX formatting around the cleaner template.
+
 ## 3.0.11 - 2026-06-21
 
 ### Fixes
