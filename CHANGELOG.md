@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.16 - 2026-06-21
+
+### Resume Automation
+
+- Added a final visible-text sanitizer before resume preview and LaTeX export.
+- Strips Unicode dashes, corrupted metric symbols, zero-width characters, replacement characters, and other non-ASCII visible artifacts from generated resume fields.
+- Records residual visible-text issues on the resume artifact data for stricter debugging.
+
 ## 3.0.15 - 2026-06-21
 
 ### Resume Automation

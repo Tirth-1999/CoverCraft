@@ -3617,6 +3617,36 @@ function normalizeResumeOutputText(text) {
     .trim();
 }
 
+function sanitizeResumeVisibleText(text) {
+  return normalizeResumeOutputText(text)
+    .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]/g, '-')
+    .replace(/\s+-\s+([A-Za-z][A-Za-z.]*)/g, function(match, nextWord) {
+      return /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\.?$/i.test(nextWord)
+        ? ' - ' + nextWord
+        : ', ' + nextWord;
+    })
+    .replace(/\u2026/g, '...')
+    .replace(/\u00D7/g, 'x')
+    .replace(/\u2122/g, '')
+    .replace(/\u00AE/g, '')
+    .replace(/\u00A9/g, '')
+    .replace(/\uFFFD/g, '')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/[^\x20-\x7E]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function resumeVisibleTextIssues(text) {
+  var value = String(text || '');
+  var issues = [];
+  if (/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]/.test(value)) issues.push('contains Unicode dash');
+  if (/[\u00A1\u02DC\uFFFD]/.test(value)) issues.push('contains corrupted metric symbol');
+  if (/[\u200B-\u200D\uFEFF]/.test(value)) issues.push('contains zero-width character');
+  if (/[^\x09\x0A\x0D\x20-\x7E]/.test(value)) issues.push('contains non-ASCII visible character');
+  return issues;
+}
+
 function resumeBulletHasMetric(text) {
   return /(\d+|%|\$|under|over|less than|more than|from\b.+\bto\b|reduced|increased|saved|cut|improved|boosting|slashing)/i.test(String(text || ''));
 }
@@ -4426,8 +4456,82 @@ function coerceResumeDraft(aiDraft, resumeSource) {
   };
 }
 
+function sanitizeResumeDataForOutput(resumeData) {
+  resumeData = resumeData || {};
+  var clean = Object.assign({}, resumeData);
+  clean.owner = Object.assign({}, resumeData.owner || {});
+  ['name', 'phone', 'email', 'linkedin', 'website', 'title', 'location'].forEach(function(key) {
+    clean.owner[key] = sanitizeResumeVisibleText(clean.owner[key] || '');
+  });
+  clean.summary = sanitizeResumeVisibleText(resumeData.summary || '');
+  clean.education = (resumeData.education || []).map(function(entry) {
+    return {
+      institution: sanitizeResumeVisibleText(entry.institution || ''),
+      location: sanitizeResumeVisibleText(entry.location || ''),
+      degree: sanitizeResumeVisibleText(entry.degree || ''),
+      duration: sanitizeResumeVisibleText(entry.duration || ''),
+      gpa: sanitizeResumeVisibleText(entry.gpa || '')
+    };
+  });
+  clean.experiences = (resumeData.experiences || []).map(function(entry) {
+    return Object.assign({}, entry, {
+      company: sanitizeResumeVisibleText(entry.company || ''),
+      role: sanitizeResumeVisibleText(entry.role || ''),
+      duration: sanitizeResumeVisibleText(entry.duration || ''),
+      location: sanitizeResumeVisibleText(entry.location || ''),
+      whySelected: sanitizeResumeVisibleText(entry.whySelected || ''),
+      bullets: (entry.bullets || []).map(sanitizeResumeVisibleText).filter(Boolean),
+      matchedKeywords: (entry.matchedKeywords || []).map(sanitizeResumeVisibleText).filter(Boolean)
+    });
+  });
+  clean.projects = (resumeData.projects || []).map(function(project) {
+    return Object.assign({}, project, {
+      title: sanitizeResumeVisibleText(project.title || ''),
+      description: sanitizeResumeVisibleText(project.description || ''),
+      technologies: (project.technologies || []).map(sanitizeResumeVisibleText).filter(Boolean),
+      links: (project.links || []).map(function(link) {
+        return {
+          url: String(link.url || '').trim(),
+          label: sanitizeResumeVisibleText(link.label || 'Link')
+        };
+      }).filter(function(link) { return link.url; }),
+      whySelected: sanitizeResumeVisibleText(project.whySelected || ''),
+      matchedKeywords: (project.matchedKeywords || []).map(sanitizeResumeVisibleText).filter(Boolean)
+    });
+  });
+  clean.certifications = (resumeData.certifications || []).map(sanitizeResumeVisibleText).filter(Boolean);
+  clean.skillCategories = (resumeData.skillCategories || []).map(function(line) {
+    return {
+      label: sanitizeResumeVisibleText(line.label || ''),
+      skills: (line.skills || []).map(sanitizeResumeVisibleText).filter(Boolean)
+    };
+  }).filter(function(line) {
+    return line.label && line.skills.length;
+  });
+  clean.skills = sanitizeResumeVisibleText(resumeData.skills || '');
+  clean.comments = (resumeData.comments || []).map(function(comment) {
+    return Object.assign({}, comment, {
+      company: sanitizeResumeVisibleText(comment.company || ''),
+      role: sanitizeResumeVisibleText(comment.role || ''),
+      sourceText: sanitizeResumeVisibleText(comment.sourceText || ''),
+      finalText: sanitizeResumeVisibleText(comment.finalText || ''),
+      justification: sanitizeResumeVisibleText(comment.justification || ''),
+      matchedKeywords: (comment.matchedKeywords || []).map(sanitizeResumeVisibleText).filter(Boolean)
+    });
+  });
+  clean.visibleTextIssues = resumeVisibleTextIssues([
+    clean.summary,
+    clean.experiences.map(function(entry) { return [entry.company, entry.role, entry.duration].concat(entry.bullets || []).join(' '); }).join(' '),
+    clean.projects.map(function(project) { return [project.title, project.description].join(' '); }).join(' '),
+    clean.education.map(function(entry) { return [entry.institution, entry.degree, entry.duration, entry.location].join(' '); }).join(' '),
+    clean.skillCategories.map(function(line) { return [line.label].concat(line.skills || []).join(' '); }).join(' '),
+    clean.certifications.join(' ')
+  ].join(' '));
+  return clean;
+}
+
 function escapeLatexText(text) {
-  return normalizeResumeOutputText(text)
+  return sanitizeResumeVisibleText(text)
     .replace(/\u00A0/g, ' ')
     .replace(/[\u2018\u2019]/g, "'")
     .replace(/[\u201C\u201D]/g, '"')
@@ -4765,6 +4869,7 @@ async function generateResumeArtifact(session, model, portfolioBundle, options) 
     resumeData = coerceResumeDraft({}, resumeSource);
   }
 
+    resumeData = sanitizeResumeDataForOutput(resumeData);
 	  var previewText = buildResumePreviewText(resumeData);
 	  var latexSource = buildResumeLatexSource(resumeData);
 	  var modifications = buildResumeModificationSummary(resumeSource, resumeData);
