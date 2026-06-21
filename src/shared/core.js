@@ -1,13 +1,17 @@
 (function(global) {
   'use strict';
 
-  var KNOWN_MODELS = [
-    'openrouter/free',
-    'google/gemma-3-12b-it:free',
-    'meta-llama/llama-3.3-70b-instruct:free',
-    'nvidia/nemotron-3-super-120b-a12b:free',
-    'minimax/minimax-m2.5:free',
-    'groq/llama-3.1-8b-instant',
+	  var KNOWN_MODELS = [
+	    'openrouter/free',
+	    'google/gemma-3-12b-it:free',
+	    'meta-llama/llama-3.3-70b-instruct:free',
+	    'nvidia/nemotron-3-super-120b-a12b:free',
+	    'minimax/minimax-m2.5:free',
+	    'openai/gpt-5-mini',
+	    'openai/gpt-5-nano',
+	    'openai/gpt-4.1-mini',
+	    'openai/gpt-4o-mini',
+	    'groq/llama-3.1-8b-instant',
     'groq/llama-3.3-70b-versatile',
     'groq/openai/gpt-oss-120b',
     'groq/openai/gpt-oss-20b',
@@ -16,7 +20,7 @@
     'groq/compound-mini',
     'groq/compound'
   ];
-  var GROQ_BASE_LIMITS = {
+	  var GROQ_BASE_LIMITS = {
     'groq/llama-3.1-8b-instant': { tpm: '6K', rpd: '14.4K' },
     'groq/llama-3.3-70b-versatile': { tpm: '12K', rpd: '1K' },
     'groq/openai/gpt-oss-120b': { tpm: '8K', rpd: '1K' },
@@ -25,7 +29,25 @@
     'groq/qwen/qwen3-32b': { tpm: '6K', rpd: '1K' },
     'groq/compound-mini': { tpm: '70K', rpd: '250' },
     'groq/compound': { tpm: '70K', rpd: '250' }
-  };
+	  };
+
+	  function providerForModel(model) {
+	    var value = String(model || '').trim();
+	    if (/^groq\//i.test(value)) return 'groq';
+	    if (/^openai\//i.test(value)) return 'openai';
+	    return 'openrouter';
+	  }
+
+	  function apiModelForProvider(model) {
+	    var value = String(model || '').trim();
+	    var provider = providerForModel(value);
+	    if (provider === 'groq') {
+	      if (value === 'groq/compound' || value === 'groq/compound-mini') return value;
+	      return value.replace(/^groq\//i, '');
+	    }
+	    if (provider === 'openai') return value.replace(/^openai\//i, '');
+	    return value;
+	  }
 
   function clone(value) {
     return JSON.parse(JSON.stringify(value));
@@ -407,6 +429,8 @@
     buildSessionId: buildSessionId,
     nowIso: nowIso,
     numericHeaderValue: numericHeaderValue,
+    providerForModel: providerForModel,
+    apiModelForProvider: apiModelForProvider,
     modelAvailability: modelAvailability,
     modelAliases: modelAliases,
     lookupModelHealth: lookupModelHealth,

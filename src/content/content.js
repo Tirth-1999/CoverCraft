@@ -243,9 +243,15 @@
                 '<option value="google/gemma-3-12b-it:free">Google Gemma 3 12B</option>',
                 '<option value="meta-llama/llama-3.3-70b-instruct:free">Meta Llama 3.3 70B</option>',
                 '<option value="nvidia/nemotron-3-super-120b-a12b:free">NVIDIA Nemotron 3 Super 120B</option>',
-                '<option value="minimax/minimax-m2.5:free">MiniMax M2.5</option>',
-                '</optgroup>',
-                '<optgroup label="Groq">',
+	                '<option value="minimax/minimax-m2.5:free">MiniMax M2.5</option>',
+	                '</optgroup>',
+	                '<optgroup label="OpenAI">',
+	                '<option value="openai/gpt-5-mini">OpenAI GPT-5 Mini (lower cost)</option>',
+	                '<option value="openai/gpt-5-nano">OpenAI GPT-5 Nano (lowest cost)</option>',
+	                '<option value="openai/gpt-4.1-mini">OpenAI GPT-4.1 Mini</option>',
+	                '<option value="openai/gpt-4o-mini">OpenAI GPT-4o Mini</option>',
+	                '</optgroup>',
+	                '<optgroup label="Groq">',
                 '<option value="groq/llama-3.1-8b-instant">Groq Llama 3.1 8B Instant</option>',
                 '<option value="groq/llama-3.3-70b-versatile">Groq Llama 3.3 70B Versatile</option>',
                 '<option value="groq/openai/gpt-oss-120b">Groq GPT-OSS 120B</option>',
@@ -346,8 +352,19 @@
                   '<span class="cc-mini-stat-k">Company</span>',
                   '<strong id="cc-resume-company">Not loaded</strong>',
                 '</div>',
-              '</div>',
-              '<button id="cc-resume-btn" class="cc-btn-primary" type="button">',
+	              '</div>',
+	              '<div class="cc-field">',
+	                '<label class="cc-lbl">Resume Format</label>',
+	                '<select id="cc-resume-format" class="cc-select">',
+	                  '<option value="auto">Auto by job</option>',
+	                  '<option value="data_ai">Data AI/ML Engineer</option>',
+	                  '<option value="ai_pm">AI Product Manager</option>',
+	                  '<option value="ba_pm">Technical Business Analyst</option>',
+	                  '<option value="full_stack_ai">AI Full-Stack Engineer</option>',
+	                  '<option value="balanced">Balanced Technical Resume</option>',
+	                '</select>',
+	              '</div>',
+	              '<button id="cc-resume-btn" class="cc-btn-primary" type="button">',
                 '<span class="cc-btn-label">Tailor Resume</span>',
                 '<span class="cc-btn-progress"><span class="cc-btn-progress-fill"></span></span>',
               '</button>',
@@ -563,9 +580,10 @@
   function shortFailureLabel(errorText, fallback) {
     var text = String(errorText || '').trim().toLowerCase();
     if (!text) return fallback || 'Request Failed';
-    if (text.indexOf('tavily api key') !== -1) return 'Add Tavily Key';
-    if (text.indexOf('groq api key') !== -1) return 'Add Groq Key';
-    if (text.indexOf('openrouter api key') !== -1) return 'Add OpenRouter Key';
+	    if (text.indexOf('tavily api key') !== -1) return 'Add Tavily Key';
+	    if (text.indexOf('groq api key') !== -1) return 'Add Groq Key';
+	    if (text.indexOf('openai api key') !== -1) return 'Add OpenAI Key';
+	    if (text.indexOf('openrouter api key') !== -1) return 'Add OpenRouter Key';
     if (text.indexOf('job title or company') !== -1) return 'Need Job Details';
     if (text.indexOf('could not parse') !== -1) return 'Parse Error';
     if (text.indexOf('incomplete cover letter') !== -1) return 'Model Output Failed';
@@ -583,9 +601,13 @@
     return ($id('cc-model-select') && $id('cc-model-select').value) || 'openrouter/free';
   }
 
-  function modelUsesGroq(model) {
-    return /^groq\//i.test(String(model || ''));
-  }
+	  function modelUsesGroq(model) {
+	    return /^groq\//i.test(String(model || ''));
+	  }
+
+	  function modelUsesOpenAI(model) {
+	    return /^openai\//i.test(String(model || ''));
+	  }
 
   function hasCachedResearch() {
     return !!(currentSession && currentSession.research && currentSession.research.summary);
@@ -595,9 +617,11 @@
     settings = settings || {};
     var model = selectedModelValue();
     var missing = [];
-    if (modelUsesGroq(model)) {
-      if (!settings.groqKey) missing.push('Groq API key for the selected model');
-    } else if (!settings.openrouterKey) {
+	    if (modelUsesGroq(model)) {
+	      if (!settings.groqKey) missing.push('Groq API key for the selected model');
+	    } else if (modelUsesOpenAI(model)) {
+	      if (!settings.openaiKey) missing.push('OpenAI API key for the selected model');
+	    } else if (!settings.openrouterKey) {
       missing.push('OpenRouter API key for the selected model');
     }
     var needsResearch = action === 'generate' || action === 'resume' || (action === 'ask' && !hasCachedResearch());
@@ -921,12 +945,15 @@
     var titles = Array.isArray(changes.modifiedExperienceTitles) ? changes.modifiedExperienceTitles.filter(Boolean) : [];
     var bulletCount = Number(changes.modifiedBulletCount) || 0;
     var skillsCount = Number(changes.finalSkillsCount || changes.skillsCount) || 0;
-    var addedSkillsCount = Array.isArray(changes.addedSkills) ? changes.addedSkills.length : 0;
-    if (!bulletCount) {
-      return 'Resume LaTeX ready. No experience bullets needed changes. Skills included: ' + skillsCount + ', skills added: ' + addedSkillsCount + '. Copy it or download the file for Overleaf.';
-    }
-    return 'Resume LaTeX ready. Modified ' + bulletCount + ' bullet' + (bulletCount === 1 ? '' : 's') + ' across ' + titles.join(', ') + '. Skills included: ' + skillsCount + ', skills added: ' + addedSkillsCount + '. Copy it or download the file for Overleaf.';
-  }
+	    var addedSkillsCount = Array.isArray(changes.addedSkills) ? changes.addedSkills.length : 0;
+	    var issueCount = Number(changes.qualityIssueCount) || 0;
+	    var commentCount = Array.isArray(changes.bulletComments) ? changes.bulletComments.length : 0;
+	    var auditText = ' Audit comments: ' + commentCount + (issueCount ? ', quality flags: ' + issueCount : '') + '.';
+	    if (!bulletCount) {
+	      return 'Resume LaTeX ready. No experience bullets needed changes. Skills included: ' + skillsCount + ', skills added: ' + addedSkillsCount + '.' + auditText + ' Copy it or download the file for Overleaf.';
+	    }
+	    return 'Resume LaTeX ready. Modified ' + bulletCount + ' bullet' + (bulletCount === 1 ? '' : 's') + ' across ' + titles.join(', ') + '. Skills included: ' + skillsCount + ', skills added: ' + addedSkillsCount + '.' + auditText + ' Copy it or download the file for Overleaf.';
+	  }
 
   function skillCountFromPortfolio(portfolio) {
     if (!portfolio) return 0;
@@ -1287,13 +1314,14 @@
     return rawText;
   }
 
-  function saveDisplaySettings() {
-    renderModelHealth();
-    syncSet({
-      model: $id('cc-model-select').value,
-      coverLetterType: $id('cc-style-select').value
-    });
-  }
+	  function saveDisplaySettings() {
+	    renderModelHealth();
+	    syncSet({
+	      model: $id('cc-model-select').value,
+	      coverLetterType: $id('cc-style-select').value,
+	      resumeFormat: ($id('cc-resume-format') && $id('cc-resume-format').value) || 'auto'
+	    });
+	  }
 
   function refreshContext(callback, feedbackButtonId, includeResearch, forceNewSession) {
     var rawText = ensureScrape();
@@ -1580,10 +1608,11 @@
           pageUrl: window.location.href,
           rawPageText: rawText,
           pageTitle: inferred.pageTitle,
-          titleHint: manualHints.titleHint,
-          companyHint: manualHints.companyHint,
-          model: $id('cc-model-select').value
-        }
+	          titleHint: manualHints.titleHint,
+	          companyHint: manualHints.companyHint,
+	          model: $id('cc-model-select').value,
+	          resumeFormat: ($id('cc-resume-format') && $id('cc-resume-format').value) || 'auto'
+	        }
       }, function(response) {
         if (!ctxOk() || chrome.runtime.lastError) {
           setResumeStatus('error', 'Could not reach the resume pipeline.');
@@ -1698,8 +1727,9 @@
     bindShadow('cc-manual-save-btn', 'click', runManualCoverLetter);
     bindShadow('cc-ask-btn', 'click', runAsk);
     bindShadow('cc-resume-btn', 'click', runResume);
-    bindShadow('cc-model-select', 'change', saveDisplaySettings);
-    bindShadow('cc-style-select', 'change', saveDisplaySettings);
+	  bindShadow('cc-model-select', 'change', saveDisplaySettings);
+	  bindShadow('cc-style-select', 'change', saveDisplaySettings);
+	  bindShadow('cc-resume-format', 'change', saveDisplaySettings);
     bindShadow('cc-title-hint', 'input', function() { titleHintDirty = true; });
     bindShadow('cc-company-hint', 'input', function() { companyHintDirty = true; });
     bindShadow('cc-output', 'input', refreshOutputActions);
@@ -1869,8 +1899,9 @@
       currentOwner = response && response.portfolio && response.portfolio.owner || currentOwner;
       currentCloud = response && response.cloud || null;
       currentModelHealth = response && response.modelHealth || {};
-      if ($id('cc-model-select') && currentSettings && currentSettings.model) $id('cc-model-select').value = currentSettings.model;
-      if ($id('cc-style-select') && currentSettings && currentSettings.coverLetterType) $id('cc-style-select').value = currentSettings.coverLetterType;
+	      if ($id('cc-model-select') && currentSettings && currentSettings.model) $id('cc-model-select').value = currentSettings.model;
+	      if ($id('cc-style-select') && currentSettings && currentSettings.coverLetterType) $id('cc-style-select').value = currentSettings.coverLetterType;
+	      if ($id('cc-resume-format') && currentSettings && currentSettings.resumeFormat) $id('cc-resume-format').value = currentSettings.resumeFormat;
       renderModelHealth();
       renderFooterProfile();
       renderResumeSummary();

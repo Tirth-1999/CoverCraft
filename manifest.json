@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "CoverCraft",
-  "version": "3.0.5",
-  "version_name": "3.0.5",
+  "version": "3.0.6",
+  "version_name": "3.0.6",
   "description": "AI-powered Chrome extension for cover letters, tailored resumes, and follow-up questions",
   "icons": {
     "16":  "icons/icon16.png",
@@ -21,12 +21,13 @@
     "pages": ["src/tools/ocr-sandbox.html"]
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; frame-src 'self'; connect-src 'self' https://openrouter.ai https://api.groq.com https://api.tavily.com https://firestore.googleapis.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com;",
+    "extension_pages": "script-src 'self'; object-src 'self'; frame-src 'self'; connect-src 'self' https://openrouter.ai https://api.openai.com https://api.groq.com https://api.tavily.com https://firestore.googleapis.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com;",
     "sandbox": "sandbox allow-scripts allow-forms allow-popups allow-modals; script-src 'self' 'unsafe-inline' 'unsafe-eval'; child-src 'self';"
   },
   "permissions": ["activeTab", "downloads", "identity", "scripting", "storage", "unlimitedStorage"],
   "host_permissions": [
     "https://openrouter.ai/*",
+    "https://api.openai.com/*",
     "https://api.groq.com/*",
     "https://api.tavily.com/*",
     "https://firestore.googleapis.com/*",

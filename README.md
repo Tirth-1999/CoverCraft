@@ -2,7 +2,7 @@
 
 CoverCraft is a Chrome extension for faster job applications.
 
-Current release: `3.0.5`
+Current release: `3.0.6`
 
 It turns a live job page into a reusable workspace where you can generate a tailored cover letter, ask focused follow-up questions, keep profile context ready, and move into a reusable control center without breaking flow.
 
@@ -28,6 +28,9 @@ With CoverCraft, you can:
 ## Release 3.0 Highlights
 
 - Manual mode: save a pasted or edited cover letter as a session artifact and download it as a PDF without using AI.
+- OpenAI BYOK support: add an OpenAI API key, choose lower-cost OpenAI models, and keep output caps conservative for resume and letter generation.
+- Resume automation formats: choose Auto, Data / AI / ML, AI Product Manager, Technical Business Analyst, AI Full-Stack, or Balanced resume framing.
+- Resume audit comments: tailored resume artifacts now include summary text, bullet-level justification, keyword matches, and quality flags for review.
 - On-demand page injection: the extension now injects the page panel from the popup instead of registering a persistent `<all_urls>` content script.
 - Model availability: provider request headers, rate limits, cooldowns, and token usage are captured from generation and API tests.
 - Dashboard auditability: saved drafts show token usage, ranked evidence, prompt context, cached research, editable letter text, and exportable metrics.
@@ -54,11 +57,12 @@ flowchart LR
 2. Launch CoverCraft on that page
 3. Open Settings and import or create your own profile
 4. Lock the role, company, and profile context
-5. Add your own OpenRouter or Groq key; add Tavily only if you want company research
+5. Add your own OpenRouter, OpenAI, or Groq key; add Tavily only if you want company research
 6. Generate a tailored cover letter
 7. Optionally save a manual cover letter without AI
-8. Ask focused follow-up questions in the same session
-9. Reuse the session later from the control center
+8. Choose a resume automation format when tailoring a resume
+9. Ask focused follow-up questions in the same session
+10. Reuse the session later from the control center
 
 ## What’s In This Repo
 
@@ -121,9 +125,32 @@ If Chrome shows `An unknown error occurred when fetching the script`, re-downloa
 
 Copy `src/portfolio.example.js` to `src/portfolio.js` to use local profile data during development.
 
-Developer-owned provider keys must not be placed in the extension package. Users add their own OpenRouter, Groq, and Tavily keys in CoverCraft Settings; those values stay in extension-local storage and are not placed in Chrome Sync or Firebase.
+Developer-owned provider keys must not be placed in the extension package. Users add their own OpenRouter, OpenAI, Groq, and Tavily keys in CoverCraft Settings; those values stay in extension-local storage and are not placed in Chrome Sync or Firebase.
 
 `src/portfolio.js` is local-only and is ignored by Git. Legacy `src/config.js` files are not used by production builds.
+
+## Resume Automation
+
+Resume automation uses the job title, job description, profile evidence, selected projects, and optional Tavily research to produce an Overleaf-ready LaTeX draft. The default `Auto by job` format infers the best framing from the role. You can also force one of the role-specific formats from the page panel, Dashboard, or Options:
+
+- Data / AI / ML Engineer
+- AI Product Manager
+- Technical Business Analyst
+- AI Full-Stack Engineer
+- Balanced Technical Resume
+
+The resume prompt requires truthful tailoring only. It may reorder skills, rewrite supported bullets, choose relevant projects, and normalize symbols, but it should not invent employers, tools, metrics, or outcomes. Each generated resume stores bullet-level comments with the keep/rewrite decision, matched keywords, justification, and quality flags.
+
+## Model Cost Controls
+
+CoverCraft supports OpenRouter, OpenAI, Groq, and Tavily as user-supplied keys. OpenAI is intentionally shown with lower-cost model choices in the normal model dropdown:
+
+- `openai/gpt-5-nano`
+- `openai/gpt-5-mini`
+- `openai/gpt-4.1-mini`
+- `openai/gpt-4o-mini`
+
+Higher-cost OpenAI models can still be entered through the custom model field when intentionally needed. Runtime output caps are lower for nano and mini models to reduce accidental spend.
 
 ### Optional Firebase setup
 
