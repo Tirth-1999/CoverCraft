@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.15 - 2026-06-21
+
+### Resume Automation
+
+- Added justified resume body text for summary, bullets, and project descriptions.
+- Reworked experience selection so ranked full-time/external roles are favored over internships when relevance is similar, then selected roles render in reverse chronology.
+- Tightened source matching and final text cleanup so raw fallback bullets cannot reintroduce dash-heavy clauses.
+
 ## 3.0.14 - 2026-06-21
 
 ### Resume Automation

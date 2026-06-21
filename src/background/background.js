@@ -2751,6 +2751,7 @@ function normalizeResumeExperiences(rawPortfolio) {
       role: String(entry.role || entry.position || entry.title || '').trim(),
       duration: String(entry.duration || '').trim(),
       location: String(entry.location || '').trim(),
+      type: String(entry.type || entry.employmentType || '').trim(),
       bullets: bullets,
       bulletBudgets: bullets.map(function(bullet) {
         return Math.max(9, Core.wordCount(bullet));
@@ -2759,6 +2760,44 @@ function normalizeResumeExperiences(rawPortfolio) {
   }).filter(function(entry) {
     return entry.company || entry.role || entry.duration || entry.bullets.length;
   }) : [];
+}
+
+function resumeExperienceTypeScore(experience) {
+  var type = String(experience && experience.type || '').toLowerCase();
+  var role = String(experience && experience.role || '').toLowerCase();
+  var company = String(experience && experience.company || '').toLowerCase();
+  var score = 0;
+  if (/full.?time/.test(type)) score += 7;
+  if (/intern/.test(type) || /\bintern\b/.test(role)) score -= 5;
+  if (/part.?time|student worker|assistant/.test(type) || /student worker|assistant/.test(role)) score -= 1;
+  if (!/texas a&m|tamu|mays/.test(company)) score += 2;
+  if (/tata consultancy|tcs/.test(company)) score += 4;
+  return score;
+}
+
+function parseResumeDurationEnd(duration) {
+  var value = normalizeResumeOutputText(duration || '');
+  var parts = value.split(/\s+-\s+/);
+  var end = parts.length > 1 ? parts[parts.length - 1] : value;
+  if (/present|current|now/i.test(end)) return 999999;
+  var months = {
+    jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3, apr: 4, april: 4,
+    may: 5, jun: 6, june: 6, jul: 7, july: 7, aug: 8, august: 8, sep: 9, sept: 9,
+    september: 9, oct: 10, october: 10, nov: 11, november: 11, dec: 12, december: 12
+  };
+  var yearMatch = end.match(/\b(20\d{2}|19\d{2})\b/);
+  if (!yearMatch) return 0;
+  var monthMatch = end.match(/\b([A-Za-z]{3,9})\b/);
+  var month = monthMatch && months[monthMatch[1].toLowerCase()] || 12;
+  return Number(yearMatch[1]) * 100 + month;
+}
+
+function resumeExperienceKey(entry) {
+  return [
+    String(entry && entry.company || '').trim().toLowerCase(),
+    String(entry && entry.role || '').trim().toLowerCase(),
+    String(entry && entry.duration || '').trim().toLowerCase()
+  ].join('|');
 }
 
 function inferResumeProjectLinks(project) {
@@ -3224,7 +3263,7 @@ function rankResumeExperienceCandidates(experiences, rankProfile, limit) {
     var topBullets = bulletRanks.slice(0, 5);
     var score = roleRank.score + topBullets.reduce(function(total, bullet) {
       return total + bullet.score;
-    }, 0) + Math.max(0, 5 - index) * 0.15;
+    }, 0) + Math.max(0, 5 - index) * 0.15 + resumeExperienceTypeScore(experience);
     if (topBullets.some(function(bullet) { return bullet.hasImpact; })) score += 1.5;
     var matchedTerms = [].concat(roleRank.matchedTerms, topBullets.reduce(function(all, bullet) {
       return all.concat(bullet.matchedTerms || []);
@@ -3411,7 +3450,10 @@ function normalizeResumeEducation(rawPortfolio, normalizedPortfolio) {
       var degreeName = normalizeResumeOutputText(entry.degree || '').replace(/\s*-\s*(MS|BE)\b/i, '').trim();
       var degree = [degreeName, entry.field].filter(Boolean).join(' in ');
       degree = degree.replace(/Master of Science\s*-\s*/i, 'Master of Science in ')
-        .replace(/Bachelor of Engineering\s*-\s*/i, 'Bachelor of Engineering in ');
+        .replace(/Bachelor of Engineering\s*-\s*/i, 'Bachelor of Engineering in ')
+        .replace(/^Master of Science,\s*/i, 'Master of Science in ')
+        .replace(/^Bachelor of Engineering,\s*/i, 'Bachelor of Engineering in ')
+        .replace(/\bin,\s*/gi, 'in ');
       if (/^Texas A&M University,\s*College Station/i.test(institution)) {
         institution = 'Texas A&M University';
         location = location || 'College Station, Texas';
@@ -3765,6 +3807,9 @@ function buildResumeSystemPrompt(formatProfile) {
     'WORK EXPERIENCE RULES:',
     'Rank all provided experience candidates. Select only the top 4 experiences for this job unless fewer candidates are available.',
     'Selection must be based on direct keyword overlap, domain overlap, tool overlap, metric strength, and business relevance.',
+    'When relevance is similar, prioritize full-time external or enterprise roles over internships, part-time student jobs, campus roles, or short academic projects.',
+    'Older full-time experience with strong scale, production ownership, enterprise stakeholders, or quantified impact is more valuable than a less relevant recent internship.',
+    'After selecting the strongest experiences, order selected experiences by reverse chronology using the role end date. Do not place an older internship above a newer selected role.',
     'For each selected experience, preserve source company, role, and duration. Location may be returned for comments but the visual resume will not print work locations.',
     'Write 2-4 bullets per selected experience. Use 4 bullets only for highly relevant technical/data roles, 3 bullets for strong matches, and 2 bullets for lower-relevance or internship roles.',
     'Every bullet must follow the X-Y-Z rule: accomplished X, measured by Y, by doing Z.',
@@ -4032,7 +4077,7 @@ function enforceResumeVerbDiversity(items, originals) {
     var verb = firstVerb(current);
     counts[verb] = (counts[verb] || 0) + 1;
     if (!verb || counts[verb] <= 2) return current;
-    var fallback = String(originals[index] || '').trim();
+    var fallback = normalizeResumeOutputText(originals[index] || '');
     var fallbackVerb = firstVerb(fallback);
     if (fallback && fallbackVerb && (!counts[fallbackVerb] || counts[fallbackVerb] < 2)) {
       counts[verb]--;
@@ -4152,7 +4197,7 @@ function buildResumeModificationSummary(resumeSource, resumeData) {
 	  }, 0);
 
   (resumeData && resumeData.experiences || []).forEach(function(entry) {
-    var source = findResumeSourceExperience(resumeSource, entry.company) || {};
+    var source = findResumeSourceExperience(resumeSource, entry.company, entry.role, entry.duration) || {};
     var sourceBullets = (source.rankedBullets && source.rankedBullets.length
       ? source.rankedBullets.map(function(item) { return item.sourceText; })
       : source.bullets || []);
@@ -4175,9 +4220,18 @@ function buildResumeModificationSummary(resumeSource, resumeData) {
   return summary;
 }
 
-function findResumeSourceExperience(resumeSource, company) {
+function findResumeSourceExperience(resumeSource, company, role, duration) {
   var companyKey = String(company || '').trim().toLowerCase();
-  return (resumeSource.experiences || []).find(function(entry) {
+  var roleKey = String(role || '').trim().toLowerCase();
+  var durationKey = String(duration || '').trim().toLowerCase();
+  var entries = resumeSource.experiences || [];
+  return entries.find(function(entry) {
+    return String(entry.company || '').trim().toLowerCase() === companyKey &&
+      roleKey && String(entry.role || '').trim().toLowerCase() === roleKey;
+  }) || entries.find(function(entry) {
+    return String(entry.company || '').trim().toLowerCase() === companyKey &&
+      durationKey && String(entry.duration || '').trim().toLowerCase() === durationKey;
+  }) || entries.find(function(entry) {
     return String(entry.company || '').trim().toLowerCase() === companyKey;
   }) || null;
 }
@@ -4206,15 +4260,28 @@ function coerceResumeDraft(aiDraft, resumeSource) {
   }
   var comments = [];
   var draftExperiences = Array.isArray(draft.experiences) ? draft.experiences : [];
-  var selectedDraftExperiences = draftExperiences.map(function(entry) {
-    var source = findResumeSourceExperience(resumeSource, entry && entry.company);
-    return source ? { draft: entry, source: source } : null;
-  }).filter(Boolean).slice(0, resumeSource.selectionPolicy && resumeSource.selectionPolicy.maxExperiences || 4);
-  if (!selectedDraftExperiences.length) {
-    selectedDraftExperiences = (resumeSource.experiences || []).slice(0, resumeSource.selectionPolicy && resumeSource.selectionPolicy.maxExperiences || 4).map(function(source) {
-      return { draft: null, source: source };
+  var maxExperiences = resumeSource.selectionPolicy && resumeSource.selectionPolicy.maxExperiences || 4;
+  var draftExperienceByKey = {};
+  draftExperiences.forEach(function(entry) {
+    var source = findResumeSourceExperience(resumeSource, entry && entry.company, entry && entry.role, entry && entry.duration);
+    if (!source) return;
+    draftExperienceByKey[resumeExperienceKey(source)] = entry;
+  });
+  var selectedDraftExperiences = (resumeSource.experiences || [])
+    .slice()
+    .sort(function(a, b) {
+      if (b.relevanceScore !== a.relevanceScore) return b.relevanceScore - a.relevanceScore;
+      return parseResumeDurationEnd(b.duration) - parseResumeDurationEnd(a.duration);
+    })
+    .slice(0, maxExperiences)
+    .sort(function(a, b) {
+      var dateDiff = parseResumeDurationEnd(b.duration) - parseResumeDurationEnd(a.duration);
+      if (dateDiff) return dateDiff;
+      return (a.selectionRank || 0) - (b.selectionRank || 0);
+    })
+    .map(function(source) {
+      return { draft: draftExperienceByKey[resumeExperienceKey(source)] || null, source: source };
     });
-  }
 
   var normalizedExperiences = selectedDraftExperiences.map(function(pair) {
     var matched = pair.draft || {};
@@ -4525,6 +4592,7 @@ function buildResumeLatexSource(resumeData) {
     '\\usepackage[usenames,dvipsnames]{color}',
     '\\usepackage{verbatim}',
     '\\usepackage{enumitem}',
+    '\\usepackage{ragged2e}',
     '\\usepackage[colorlinks=true, urlcolor=blue, linkcolor=black]{hyperref}',
     '\\usepackage{fancyhdr}',
     '\\usepackage[english]{babel}',
@@ -4549,7 +4617,8 @@ function buildResumeLatexSource(resumeData) {
     '',
     '\\urlstyle{same}',
     '\\raggedbottom',
-    '\\raggedright',
+    '\\sloppy',
+    '\\emergencystretch=1em',
     '\\setlength{\\tabcolsep}{0in}',
     '\\setlength{\\parskip}{0pt}',
     '\\setlength{\\parindent}{0pt}',
@@ -4564,7 +4633,7 @@ function buildResumeLatexSource(resumeData) {
     '',
     '%----------CUSTOM COMMANDS----------',
     '\\newcommand{\\resumeItem}[1]{%',
-    '  \\item\\normalsize{#1}%',
+    '  \\item\\normalsize{\\justifying #1\\par}%',
     '}',
     '',
     '\\newcommand{\\entrygap}{\\vspace{1.5pt}}',
@@ -4586,7 +4655,7 @@ function buildResumeLatexSource(resumeData) {
     '}',
     '',
     '\\newcommand{\\resumeProjectInline}[2]{%',
-    '  \\item[]\\normalsize{\\textbf{#1}: #2}%',
+    '  \\item[]\\normalsize{\\justifying \\textbf{#1}: #2\\par}%',
     '}',
     '',
     '\\renewcommand\\labelitemii{$\\vcenter{\\hbox{\\tiny$\\bullet$}}$}',
@@ -4620,6 +4689,7 @@ function buildResumeLatexSource(resumeData) {
     '',
     '%==========BEGIN DOCUMENT==========',
     '\\begin{document}',
+    '\\justifying',
     '',
     '%----------HEADER----------',
     '\\begin{center}',
@@ -4630,7 +4700,7 @@ function buildResumeLatexSource(resumeData) {
 	    '',
 	    '%-----------SUMMARY-----------',
     '\\section{SUMMARY}',
-	    summaryText ? '\\noindent\\normalsize{' + summaryText + '}' : '% No summary available',
+	    summaryText ? '\\noindent\\normalsize{\\justifying ' + summaryText + '\\par}' : '% No summary available',
 	    '',
 	    '%-----------WORK EXPERIENCE-----------',
     '\\sectiongap',
