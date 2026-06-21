@@ -23,7 +23,17 @@ if find "$STAGE" -type f \( -name 'config.js' -o -name 'firebase.js' -o -name 'p
   exit 1
 fi
 
-if rg -n --hidden '(sk-or-v1-[A-Za-z0-9_-]{16,}|gsk_[A-Za-z0-9_-]{16,}|tvly-[A-Za-z0-9_-]{16,})' "$STAGE"; then
+cat > "$STAGE/src/config.js" <<'EOF'
+// Empty packaged override. Real API keys are stored through the extension UI.
+EOF
+cat > "$STAGE/src/firebase.js" <<'EOF'
+// Empty packaged override. Production Firebase settings live in firebase.defaults.js.
+EOF
+cat > "$STAGE/src/portfolio.js" <<'EOF'
+// Empty packaged override. Personal portfolio data should be uploaded or kept local.
+EOF
+
+if rg -n --hidden '(sk-or-v1-[A-Za-z0-9_-]{16,}|sk-proj-[A-Za-z0-9_-]{16,}|sk-[A-Za-z0-9_-]{32,}|gsk_[A-Za-z0-9_-]{16,}|tvly-[A-Za-z0-9_-]{16,})' "$STAGE"; then
   echo "Refusing to package a provider API key." >&2
   exit 1
 fi
@@ -38,6 +48,9 @@ for required in \
   src/background/background.js \
   src/content/content.js \
   src/config.defaults.js \
+  src/config.js \
+  src/firebase.js \
+  src/portfolio.js \
   src/firebase.defaults.js; do
   grep -Fxq "$required" <<<"$archive_entries" || {
     echo "Release archive is missing $required." >&2

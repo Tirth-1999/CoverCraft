@@ -1,5 +1,23 @@
 # Changelog
 
+## 3.0.6 - 2026-06-21
+
+### Resume Automation
+
+- Added role-specific resume formats for Auto, Data / AI / ML, AI Product Manager, Technical Business Analyst, AI Full-Stack, and Balanced resumes.
+- Added targeted summary generation, stricter ATS/FAANG bullet instructions, and bullet-level audit comments.
+- Normalized problematic resume symbols such as malformed less-than and approximate signs before preview and LaTeX export.
+
+### Providers
+
+- Added OpenAI BYOK support across settings, dashboard, content panel, background generation, and release permissions.
+- Added lower-cost OpenAI model options and conservative OpenAI output-token caps.
+
+### Packaging
+
+- Added safe packaged placeholders for optional local override files so Chrome MV3 does not fail with a generic script-fetch error.
+- Rebuilt the downloadable extension ZIP with the updated runtime files.
+
 ## 3.0.5 - 2026-06-09
 
 ### Account Experience

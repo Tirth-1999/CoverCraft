@@ -24,7 +24,7 @@ Complete these steps for the production Chrome Web Store extension ID `apnbkjkgo
 - Test Google sign-in from the published build.
 - Test cloud sync from the published build.
 - Test popup, dashboard, settings, and account flows from the published build.
-- Verify generation still works with user-supplied OpenRouter, Groq, and Tavily keys.
+- Verify generation still works with user-supplied OpenRouter, OpenAI, Groq, and Tavily keys.
 - Load the ZIP unpacked and verify BYOK generation, profile import, sessions, and exports still work without sign-in.
 
 ### Release Follow-Up

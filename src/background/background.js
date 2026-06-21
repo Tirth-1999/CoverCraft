@@ -12,6 +12,7 @@ var DEFAULT_MODEL = 'openrouter/free';
 var VISION_MODEL = 'google/gemma-3-12b-it:free';
 var FAST_EXTRACT_MODEL = 'google/gemma-3-12b-it:free';
 var FAST_GROQ_EXTRACT_MODEL = 'groq/llama-3.1-8b-instant';
+var FAST_OPENAI_EXTRACT_MODEL = 'openai/gpt-5-nano';
 var ALLOWED_FREE_MODELS = Core.KNOWN_MODELS.filter(function(model) { return model.indexOf('groq/') !== 0; });
 var GROQ_MODELS = Core.KNOWN_MODELS.filter(function(model) { return model.indexOf('groq/') === 0; });
 var DISABLED_MODELS = [];
@@ -38,17 +39,19 @@ var MAX_MODEL_USAGE_LOGS = 500;
 var MAX_SESSION_SYNC_WRITES = 25;
 var MAX_MODEL_USAGE_SYNC_WRITES = 50;
 var FIREBASE_CONFIG = typeof COVERCRAFT_FIREBASE === 'object' && COVERCRAFT_FIREBASE ? COVERCRAFT_FIREBASE : {};
-var PROVIDER_KEY_NAMES = ['openrouterKey', 'groqKey', 'tavilyKey'];
+var PROVIDER_KEY_NAMES = ['openrouterKey', 'openaiKey', 'groqKey', 'tavilyKey'];
 var PRODUCTION_EXTENSION_ID = 'apnbkjkgobikeejmfjgnmbflonmbgffg';
 var CHROME_WEB_STORE_URL = 'https://chromewebstore.google.com/detail/' + PRODUCTION_EXTENSION_ID;
 
 var DEFAULT_SETTINGS = {
   openrouterKey: COVERCRAFT_CONFIG && COVERCRAFT_CONFIG.openrouterKey || '',
+  openaiKey: COVERCRAFT_CONFIG && COVERCRAFT_CONFIG.openaiKey || '',
   groqKey: COVERCRAFT_CONFIG && COVERCRAFT_CONFIG.groqKey || '',
   tavilyKey: COVERCRAFT_CONFIG && COVERCRAFT_CONFIG.tavilyKey || '',
   model: DEFAULT_MODEL,
   customModel: '',
   coverLetterType: 'formal',
+  resumeFormat: 'auto',
   triggerMode: 'manual',
   cloudSyncEnabled: true
 };
@@ -122,7 +125,7 @@ async function rememberModelHealth(model, info) {
   var entry = {
     model: key,
     apiModel: info && info.apiModel || key,
-    provider: info && info.provider || (/^groq\//.test(key) ? 'groq' : 'openrouter'),
+    provider: info && info.provider || Core.providerForModel(key),
     ok: !!(info && info.ok),
     status: info && info.status || 0,
     error: info && info.error || '',
@@ -159,7 +162,7 @@ async function appendModelUsageLog(model, info, checkedAt, blockedUntil) {
     id: String(checkedAt) + '-' + Math.random().toString(36).slice(2, 8),
     model: model,
     apiModel: info && info.apiModel || model,
-    provider: info && info.provider || (/^groq\//.test(model) ? 'groq' : 'openrouter'),
+    provider: info && info.provider || Core.providerForModel(model),
     ok: !!(info && info.ok),
     status: info && info.status || 0,
     error: info && info.error || '',
@@ -228,7 +231,7 @@ function rebuildModelHealthFromUsageLogs(logs) {
     var health = {
       model: entry.model,
       apiModel: entry.apiModel || entry.model,
-      provider: entry.provider || (/^groq\//.test(entry.model) ? 'groq' : 'openrouter'),
+      provider: entry.provider || Core.providerForModel(entry.model),
       ok: !!entry.ok,
       status: entry.status || 0,
       error: entry.error || '',
@@ -557,18 +560,20 @@ async function clearPendingCloudAuthFlow() {
 }
 
 function syncableSettings(settings) {
-  return {
-    model: settings.model || DEFAULT_MODEL,
-    coverLetterType: settings.coverLetterType || 'formal',
-    triggerMode: settings.triggerMode || 'manual',
+	  return {
+	    model: settings.model || DEFAULT_MODEL,
+	    coverLetterType: settings.coverLetterType || 'formal',
+	    resumeFormat: settings.resumeFormat || 'auto',
+	    triggerMode: settings.triggerMode || 'manual',
     cloudSyncEnabled: resolveCloudSyncEnabled(settings && settings.cloudSyncEnabled)
   };
 }
 
 function settingsWithoutProviderSecrets(settings) {
-  return Object.assign({}, settings, {
-    openrouterKey: settings.openrouterKey ? 'configured' : '',
-    groqKey: settings.groqKey ? 'configured' : '',
+	  return Object.assign({}, settings, {
+	    openrouterKey: settings.openrouterKey ? 'configured' : '',
+	    openaiKey: settings.openaiKey ? 'configured' : '',
+	    groqKey: settings.groqKey ? 'configured' : '',
     tavilyKey: settings.tavilyKey ? 'configured' : ''
   });
 }
@@ -789,11 +794,12 @@ async function mergeRemoteAppStateIntoLocal(remoteState, options) {
   var opts = options || {};
 
   if (remoteState.settings && typeof remoteState.settings === 'object') {
-    var rawSettings = await syncGet(['model', 'customModel', 'coverLetterType', 'triggerMode', 'cloudSyncEnabled']);
+    var rawSettings = await syncGet(['model', 'customModel', 'coverLetterType', 'resumeFormat', 'triggerMode', 'cloudSyncEnabled']);
     var nextSettings = {
       model: rawSettings.model || remoteState.settings.model || DEFAULT_MODEL,
       customModel: rawSettings.customModel || '',
       coverLetterType: rawSettings.coverLetterType || remoteState.settings.coverLetterType || 'formal',
+      resumeFormat: rawSettings.resumeFormat || remoteState.settings.resumeFormat || 'auto',
       triggerMode: rawSettings.triggerMode || remoteState.settings.triggerMode || 'manual',
       cloudSyncEnabled: resolveCloudSyncEnabled(rawSettings.cloudSyncEnabled, resolveCloudSyncEnabled(remoteState.settings.cloudSyncEnabled))
     };
@@ -1171,21 +1177,23 @@ async function getCloudStatus() {
 
 async function loadSettings() {
   var results = await Promise.all([
-    syncGet(['model', 'customModel', 'coverLetterType', 'triggerMode', 'cloudSyncEnabled']),
+	    syncGet(['model', 'customModel', 'coverLetterType', 'resumeFormat', 'triggerMode', 'cloudSyncEnabled']),
     loadProviderKeys()
   ]);
   var data = results[0];
   var providerKeys = results[1];
   var model = data.model === 'custom' && data.customModel ? data.customModel : (data.model || DEFAULT_SETTINGS.model);
   if (DISABLED_MODELS.indexOf(model) !== -1) model = DEFAULT_SETTINGS.model;
-  if (data.model !== 'custom' && ALLOWED_FREE_MODELS.indexOf(model) === -1 && GROQ_MODELS.indexOf(model) === -1) model = DEFAULT_SETTINGS.model;
-  return {
-    openrouterKey: providerKeys.openrouterKey,
-    groqKey: providerKeys.groqKey,
-    tavilyKey: providerKeys.tavilyKey,
+	  if (data.model !== 'custom' && Core.KNOWN_MODELS.indexOf(model) === -1) model = DEFAULT_SETTINGS.model;
+	  return {
+	    openrouterKey: providerKeys.openrouterKey,
+	    openaiKey: providerKeys.openaiKey,
+	    groqKey: providerKeys.groqKey,
+	    tavilyKey: providerKeys.tavilyKey,
     model: model,
     customModel: data.customModel || '',
-    coverLetterType: data.coverLetterType || DEFAULT_SETTINGS.coverLetterType,
+	    coverLetterType: data.coverLetterType || DEFAULT_SETTINGS.coverLetterType,
+	    resumeFormat: data.resumeFormat || DEFAULT_SETTINGS.resumeFormat,
     triggerMode: data.triggerMode || DEFAULT_SETTINGS.triggerMode,
     cloudSyncEnabled: resolveCloudSyncEnabled(data.cloudSyncEnabled)
   };
@@ -1498,8 +1506,9 @@ function sanitizeModelFromSettings(settings, payloadModel) {
 
 function chooseExtractionModel(settings) {
   if (settings && settings.groqKey) return FAST_GROQ_EXTRACT_MODEL;
+  if (settings && settings.openaiKey) return FAST_OPENAI_EXTRACT_MODEL;
   if (settings && settings.openrouterKey) return FAST_EXTRACT_MODEL;
-  return FAST_GROQ_EXTRACT_MODEL;
+  return FAST_OPENAI_EXTRACT_MODEL;
 }
 
 function repairJSON(str) {
@@ -1843,15 +1852,21 @@ async function aiChatMessages(messages, options) {
   var settings = await loadSettings();
   var allowRouterModelFallback = !!(options && options.allowRouterModelFallback);
   var requestedModel = String(options && options.model || settings.model || DEFAULT_MODEL || '').trim() || DEFAULT_MODEL;
-  var useGroq = /^groq\//i.test(requestedModel) || GROQ_MODELS.indexOf(requestedModel) !== -1;
-  var apiKey = useGroq ? settings.groqKey : settings.openrouterKey;
-  if (!apiKey) throw new Error(useGroq ? 'Missing Groq API key. Add it in CoverCraft settings.' : 'Missing OpenRouter API key. Add it in CoverCraft settings.');
-  var groqModelId = useGroq ? groqApiModelId(requestedModel) : requestedModel;
+  var provider = Core.providerForModel(requestedModel);
+  var useGroq = provider === 'groq';
+  var useOpenAI = provider === 'openai';
+  var apiKey = useGroq ? settings.groqKey : (useOpenAI ? settings.openaiKey : settings.openrouterKey);
+  if (!apiKey) {
+    throw new Error(useGroq
+      ? 'Missing Groq API key. Add it in CoverCraft settings.'
+      : (useOpenAI ? 'Missing OpenAI API key. Add it in CoverCraft settings.' : 'Missing OpenRouter API key. Add it in CoverCraft settings.'));
+  }
+  var apiModelId = Core.apiModelForProvider(requestedModel);
   var requestedMaxTokens = options && options.maxTokens || 1200;
-  var maxTokens = useGroq ? clampGroqMaxTokens(groqModelId, requestedMaxTokens) : requestedMaxTokens;
+  var maxTokens = useGroq ? clampGroqMaxTokens(apiModelId, requestedMaxTokens) : (useOpenAI ? clampOpenAIMaxTokens(apiModelId, requestedMaxTokens) : requestedMaxTokens);
 
-  var body = {
-    model: groqModelId,
+  var body = useOpenAI ? buildOpenAIResponsesBody() : {
+    model: apiModelId,
     messages: messages,
     temperature: options && options.temperature != null ? options.temperature : 0.2
   };
@@ -1860,21 +1875,41 @@ async function aiChatMessages(messages, options) {
     body.top_p = 1;
     body.stream = false;
     body.stop = null;
-    if (isGroqCompoundModel(groqModelId)) {
+    if (isGroqCompoundModel(apiModelId)) {
       body.compound_custom = {
         tools: {
           enabled_tools: ['web_search', 'code_interpreter', 'visit_website']
         }
       };
     }
-  } else {
+  } else if (!useOpenAI) {
     body.max_tokens = maxTokens;
   }
 
-  function groqApiModelId(model) {
-    var value = String(model || '').trim();
-    if (value === 'groq/compound' || value === 'groq/compound-mini') return value;
-    return value.replace(/^groq\//, '');
+  function buildOpenAIResponsesBody() {
+    var input = (messages || []).map(function(message) {
+      return {
+        role: message.role === 'system' ? 'developer' : (message.role || 'user'),
+        content: String(message.content || '')
+      };
+    });
+    var request = {
+      model: apiModelId,
+      input: input,
+      max_output_tokens: maxTokens
+    };
+    if (/^gpt-5/i.test(apiModelId)) request.reasoning = { effort: options && options.reasoningEffort || 'low' };
+    if (options && options.responseSchema) {
+      request.text = {
+        format: {
+          type: 'json_schema',
+          name: options.responseSchemaName || 'covercraft_output',
+          schema: options.responseSchema,
+          strict: true
+        }
+      };
+    }
+    return request;
   }
 
   function isGroqCompoundModel(modelId) {
@@ -1892,6 +1927,12 @@ async function aiChatMessages(messages, options) {
     if (limit <= 8000) return Math.min(requested, 1250);
     if (limit <= 12000) return Math.min(requested, 1500);
     return Math.min(requested, 1800);
+  }
+
+  function clampOpenAIMaxTokens(modelId, requested) {
+    if (/nano/i.test(modelId)) return Math.min(requested, 900);
+    if (/mini|4o-mini/i.test(modelId)) return Math.min(requested, 1800);
+    return Math.min(requested, 2600);
   }
 
   var estimatedInputTokens = estimateTokensFromMessages(messages);
@@ -1923,6 +1964,7 @@ async function aiChatMessages(messages, options) {
     var actualInputTokens = Number(usage.prompt_tokens || usage.input_tokens || usage.inputTokens || 0) || 0;
     var actualOutputTokens = Number(usage.completion_tokens || usage.output_tokens || usage.outputTokens || 0) || 0;
     var actualTotalTokens = Number(usage.total_tokens || usage.totalTokens || 0) || 0;
+    if (!actualTotalTokens && (actualInputTokens || actualOutputTokens)) actualTotalTokens = actualInputTokens + actualOutputTokens;
     var estimatedOutputTokens = actualOutputTokens ? 0 : estimateTokensFromText(responseText);
     var estimatedTotal = actualTotalTokens || (estimatedInputTokens + (actualOutputTokens || estimatedOutputTokens || maxTokens));
     var modelTokenLimit = numberFromHeader(rateLimit && rateLimit.limitTokens);
@@ -1956,26 +1998,43 @@ async function aiChatMessages(messages, options) {
   function displayModelFromResponse(resultInfo, fallbackModel) {
     var returned = String(resultInfo && resultInfo.data && resultInfo.data.model || fallbackModel || '').trim();
     if (useGroq && returned && returned.indexOf('groq/') !== 0) return 'groq/' + returned;
+    if (useOpenAI && returned && returned.indexOf('openai/') !== 0) return 'openai/' + returned;
     return returned || fallbackModel || requestedModel;
   }
 
-  async function runOpenRouterRequest(requestBody) {
+  function openAIResponseText(data) {
+    if (data && typeof data.output_text === 'string') return data.output_text;
+    var chunks = [];
+    (data && data.output || []).forEach(function(item) {
+      (item && item.content || []).forEach(function(part) {
+        if (typeof part.text === 'string') chunks.push(part.text);
+      });
+    });
+    return chunks.join('');
+  }
+
+  async function runProviderRequest(requestBody) {
     var headers = {
       'Authorization': 'Bearer ' + apiKey,
       'Content-Type': 'application/json'
     };
-    if (!useGroq) {
+    if (!useGroq && !useOpenAI) {
       headers['HTTP-Referer'] = 'https://covercraft.extension';
       headers['X-Title'] = 'CoverCraft';
     }
-    var response = await fetch(useGroq ? 'https://api.groq.com/openai/v1/chat/completions' : 'https://openrouter.ai/api/v1/chat/completions', {
+    var endpoint = useGroq
+      ? 'https://api.groq.com/openai/v1/chat/completions'
+      : (useOpenAI ? 'https://api.openai.com/v1/responses' : 'https://openrouter.ai/api/v1/chat/completions');
+    var response = await fetch(endpoint, {
       method: 'POST',
       headers: headers,
       body: JSON.stringify(requestBody)
     });
     var data = await response.json().catch(function() { return {}; });
     var rateLimit = collectRateLimitHeaders(response);
-    var responseText = (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '';
+    var responseText = useOpenAI
+      ? openAIResponseText(data)
+      : ((data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '');
     var normalizedUsage = normalizeTokenUsage(data, responseText, rateLimit);
     var resultObject = {
       ok: response.ok,
@@ -1985,7 +2044,7 @@ async function aiChatMessages(messages, options) {
       usage: normalizedUsage
     };
     await rememberModelHealth(requestedModel, {
-      provider: useGroq ? 'groq' : 'openrouter',
+      provider: provider,
       apiModel: requestBody.model,
       ok: response.ok,
       status: response.status,
@@ -2026,8 +2085,10 @@ async function aiChatMessages(messages, options) {
   }
 
   function normalizeOpenRouterError(errorMessage, status, resultInfo) {
-    var message = String(errorMessage || '').trim() || ((useGroq ? 'Groq' : 'OpenRouter') + ' HTTP ' + status);
+    var providerLabel = useGroq ? 'Groq' : (useOpenAI ? 'OpenAI' : 'OpenRouter');
+    var message = String(errorMessage || '').trim() || (providerLabel + ' HTTP ' + status);
     var requestedModelLabel = requestedModel.replace(/^groq\//, '');
+    if (useOpenAI) requestedModelLabel = requestedModelLabel.replace(/^openai\//, '');
     var loweredMessage = message.toLowerCase();
     if (useGroq && (status === 413 || /request entity too large|payload too large|context length|maximum context|too large/.test(loweredMessage))) {
       return 'Groq request too large for ' + requestedModelLabel + '. This is a payload/context-size problem, not a normal rate-limit reset. Reduce scraped page text, profile context, or research context, then try a larger-context Groq model such as Llama 4 Scout or Compound.' +
@@ -2049,6 +2110,7 @@ async function aiChatMessages(messages, options) {
         rateLimitDetails(resultInfo);
     }
     if (useGroq && /authentication|invalid api key|unauthorized/i.test(message)) return 'Groq rejected the API key. Check the Groq key in CoverCraft settings.';
+    if (useOpenAI && /authentication|invalid api key|unauthorized/i.test(message)) return 'OpenAI rejected the API key. Check the OpenAI key in CoverCraft settings.';
     if (useGroq && /does not exist or you do not have access/i.test(message)) {
       return 'Groq says "' + requestedModelLabel + '" is not available to this API key, project, or account. Check Groq Model Permissions, the active project for this key, and whether the model appears in the /openai/v1/models list for your account.';
     }
@@ -2091,7 +2153,7 @@ async function aiChatMessages(messages, options) {
   }
 
   function shouldRetryWithFreeRouter(model, errorMessage, status) {
-    if (useGroq) return false;
+    if (useGroq || useOpenAI) return false;
     if (!model || model === DEFAULT_MODEL) return false;
     var text = String(errorMessage || '').toLowerCase();
     if (status === 404) return true;
@@ -2103,27 +2165,27 @@ async function aiChatMessages(messages, options) {
       text.indexOf('model') !== -1;
   }
 
-  var result = await runOpenRouterRequest(body);
+  var result = await runProviderRequest(body);
   var attempt = 0;
   while (!result.ok && attempt < 2) {
     var transientError = (result.data.error && result.data.error.message) || ('OpenRouter HTTP ' + result.status);
     if (!shouldRetrySameModel(transientError, result.status)) break;
     attempt++;
     await wait(250 * attempt);
-    result = await runOpenRouterRequest(body);
+    result = await runProviderRequest(body);
   }
   if (!result.ok) {
     var primaryError = normalizeOpenRouterError((result.data.error && result.data.error.message) || ('OpenRouter HTTP ' + result.status), result.status, result);
     if (allowRouterModelFallback && shouldRetryWithFreeRouter(body.model, primaryError, result.status)) {
       var fallbackBody = Object.assign({}, body, { model: DEFAULT_MODEL });
-      var fallback = await runOpenRouterRequest(fallbackBody);
+      var fallback = await runProviderRequest(fallbackBody);
       var fallbackAttempt = 0;
       while (!fallback.ok && fallbackAttempt < 2) {
         var fallbackTransientError = (fallback.data.error && fallback.data.error.message) || ('OpenRouter HTTP ' + fallback.status);
         if (!shouldRetrySameModel(fallbackTransientError, fallback.status)) break;
         fallbackAttempt++;
         await wait(250 * fallbackAttempt);
-        fallback = await runOpenRouterRequest(fallbackBody);
+        fallback = await runProviderRequest(fallbackBody);
       }
       if (!fallback.ok) {
         var fallbackError = normalizeOpenRouterError((fallback.data.error && fallback.data.error.message) || primaryError, fallback.status, fallback);
@@ -3181,12 +3243,21 @@ function scoreProjectForKeywords(project, keywords) {
   return score;
 }
 
-function chooseResumeProjects(projects, keywords, limit) {
-  return (projects || []).map(function(project, index) {
-    return {
-      project: project,
-      score: scoreProjectForKeywords(project, keywords) + Math.max(0, 3 - index) * 0.1
-    };
+function chooseResumeProjects(projects, keywords, limit, formatProfile) {
+  var hints = formatProfile && Array.isArray(formatProfile.projectHints) ? formatProfile.projectHints : [];
+	  return (projects || []).map(function(project, index) {
+    var projectText = [project.title || '', project.description || '', (project.technologies || []).join(' ')].join(' ').toLowerCase();
+    var hintBoost = hints.reduce(function(total, hint, hintIndex) {
+      var key = String(hint || '').toLowerCase();
+      if (!key) return total;
+      return projectText.indexOf(key) !== -1 || key.indexOf(String(project.title || '').toLowerCase()) !== -1
+        ? total + Math.max(1, 8 - hintIndex)
+        : total;
+    }, 0);
+	    return {
+	      project: project,
+	      score: scoreProjectForKeywords(project, keywords) + hintBoost + Math.max(0, 3 - index) * 0.1
+	    };
   }).sort(function(a, b) {
     return b.score - a.score;
   }).slice(0, limit || 3).map(function(entry) {
@@ -3234,7 +3305,7 @@ function buildResumeOwner(rawPortfolio, normalizedPortfolio) {
   };
 }
 
-function buildResumeSource(portfolioBundle, session) {
+function buildResumeSource(portfolioBundle, session, formatProfile) {
   var rawPortfolio = portfolioBundle && portfolioBundle.rawPortfolio || {};
   var normalizedPortfolio = portfolioBundle && portfolioBundle.portfolio || Core.normalizePortfolio(rawPortfolio).normalized;
   var keywords = buildResumeKeywords(session);
@@ -3244,19 +3315,152 @@ function buildResumeSource(portfolioBundle, session) {
     Array.isArray(normalizedPortfolio.awards) ? normalizedPortfolio.awards : []
   ));
   return {
-    owner: buildResumeOwner(rawPortfolio, normalizedPortfolio),
-    education: normalizeResumeEducation(rawPortfolio, normalizedPortfolio),
+	    owner: buildResumeOwner(rawPortfolio, normalizedPortfolio),
+	    summary: normalizeResumeOutputText((rawPortfolio.about && rawPortfolio.about.bio && rawPortfolio.about.bio[0]) || normalizedPortfolio.summary || ''),
+	    education: normalizeResumeEducation(rawPortfolio, normalizedPortfolio),
     experiences: normalizeResumeExperiences(rawPortfolio),
-    projects: chooseResumeProjects(normalizeResumeProjects(rawPortfolio), keywords, 3),
+	    projects: chooseResumeProjects(normalizeResumeProjects(rawPortfolio), keywords, 3, formatProfile),
     leadership: leadership,
     certifications: dedupeStrings(normalizedPortfolio.certifications || rawPortfolio.certifications || []),
     skillsList: skillsList,
     skills: normalizeResumeSkillString(chooseResumeSkills(skillsList, keywords, 20, 260).join(', '), 50),
     keywords: keywords
+	  };
+	}
+
+function inferResumeFormat(session, requestedFormat) {
+  var requested = String(requestedFormat || '').trim();
+  if (requested && requested !== 'auto') return requested;
+  var job = session && session.job || {};
+  var text = [
+    job.jobTitle || '',
+    (job.keywords || []).join(' '),
+    (job.requirements || []).join(' '),
+    (job.responsibilities || []).join(' '),
+    session && session.scrape ? session.scrape.preview || '' : ''
+  ].join(' ').toLowerCase();
+  if (/\b(product manager|product owner|roadmap|mvp|go-to-market|0-to-1|user stories|backlog)\b/.test(text)) return 'ai_pm';
+  if (/\b(business analyst|requirements|uat|stakeholder|process improvement|kpi|business intelligence)\b/.test(text)) return 'ba_pm';
+  if (/\b(full.stack|frontend|backend|next\.js|react|typescript|fastapi|api|chrome extension)\b/.test(text)) return 'full_stack_ai';
+  if (/\b(data scientist|machine learning|ml engineer|data engineer|etl|pipeline|forecasting|model|python|sql|spark)\b/.test(text)) return 'data_ai';
+  return 'balanced';
+}
+
+function resumeFormatProfile(format) {
+  var profiles = {
+    data_ai: {
+      label: 'Data AI/ML Engineer',
+      summaryIdentity: 'AI/Data Engineer',
+      projectHints: ['Trade Surveillance Platform', 'AI Regulatory Document Classifier', 'Inventory Management', 'Market Basket', 'Forecasting Dashboards'],
+      summaryFocus: ['Python', 'SQL', 'data pipelines', 'forecasting', 'LLM applications', 'production analytics']
+    },
+    ai_pm: {
+      label: 'AI Product Manager',
+      summaryIdentity: 'AI Product Manager',
+      projectHints: ['Black Tie', '5G Network Intelligence', 'CoverCraft', 'Mays AI Analytics Assistant'],
+      summaryFocus: ['roadmaps', 'requirements', 'AI workflows', 'stakeholder alignment', '0-to-1 launches']
+    },
+    ba_pm: {
+      label: 'Technical Business Analyst',
+      summaryIdentity: 'Technical Business Analyst',
+      projectHints: ['Mays Admissions', 'Black Tie', 'CoverCraft', 'BI Dashboards'],
+      summaryFocus: ['requirements', 'KPI analysis', 'SQL', 'process automation', 'stakeholder reporting']
+    },
+    full_stack_ai: {
+      label: 'AI Full-Stack Engineer',
+      summaryIdentity: 'AI Full-Stack Engineer',
+      projectHints: ['Black Tie', 'CoverCraft', 'Trade Surveillance Platform', 'Landmark Lens'],
+      summaryFocus: ['Next.js', 'TypeScript', 'FastAPI', 'LLM APIs', 'full-stack delivery']
+    },
+    balanced: {
+      label: 'Balanced Technical Resume',
+      summaryIdentity: 'Technical AI/Data Professional',
+      projectHints: ['Mays AI Analytics Assistant', 'Trade Surveillance Platform', 'Black Tie', 'CoverCraft'],
+      summaryFocus: ['analytics platforms', 'AI workflows', 'SQL', 'Python', 'stakeholder execution']
+    }
+  };
+  return profiles[format] || profiles.balanced;
+}
+
+function normalizeResumeOutputText(text) {
+  return String(text || '')
+    .replace(/\u00A0/g, ' ')
+    .replace(/\u00A1(?=\s*\d)/g, '<')
+    .replace(/\u02DC(?=\s*\d)/g, '~')
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/[–—−]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function resumeBulletHasMetric(text) {
+  return /(\d+|%|\$|under|over|less than|more than|from\b.+\bto\b|reduced|increased|saved|cut|improved|boosting|slashing)/i.test(String(text || ''));
+}
+
+function resumeBulletQualityIssues(text) {
+  var value = String(text || '').trim();
+  var issues = [];
+  if (/[–—]/.test(value)) issues.push('contains non-ASCII dash');
+  if (/^(worked on|helped|assisted|responsible for|involved in|participated in|used|did|made)\b/i.test(value)) issues.push('weak opening verb');
+  if (value.split(/[.!?]\s+/).filter(Boolean).length > 1) issues.push('more than one sentence');
+  if (!resumeBulletHasMetric(value)) issues.push('missing visible impact metric');
+  return issues;
+}
+
+function buildResumeDraftSchema() {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: ['summary', 'experiences', 'projects', 'skills', 'comments'],
+    properties: {
+      summary: { type: 'string' },
+      experiences: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['company', 'bullets'],
+          properties: {
+            company: { type: 'string' },
+            bullets: { type: 'array', items: { type: 'string' } }
+          }
+        }
+      },
+      projects: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['title', 'description'],
+          properties: {
+            title: { type: 'string' },
+            description: { type: 'string' }
+          }
+        }
+      },
+      skills: { type: 'array', items: { type: 'string' } },
+      comments: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['company', 'bulletIndex', 'decision', 'matchedKeywords', 'justification'],
+          properties: {
+            company: { type: 'string' },
+            bulletIndex: { type: 'number' },
+            decision: { type: 'string' },
+            matchedKeywords: { type: 'array', items: { type: 'string' } },
+            justification: { type: 'string' }
+          }
+        }
+      }
+    }
   };
 }
 
-function buildResumeSystemPrompt() {
+function buildResumeSystemPrompt(formatProfile) {
+  formatProfile = formatProfile || resumeFormatProfile('balanced');
   return [
     'You tailor ATS-safe resume bullet points for a specific job posting.',
     'Return ONLY valid JSON.',
@@ -3266,7 +3470,12 @@ function buildResumeSystemPrompt() {
     'Do not change the header, education, certifications, leadership, company names, role titles, dates, or locations.',
     'Only tailor the experience bullet text, the project descriptions, and the skills selection/order.',
     'Do not change project titles or project links.',
-    'Every bullet must follow strong resume style: leading action verb, technical method or domain context, and business or quantifiable impact when the source supports it.',
+    'Every bullet must follow FAANG resume style and the X-Y-Z rule: accomplished X, measured by Y, by doing Z.',
+    'Every rewritten bullet must start with a strong action verb, include method/tool/domain context, and include quantified or business impact when grounded in the source.',
+    'Avoid weak verbs: worked on, helped, assisted, responsible for, involved in, participated in, used, did, made.',
+    'Never use em dashes or en dashes. Use commas, parentheses, semicolons, or ASCII hyphens only.',
+    'Normalize symbols into plain ATS-safe text: use <, >, <=, >=, ~, %, $, and ASCII hyphen.',
+    'Add a 2-line targeted summary using the target identity "' + formatProfile.summaryIdentity + '" and only truthful strengths.',
     'Use the provided source bullets as the style anchor. Learn from their tone, density, and structure before changing anything.',
     'Be conservative. If a source bullet is already relevant or somewhat relevant, keep it unchanged.',
     'Silently decide KEEP or REWRITE for each source bullet before drafting.',
@@ -3280,12 +3489,14 @@ function buildResumeSystemPrompt() {
     'Skills must be chosen only from the provided skill inventory.',
     'Do not repeat the same opening action verb more than twice across all returned bullets.',
     'Never invent metrics, technologies, employers, titles, dates, or projects.',
+    'Provide concise comments explaining each KEEP or REWRITE decision for later review.',
     'Return exactly this shape:',
-    '{"experiences":[{"company":"","bullets":[""]}],"projects":[{"title":"","description":""}],"skills":[""]}'
+    '{"summary":"","experiences":[{"company":"","bullets":[""]}],"projects":[{"title":"","description":""}],"skills":[""],"comments":[{"company":"","bulletIndex":0,"decision":"KEEP","matchedKeywords":[""],"justification":""}]}'
   ].join('\n');
 }
 
-function buildResumeUserPrompt(session, resumeSource) {
+function buildResumeUserPrompt(session, resumeSource, formatProfile) {
+  formatProfile = formatProfile || resumeFormatProfile('balanced');
   return [
     'Tailor this resume for the job below.',
     'Header, education, certifications, leadership, dates, locations, company names, and role titles stay fixed outside this output.',
@@ -3294,6 +3505,10 @@ function buildResumeUserPrompt(session, resumeSource) {
     'Only use a rewrite when it creates a clearly better match to the target role without weakening the bullet.',
     'Rewrite only the bullets that truly need better alignment for this specific job.',
     'Use FAANG-style bullet quality: action verb first, then what was built or improved, then impact and quantification when grounded in the source.',
+    'Use the X-Y-Z rule where possible: accomplished X, measured by Y, by doing Z.',
+    'For summary language, match this role family: ' + formatProfile.label + '.',
+    'Summary focus terms, only when truthful: ' + formatProfile.summaryFocus.join(', ') + '.',
+    'Project selection hints for this profile: ' + formatProfile.projectHints.join(' | ') + '.',
     'Do not let any bullet exceed its hard max word count.',
     'Treat targetWordCount as the intended length and minWordCount as the minimum acceptable density for a rewrite.',
     'Use the source bullet text itself as the pattern to imitate. Match its specificity, pacing, density, and sentence rhythm.',
@@ -3302,6 +3517,7 @@ function buildResumeUserPrompt(session, resumeSource) {
     'Do not add new metrics, dates, tools, project names, or company details.',
     'Project titles and references stay fixed; you may only rewrite project descriptions.',
     'Skills must be a subset of the provided inventory, reordered or trimmed to fit tightly, and should usually keep 15 to 20 skills when possible.',
+    'For comments, explain why each bullet was kept or rewritten, which target keywords it supports, and what source evidence grounded it.',
     '',
     'Job context:',
     JSON.stringify({
@@ -3351,11 +3567,12 @@ function buildResumeUserPrompt(session, resumeSource) {
           ].join(' '), resumeSource.keywords, 6)
         };
       }),
-      skillsInventory: resumeSource.skillsList,
-      targetKeywords: resumeSource.keywords
-    })
-  ].join('\n');
-}
+	      skillsInventory: resumeSource.skillsList,
+	      targetKeywords: resumeSource.keywords,
+	      roleFamily: formatProfile.label
+	    })
+	  ].join('\n');
+	}
 
 function scoreResumeSkill(skill, keywords) {
   var text = String(skill || '').trim().toLowerCase();
@@ -3527,10 +3744,15 @@ function buildResumeModificationSummary(resumeSource, resumeData) {
     addedSkills: finalSkills.filter(function(skill) {
       return !baseSkillMap[String(skill || '').trim().toLowerCase()];
     }),
-    removedSkills: baseSkills.filter(function(skill) {
-      return !finalSkillMap[String(skill || '').trim().toLowerCase()];
-    })
-  };
+	    removedSkills: baseSkills.filter(function(skill) {
+	      return !finalSkillMap[String(skill || '').trim().toLowerCase()];
+	    }),
+	    bulletComments: Array.isArray(resumeData && resumeData.comments) ? resumeData.comments : [],
+	    qualityIssueCount: 0
+	  };
+	  summary.qualityIssueCount = summary.bulletComments.reduce(function(total, item) {
+	    return total + (Array.isArray(item.qualityIssues) ? item.qualityIssues.length : 0);
+	  }, 0);
 
   (resumeData && resumeData.experiences || []).forEach(function(entry, index) {
     var source = resumeSource.experiences[index] || {};
@@ -3555,6 +3777,15 @@ function buildResumeModificationSummary(resumeSource, resumeData) {
 
 function coerceResumeDraft(aiDraft, resumeSource) {
   var draft = aiDraft && typeof aiDraft === 'object' ? aiDraft : {};
+  var draftComments = Array.isArray(draft.comments) ? draft.comments : [];
+  function commentFor(company, bulletIndex) {
+    var found = draftComments.find(function(item) {
+      return item && String(item.company || '').trim().toLowerCase() === String(company || '').trim().toLowerCase() &&
+        Number(item.bulletIndex) === Number(bulletIndex);
+    });
+    return found || null;
+  }
+  var comments = [];
   var normalizedExperiences = resumeSource.experiences.map(function(sourceExperience) {
     var matched = Array.isArray(draft.experiences) ? draft.experiences.find(function(entry) {
       return entry && String(entry.company || '').trim().toLowerCase() === sourceExperience.company.toLowerCase();
@@ -3564,10 +3795,28 @@ function coerceResumeDraft(aiDraft, resumeSource) {
     }).filter(Boolean) : [];
     while (bullets.length < sourceExperience.bullets.length) bullets.push(sourceExperience.bullets[bullets.length]);
     bullets = bullets.slice(0, sourceExperience.bullets.length).map(function(bullet, index) {
-      var clipped = clipWords(bullet, sourceExperience.bulletBudgets[index]);
+      var sourceBullet = normalizeResumeOutputText(sourceExperience.bullets[index]);
+      var clipped = clipWords(normalizeResumeOutputText(bullet), sourceExperience.bulletBudgets[index]);
       if (shouldPreserveResumeSourceText(sourceExperience.bullets[index], clipped, resumeSource.keywords)) {
-        return sourceExperience.bullets[index];
+        clipped = sourceBullet;
       }
+      var explicitComment = commentFor(sourceExperience.company, index);
+      var changed = normalizeResumeComparisonText(sourceBullet) !== normalizeResumeComparisonText(clipped);
+      comments.push({
+        company: sourceExperience.company,
+        role: sourceExperience.role,
+        bulletIndex: index,
+        decision: changed ? 'REWRITE' : 'KEEP',
+        sourceText: sourceBullet,
+        finalText: clipped,
+        matchedKeywords: keywordMatchesForText(clipped, resumeSource.keywords, 6),
+        qualityIssues: resumeBulletQualityIssues(clipped),
+        justification: explicitComment && explicitComment.justification
+          ? normalizeResumeOutputText(explicitComment.justification)
+          : (changed
+            ? 'Rewritten to align source evidence with the target role keywords while preserving the original metric and scope.'
+            : 'Kept because the source bullet already carries relevant evidence, impact, or keyword alignment.')
+      });
       return clipped;
     });
     bullets = enforceResumeVerbDiversity(bullets, sourceExperience.bullets);
@@ -3584,13 +3833,13 @@ function coerceResumeDraft(aiDraft, resumeSource) {
     var matched = Array.isArray(draft.projects) ? draft.projects.find(function(entry) {
       return entry && String(entry.title || '').trim().toLowerCase() === project.title.toLowerCase();
     }) : null;
-    var description = String(matched && matched.description || project.description || '').trim() || project.description;
+    var description = normalizeResumeOutputText(matched && matched.description || project.description || '') || project.description;
     if (shouldPreserveResumeSourceText(project.description, description, resumeSource.keywords)) {
       description = project.description;
     }
     return {
       title: project.title,
-      description: clipWords(description, project.wordBudget),
+      description: clipWords(normalizeResumeOutputText(description), project.wordBudget),
       technologies: project.technologies,
       url: project.url,
       links: project.links
@@ -3613,23 +3862,33 @@ function coerceResumeDraft(aiDraft, resumeSource) {
     selectedSkills = chooseResumeSkills(resumeSource.skillsList, resumeSource.keywords, 20, 260);
   }
 
+  var summary = normalizeResumeOutputText(draft.summary || resumeSource.summary || '');
+  if (!summary) {
+    summary = clipWords([
+      resumeSource.owner.title || 'Technical professional',
+      'with experience across analytics platforms, AI-enabled workflows, data systems, and stakeholder-facing delivery.'
+    ].join(' '), 38);
+  }
+
   return {
     owner: resumeSource.owner,
+    summary: summary,
     education: resumeSource.education,
     experiences: normalizedExperiences,
     projects: normalizedProjects,
     leadership: resumeSource.leadership,
     certifications: resumeSource.certifications,
-    skills: normalizeResumeSkillString(selectedSkills.slice(0, 20).join(', '), 50)
+    skills: normalizeResumeSkillString(selectedSkills.slice(0, 20).join(', '), 50),
+    comments: comments
   };
 }
 
 function escapeLatexText(text) {
-  return String(text || '')
+  return normalizeResumeOutputText(text)
     .replace(/\u00A0/g, ' ')
     .replace(/[\u2018\u2019]/g, "'")
     .replace(/[\u201C\u201D]/g, '"')
-    .replace(/[\u2013\u2014\u2212]/g, '--')
+    .replace(/[\u2013\u2014\u2212]/g, '-')
     .replace(/\u2026/g, '...')
     .replace(/\u00D7/g, 'x')
     .replace(/\u2192/g, '->')
@@ -3638,6 +3897,8 @@ function escapeLatexText(text) {
     .replace(/\u2248/g, 'approx. ')
     .replace(/\u200B/g, '')
     .replace(/\\/g, '\\textbackslash{}')
+    .replace(/</g, '\\textless{}')
+    .replace(/>/g, '\\textgreater{}')
     .replace(/([{}%$#&_])/g, '\\$1')
     .replace(/\^/g, '\\textasciicircum{}')
     .replace(/~/g, '\\textasciitilde{}');
@@ -3681,6 +3942,11 @@ function buildResumePreviewText(resumeData) {
   var owner = resumeData.owner || {};
   lines.push(owner.name || 'Candidate');
   lines.push([owner.phone, owner.email, owner.website].filter(Boolean).join(' | '));
+  if (resumeData.summary) {
+    lines.push('');
+    lines.push('SUMMARY');
+    lines.push(normalizeResumeOutputText(resumeData.summary));
+  }
   lines.push('');
   lines.push('EDUCATION');
   (resumeData.education || []).forEach(function(entry) {
@@ -3692,13 +3958,13 @@ function buildResumePreviewText(resumeData) {
   (resumeData.experiences || []).forEach(function(entry) {
     lines.push([entry.company, entry.role, entry.duration].filter(Boolean).join(' | '));
     (entry.bullets || []).forEach(function(bullet) {
-      lines.push('- ' + bullet);
+      lines.push('- ' + normalizeResumeOutputText(bullet));
     });
     lines.push('');
   });
   lines.push('PROJECTS');
   (resumeData.projects || []).forEach(function(project) {
-    lines.push(project.title + ': ' + project.description);
+    lines.push(project.title + ': ' + normalizeResumeOutputText(project.description));
   });
   lines.push('');
   lines.push('TECHNICAL SKILLS');
@@ -3750,7 +4016,8 @@ function buildResumeLatexSource(resumeData) {
   if (owner.website) {
     contactItems.push('\\mbox{\\fontsize{10}{12}\\selectfont \\href{' + escapeLatexHrefTarget(resumeWebsiteHref(owner.website)) + '}{' + escapeLatexText(owner.website.replace(/^https?:\/\/(www\.)?/i, '').replace(/\/$/, '')) + '}}');
   }
-  var contactBlock = contactItems.join('\n    ~$\\vert$~\n    ');
+	  var contactBlock = contactItems.join('\n    ~$\\vert$~\n    ');
+	  var summaryText = escapeLatexText(resumeData.summary || '');
 
   var educationBlock = (resumeData.education || []).slice(0, 3).map(function(entry, index) {
     var degree = escapeLatexText(String(entry.degree || '').trim());
@@ -3876,10 +4143,14 @@ function buildResumeLatexSource(resumeData) {
     '\\begin{center}',
     '    {\\Huge\\scshape ' + escapeLatexText(owner.name || 'Candidate') + '}\\\\[0pt]',
     contactBlock,
-    '\\end{center}',
-    '\\vspace{-6pt}',
-    '',
-    '%-----------EDUCATION-----------',
+	    '\\end{center}',
+	    '\\vspace{-6pt}',
+	    '',
+	    '%-----------SUMMARY-----------',
+	    summaryText ? '\\noindent\\normalsize{' + summaryText + '}' : '% No summary available',
+	    '\\vspace{2pt}',
+	    '',
+	    '%-----------EDUCATION-----------',
     '\\section{Education}',
     '  \\resumeSubHeadingListStart',
     educationBlock || '    % No education entries available',
@@ -3919,23 +4190,29 @@ function buildResumeLatexSource(resumeData) {
   ].join('\n');
 }
 
-async function generateResumeArtifact(session, model, portfolioBundle) {
-  var resumeSource = buildResumeSource(portfolioBundle, session);
+async function generateResumeArtifact(session, model, portfolioBundle, options) {
+  options = options || {};
+  var resumeFormat = inferResumeFormat(session, options.resumeFormat || 'auto');
+  var formatProfile = resumeFormatProfile(resumeFormat);
+  var resumeSource = buildResumeSource(portfolioBundle, session, formatProfile);
   if (!resumeSource.owner.name || !resumeSource.experiences.length) {
     throw new Error('Your active portfolio does not have enough resume data yet. Import a fuller profile before generating a resume.');
   }
 
   var response = null;
   var resumeData = null;
-  try {
-    response = await aiChat(
-      buildResumeSystemPrompt(),
-      buildResumeUserPrompt(session, resumeSource),
-      0.12,
-      2200,
-      model
-    );
-    resumeData = coerceResumeDraft(
+	  try {
+	    response = await aiChatMessages([
+	      { role: 'system', content: buildResumeSystemPrompt(formatProfile) },
+	      { role: 'user', content: buildResumeUserPrompt(session, resumeSource, formatProfile) }
+	    ], {
+	      temperature: 0.08,
+	      maxTokens: 2600,
+	      model: model,
+	      responseSchemaName: 'tailored_resume',
+	      responseSchema: Core.providerForModel(model) === 'openai' ? buildResumeDraftSchema() : null
+	    });
+	    resumeData = coerceResumeDraft(
       safeParseJson(response.content, 'CoverCraft could not parse the tailored resume output.'),
       resumeSource
     );
@@ -3944,21 +4221,23 @@ async function generateResumeArtifact(session, model, portfolioBundle) {
     resumeData = coerceResumeDraft({}, resumeSource);
   }
 
-  var previewText = buildResumePreviewText(resumeData);
-  var latexSource = buildResumeLatexSource(resumeData);
-  var modifications = buildResumeModificationSummary(resumeSource, resumeData);
-  return {
-    data: resumeData,
-    previewText: previewText,
+	  var previewText = buildResumePreviewText(resumeData);
+	  var latexSource = buildResumeLatexSource(resumeData);
+	  var modifications = buildResumeModificationSummary(resumeSource, resumeData);
+	  return {
+	    data: resumeData,
+	    resumeFormat: resumeFormat,
+	    resumeFormatLabel: formatProfile.label,
+	    previewText: previewText,
     latexSource: latexSource,
     modifications: modifications,
-    model: response.model || model,
-    prompt: {
-      system: buildResumeSystemPrompt(),
-      user: buildResumeUserPrompt(session, resumeSource)
-    }
-  };
-}
+	    model: response.model || model,
+	    prompt: {
+	      system: buildResumeSystemPrompt(formatProfile),
+	      user: buildResumeUserPrompt(session, resumeSource, formatProfile)
+	    }
+	  };
+	}
 
 async function ensureSessionContext(state, session, payload, settings, persistState) {
   var persist = typeof persistState === 'function' ? persistState : null;
@@ -4260,7 +4539,7 @@ chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
   if (message.type === 'RECORD_MODEL_HEALTH') {
     var payload = message.payload || {};
     rememberModelHealth(payload.model || DEFAULT_MODEL, {
-      provider: payload.provider || (/^groq\//.test(String(payload.model || '')) ? 'groq' : 'openrouter'),
+      provider: payload.provider || Core.providerForModel(String(payload.model || '')),
       apiModel: payload.apiModel || payload.model || DEFAULT_MODEL,
       ok: !!payload.ok,
       status: payload.status || 0,
@@ -4637,13 +4916,17 @@ chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
       });
 
       await savePipelineState(state, session, 'resume', 'tailor_resume', 'Step 4 · Tailoring resume bullets', '', 78, 'running');
-      var generatedResume = await generateResumeArtifact(session, model, portfolioBundle);
+      var generatedResume = await generateResumeArtifact(session, model, portfolioBundle, {
+        resumeFormat: message.payload.resumeFormat || settings.resumeFormat || 'auto'
+      });
       await savePipelineState(state, session, 'resume', 'render_resume', 'Step 5 · Building resume output', '', 92, 'running');
 
       var resumeArtifact = {
         id: 'resume_' + Core.shortHash(session.id + '|' + Core.nowIso() + '|' + generatedResume.previewText),
         createdAt: Core.nowIso(),
         model: generatedResume.model,
+        resumeFormat: generatedResume.resumeFormat,
+        resumeFormatLabel: generatedResume.resumeFormatLabel,
         owner: portfolioBundle.owner,
         sessionId: session.id,
         jobTitle: session.job && session.job.jobTitle || '',

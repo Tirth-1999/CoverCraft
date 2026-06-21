@@ -189,9 +189,18 @@ function isGroqModel(model) {
   return /^groq\//.test(String(model || '').trim());
 }
 
+function isOpenAIModel(model) {
+  return /^openai\//.test(String(model || '').trim());
+}
+
 function selectedOpenRouterTestModel() {
   var model = selectedModel();
-  return isGroqModel(model) ? 'openrouter/free' : model;
+  return (isGroqModel(model) || isOpenAIModel(model)) ? 'openrouter/free' : model;
+}
+
+function selectedOpenAITestModel() {
+  var model = selectedModel();
+  return isOpenAIModel(model) ? model.replace(/^openai\//, '') : 'gpt-5-nano';
 }
 
 function selectedGroqTestModel() {
@@ -304,9 +313,7 @@ function renderModelHealth() {
     meter.appendChild(meterFill);
     if (!health) {
       badge.textContent = 'Unknown';
-      detail.textContent = /^groq\//.test(model)
-        ? 'No previous provider status recorded for this model.'
-        : 'No previous provider status recorded. OpenRouter availability depends on route.';
+      detail.textContent = 'No previous provider status recorded for this model.';
     } else if (waitMs > 0 && (health.status === 429 || health.status === 413)) {
       badge.textContent = 'Wait ' + formatTimeLeft(waitMs);
       detail.textContent = [
@@ -1519,10 +1526,12 @@ function buildResumeCard(entry) {
   var modifications = artifact.modifications || {};
   var changeGrid = mk('div', 'mini-grid');
   changeGrid.appendChild(buildMetric('Modified bullets', String(modifications.modifiedBulletCount || 0)));
-  changeGrid.appendChild(buildMetric('Skills included', String(modifications.finalSkillsCount || modifications.skillsCount || 0)));
-  changeGrid.appendChild(buildMetric('Skills added', String(Array.isArray(modifications.addedSkills) ? modifications.addedSkills.length : 0)));
-  changeGrid.appendChild(buildMetric('Base skills', String(modifications.baseSkillsCount || 0)));
-  changeSection.appendChild(changeGrid);
+	  changeGrid.appendChild(buildMetric('Skills included', String(modifications.finalSkillsCount || modifications.skillsCount || 0)));
+	  changeGrid.appendChild(buildMetric('Skills added', String(Array.isArray(modifications.addedSkills) ? modifications.addedSkills.length : 0)));
+	  changeGrid.appendChild(buildMetric('Base skills', String(modifications.baseSkillsCount || 0)));
+	  changeGrid.appendChild(buildMetric('Format', artifact.resumeFormatLabel || artifact.resumeFormat || 'auto'));
+	  changeGrid.appendChild(buildMetric('Quality flags', String(modifications.qualityIssueCount || 0)));
+	  changeSection.appendChild(changeGrid);
   var changedRoles = Array.isArray(modifications.modifiedExperienceTitles) ? modifications.modifiedExperienceTitles.filter(Boolean) : [];
   var experienceChanges = Array.isArray(modifications.experienceChanges) ? modifications.experienceChanges : [];
   var summaryLines = [];
@@ -1532,10 +1541,19 @@ function buildResumeCard(entry) {
       return (item.role || item.company || 'Experience') + ': ' + (item.changedBulletCount || 0) + ' bullet' + ((item.changedBulletCount || 0) === 1 ? '' : 's');
     }).join('\n'));
   }
-  if (Array.isArray(modifications.addedSkills) && modifications.addedSkills.length) {
-    summaryLines.push('Added skills: ' + modifications.addedSkills.join(', '));
-  }
-  changeSection.appendChild(mk('pre', '', summaryLines.length ? summaryLines.join('\n\n') : 'No experience bullets were changed for this tailored resume.'));
+	  if (Array.isArray(modifications.addedSkills) && modifications.addedSkills.length) {
+	    summaryLines.push('Added skills: ' + modifications.addedSkills.join(', '));
+	  }
+	  var bulletComments = Array.isArray(modifications.bulletComments) ? modifications.bulletComments : [];
+	  if (bulletComments.length) {
+	    summaryLines.push('Bullet comments:\n' + bulletComments.slice(0, 20).map(function(item) {
+	      var label = [item.company, item.role].filter(Boolean).join(' | ') || 'Experience';
+	      var keywords = Array.isArray(item.matchedKeywords) && item.matchedKeywords.length ? ' Keywords: ' + item.matchedKeywords.join(', ') + '.' : '';
+	      var flags = Array.isArray(item.qualityIssues) && item.qualityIssues.length ? ' Flags: ' + item.qualityIssues.join(', ') + '.' : '';
+	      return label + ' #' + (Number(item.bulletIndex || 0) + 1) + ' [' + (item.decision || 'KEEP') + '] ' + (item.justification || '') + keywords + flags;
+	    }).join('\n'));
+	  }
+	  changeSection.appendChild(mk('pre', '', summaryLines.length ? summaryLines.join('\n\n') : 'No experience bullets were changed for this tailored resume.'));
   stack.appendChild(changeSection);
 
   var draftSection = mk('section', 'section');
@@ -2216,7 +2234,7 @@ function exportExcel() {
   });
   sheets.push({ name: 'Q&A', rows: chatRows });
 
-  var resumeRows = [['Session', 'Created At', 'Name', 'Email', 'Phone', 'Website', 'Company', 'Job Title', 'Modified Bullets', 'Modified Roles', 'Per-Role Changes', 'Base Skills', 'Skills Included', 'Skills Added']];
+  var resumeRows = [['Session', 'Created At', 'Name', 'Email', 'Phone', 'Website', 'Company', 'Job Title', 'Resume Format', 'Modified Bullets', 'Modified Roles', 'Per-Role Changes', 'Base Skills', 'Skills Included', 'Skills Added', 'Quality Flags', 'Bullet Comments']];
   buildResumeEntries().forEach(function(entry) {
     var modifications = entry.artifact.modifications || {};
     resumeRows.push([
@@ -2226,15 +2244,20 @@ function exportExcel() {
       entry.owner.email || '',
       entry.owner.phone || '',
       entry.owner.website || '',
-      entry.session.job && entry.session.job.companyName || '',
-      entry.session.job && entry.session.job.jobTitle || '',
-      modifications.modifiedBulletCount || 0,
+	      entry.session.job && entry.session.job.companyName || '',
+	      entry.session.job && entry.session.job.jobTitle || '',
+	      entry.artifact.resumeFormatLabel || entry.artifact.resumeFormat || '',
+	      modifications.modifiedBulletCount || 0,
       Array.isArray(modifications.modifiedExperienceTitles) ? modifications.modifiedExperienceTitles.join(', ') : '',
       Array.isArray(modifications.experienceChanges) ? modifications.experienceChanges.map(function(item) { return (item.role || item.company || 'Experience') + ': ' + (item.changedBulletCount || 0); }).join(' | ') : '',
-      modifications.baseSkillsCount || 0,
-      modifications.finalSkillsCount || modifications.skillsCount || 0,
-      Array.isArray(modifications.addedSkills) ? modifications.addedSkills.join(', ') : ''
-    ]);
+	      modifications.baseSkillsCount || 0,
+	      modifications.finalSkillsCount || modifications.skillsCount || 0,
+	      Array.isArray(modifications.addedSkills) ? modifications.addedSkills.join(', ') : '',
+	      modifications.qualityIssueCount || 0,
+	      Array.isArray(modifications.bulletComments) ? modifications.bulletComments.map(function(item) {
+	        return [item.company || '', '#' + (Number(item.bulletIndex || 0) + 1), item.decision || '', item.justification || ''].filter(Boolean).join(' ');
+	      }).join(' | ') : ''
+	    ]);
   });
   sheets.push({ name: 'Resume', rows: resumeRows });
 
@@ -2301,12 +2324,14 @@ function startDashboardAutoRefresh() {
 
 function loadSettingsSurface() {
   chrome.runtime.sendMessage({ type: 'GET_PRIVATE_SETTINGS' }, function(response) {
-    var settings = response && response.settings || {};
-    document.getElementById('openrouter-key').value = settings.openrouterKey || '';
-    document.getElementById('groq-key').value = settings.groqKey || '';
-    document.getElementById('tavily-key').value = settings.tavilyKey || '';
-    document.getElementById('default-type').value = settings.coverLetterType || 'formal';
-    document.getElementById('trigger-mode').value = settings.triggerMode || 'manual';
+	    var settings = response && response.settings || {};
+	    document.getElementById('openrouter-key').value = settings.openrouterKey || '';
+	    document.getElementById('openai-key').value = settings.openaiKey || '';
+	    document.getElementById('groq-key').value = settings.groqKey || '';
+	    document.getElementById('tavily-key').value = settings.tavilyKey || '';
+	    document.getElementById('default-type').value = settings.coverLetterType || 'formal';
+	    document.getElementById('resume-format').value = settings.resumeFormat || 'auto';
+	    document.getElementById('trigger-mode').value = settings.triggerMode || 'manual';
     document.getElementById('cloud-sync-enabled').checked = !!settings.cloudSyncEnabled;
     currentModelHealth = response && response.modelHealth || {};
     currentModelUsageLog = Array.isArray(response && response.modelUsageLog) ? response.modelUsageLog : currentModelUsageLog;
@@ -2388,6 +2413,38 @@ async function testGroq() {
   }
 }
 
+async function testOpenAI() {
+  var key = document.getElementById('openai-key').value.trim();
+  if (!key) {
+    setStatus('openai-status', 'error', 'Enter an OpenAI key first.');
+    return;
+  }
+  var testedModel = selectedOpenAITestModel();
+  setStatus('openai-status', 'loading', 'Testing OpenAI...');
+  try {
+    var body = {
+      model: testedModel,
+      input: 'Reply with exactly OK',
+      max_output_tokens: 10
+    };
+    if (/^gpt-5/i.test(testedModel)) body.reasoning = { effort: 'low' };
+    var response = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + key,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+    var data = await response.json();
+    recordModelHealth('openai/' + testedModel, 'openai', testedModel, response, data, 10);
+    if (response.ok && (data.output_text || data.output)) setStatus('openai-status', 'ok', 'OpenAI is working for ' + testedModel + '.');
+    else throw new Error((data.error && data.error.message) || 'Unexpected response.');
+  } catch (err) {
+    setStatus('openai-status', 'error', err.message);
+  }
+}
+
 async function testTavily() {
   var key = document.getElementById('tavily-key').value.trim();
   if (!key) {
@@ -2412,16 +2469,18 @@ async function testTavily() {
 }
 
 function saveRuntimeSettings() {
-  var providerKeys = {
-    openrouterKey: document.getElementById('openrouter-key').value.trim(),
-    groqKey: document.getElementById('groq-key').value.trim(),
-    tavilyKey: document.getElementById('tavily-key').value.trim()
-  };
+	  var providerKeys = {
+	    openrouterKey: document.getElementById('openrouter-key').value.trim(),
+	    openaiKey: document.getElementById('openai-key').value.trim(),
+	    groqKey: document.getElementById('groq-key').value.trim(),
+	    tavilyKey: document.getElementById('tavily-key').value.trim()
+	  };
   var runtimeSettings = {
     model: document.getElementById('model-select').value === 'custom' ? 'custom' : document.getElementById('model-select').value,
-    customModel: document.getElementById('custom-model-input').value.trim(),
-    coverLetterType: document.getElementById('default-type').value,
-    triggerMode: document.getElementById('trigger-mode').value,
+	    customModel: document.getElementById('custom-model-input').value.trim(),
+	    coverLetterType: document.getElementById('default-type').value,
+	    resumeFormat: document.getElementById('resume-format').value,
+	    triggerMode: document.getElementById('trigger-mode').value,
     cloudSyncEnabled: document.getElementById('cloud-sync-enabled').checked
   };
 
@@ -2430,7 +2489,7 @@ function saveRuntimeSettings() {
       setStatus('save-status', 'error', chrome.runtime.lastError.message || 'Could not save provider keys.');
       return;
     }
-    chrome.storage.sync.remove(['openrouterKey', 'groqKey', 'tavilyKey'], function() {
+	    chrome.storage.sync.remove(['openrouterKey', 'openaiKey', 'groqKey', 'tavilyKey'], function() {
       if (chrome.runtime.lastError) {
         setStatus('save-status', 'error', chrome.runtime.lastError.message || 'Could not remove legacy synced keys.');
         return;
@@ -2523,8 +2582,9 @@ function initDashboardPage() {
       renderDashboard();
     });
   });
-  bindById('test-openrouter-btn', 'click', testOpenRouter);
-  bindById('test-groq-btn', 'click', testGroq);
+	  bindById('test-openrouter-btn', 'click', testOpenRouter);
+	  bindById('test-openai-btn', 'click', testOpenAI);
+	  bindById('test-groq-btn', 'click', testGroq);
   bindById('test-tavily-btn', 'click', testTavily);
   bindById('save-btn', 'click', saveRuntimeSettings);
   bindById('refresh-model-health-btn', 'click', loadSettingsSurface);
