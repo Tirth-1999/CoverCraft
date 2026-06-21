@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.13 - 2026-06-21
+
+### Resume Automation
+
+- Aligned generated resume layout with the uploaded one-page resume family: Summary, Work Experience, Projects, Education, then Technical Skills & Certifications.
+- Switched generated LaTeX resume styling toward the compact sans-serif reference format with role/date work headers and education dates/locations right-aligned.
+- Added role-aware project limits, categorized skills output, stricter bullet word budgets, and safer metric wording such as "under 15%" instead of fragile LaTeX comparison symbols.
+
 ## 3.0.12 - 2026-06-21
 
 ### Resume Automation

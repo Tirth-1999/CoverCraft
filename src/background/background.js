@@ -3214,9 +3214,9 @@ function rankResumeExperienceCandidates(experiences, rankProfile, limit) {
           sourceText: bullet.text,
           sourceIndex: bullet.index,
           sourceWordCount: Core.wordCount(bullet.text),
-          targetWordCount: Core.wordCount(bullet.text),
+          targetWordCount: Math.min(30, Math.max(20, Core.wordCount(bullet.text))),
           minWordCount: Math.max(10, Core.wordCount(bullet.text) - 5),
-          maxWordCount: experience.bulletBudgets && experience.bulletBudgets[bullet.index] || 34,
+          maxWordCount: Math.min(32, Math.max(20, experience.bulletBudgets && experience.bulletBudgets[bullet.index] || 30)),
           score: bullet.score,
           matchedKeywords: (bullet.matchedTerms || []).map(function(match) { return match.term; }).slice(0, 6),
           hasImpact: bullet.hasImpact
@@ -3424,9 +3424,12 @@ function buildResumeSource(portfolioBundle, session, formatProfile) {
     skills: normalizeResumeSkillString(chooseResumeSkills(skillsList, keywords, 20, 260).join(', '), 50),
     keywords: keywords,
     rankProfile: rankProfile,
+    skillCategoryLabels: Array.isArray(formatProfile && formatProfile.skillCategoryLabels)
+      ? formatProfile.skillCategoryLabels
+      : ['Analytics', 'AI/Data', 'Tools'],
     selectionPolicy: {
       maxExperiences: 4,
-      maxProjects: 3,
+      maxProjects: Math.max(2, Math.min(4, Number(formatProfile && formatProfile.maxProjects) || 3)),
       leadershipIncluded: false
     }
 	  };
@@ -3455,30 +3458,40 @@ function resumeFormatProfile(format) {
     data_ai: {
       label: 'Data AI/ML Engineer',
       summaryIdentity: 'AI/Data Engineer',
+      maxProjects: 4,
+      skillCategoryLabels: ['DE', 'ML/AI', 'Cloud'],
       projectHints: ['Trade Surveillance Platform', 'AI Regulatory Document Classifier', 'Inventory Management', 'Market Basket', 'Forecasting Dashboards'],
       summaryFocus: ['Python', 'SQL', 'data pipelines', 'forecasting', 'LLM applications', 'production analytics']
     },
     ai_pm: {
       label: 'AI Product Manager',
       summaryIdentity: 'AI Product Manager',
+      maxProjects: 2,
+      skillCategoryLabels: ['Product and BA', 'Analytics', 'Tools'],
       projectHints: ['Black Tie', '5G Network Intelligence', 'CoverCraft', 'Mays AI Analytics Assistant'],
       summaryFocus: ['roadmaps', 'requirements', 'AI workflows', 'stakeholder alignment', '0-to-1 launches']
     },
     ba_pm: {
       label: 'Technical Business Analyst',
       summaryIdentity: 'Technical Business Analyst',
+      maxProjects: 2,
+      skillCategoryLabels: ['Product and BA', 'Analytics', 'Tools'],
       projectHints: ['Mays Admissions', 'Black Tie', 'CoverCraft', 'BI Dashboards'],
       summaryFocus: ['requirements', 'KPI analysis', 'SQL', 'process automation', 'stakeholder reporting']
     },
     full_stack_ai: {
       label: 'AI Full-Stack Engineer',
       summaryIdentity: 'AI Full-Stack Engineer',
+      maxProjects: 3,
+      skillCategoryLabels: ['Full-Stack', 'AI/ML', 'Cloud'],
       projectHints: ['Black Tie', 'CoverCraft', 'Trade Surveillance Platform', 'Landmark Lens'],
       summaryFocus: ['Next.js', 'TypeScript', 'FastAPI', 'LLM APIs', 'full-stack delivery']
     },
     balanced: {
       label: 'Balanced Technical Resume',
       summaryIdentity: 'Technical AI/Data Professional',
+      maxProjects: 3,
+      skillCategoryLabels: ['Analytics', 'AI/Data', 'Tools'],
       projectHints: ['Mays AI Analytics Assistant', 'Trade Surveillance Platform', 'Black Tie', 'CoverCraft'],
       summaryFocus: ['analytics platforms', 'AI workflows', 'SQL', 'Python', 'stakeholder execution']
     }
@@ -3494,6 +3507,9 @@ function normalizeResumeOutputText(text) {
     .replace(/[“”]/g, '"')
     .replace(/[‘’]/g, "'")
     .replace(/[–—−]/g, '-')
+    .replace(/<\s*(\d)/g, 'under $1')
+    .replace(/>\s*(\d)/g, 'over $1')
+    .replace(/~\s*(\d)/g, 'approximately $1')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -3589,9 +3605,21 @@ function buildResumeDraftSchema() {
       skills: {
         type: 'object',
         additionalProperties: false,
-        required: ['skillsText', 'certifications', 'matchedKeywords', 'whyTheseSkills'],
+        required: ['skillsText', 'categoryLines', 'certifications', 'matchedKeywords', 'whyTheseSkills'],
         properties: {
           skillsText: { type: 'string' },
+          categoryLines: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['label', 'skills'],
+              properties: {
+                label: { type: 'string' },
+                skills: { type: 'array', items: { type: 'string' } }
+              }
+            }
+          },
           certifications: { type: 'array', items: { type: 'string' } },
           matchedKeywords: { type: 'array', items: { type: 'string' } },
           whyTheseSkills: { type: 'string' }
@@ -3658,14 +3686,17 @@ function buildResumeSystemPrompt(formatProfile) {
     'Optimize for ATS keyword match, truthful evidence-backed relevance, one-page density, FAANG-style bullet quality, and clean LaTeX rendering.',
     'Do not invent employers, titles, dates, locations, tools, metrics, certifications, projects, links, domains, or outcomes.',
     'Never use em dashes or en dashes. Use commas, semicolons, parentheses, ASCII hyphens, or plain words.',
-    'Normalize symbols into ATS-safe text: use <, >, <=, >=, ~, %, $, and ASCII hyphen.',
+    'Avoid fragile math symbols in final resume wording. Write "under 15%", "over 90%", "approximately 90%", and "3x" instead of <15%, >90%, ~90%, or special symbols.',
     'Do not include Leadership & Achievements. The one-page resume must end after Technical Skills & Certifications.',
+    'Follow this exact resume order: SUMMARY, WORK EXPERIENCE, PROJECTS, EDUCATION, TECHNICAL SKILLS & CERTIFICATIONS.',
+    'Match the uploaded ideal resume family: compact sans-serif style, bold uppercase section headings, horizontal rule under each heading, single-row experience headers with company | role on the left and dates on the right, education near the bottom, and categorized skills.',
     '',
     'First analyze the job description. Identify exact target job title, role family, top ATS keywords, required tools, domain keywords, business outcome keywords, seniority expectation, must-have skills, and nice-to-have skills.',
     '',
     'SUMMARY RULES:',
-    'Write a 2-line maximum summary. The first phrase must align with the target job title or closest truthful identity. Preferred identity for this selected format: ' + formatProfile.summaryIdentity + '.',
-    'Use 4-6 relevant strengths grounded in evidence. No generic phrases, unsupported seniority claims, passion language, or self-rating.',
+    'Write exactly 1 compact paragraph, maximum 2 rendered lines and 35-48 words.',
+    'The first phrase must align with the target job title or closest truthful identity. Preferred identity for this selected format: ' + formatProfile.summaryIdentity + '.',
+    'Use 4-6 relevant strengths grounded in evidence. Include role/domain keywords naturally. No generic phrases, unsupported seniority claims, passion language, or self-rating.',
     '',
     'EDUCATION RULES:',
     'Education is fixed outside your output. Do not rewrite education. The renderer will keep institution left, location right, degree/GPA left, and date right.',
@@ -3673,24 +3704,27 @@ function buildResumeSystemPrompt(formatProfile) {
     'WORK EXPERIENCE RULES:',
     'Rank all provided experience candidates. Select only the top 4 experiences for this job unless fewer candidates are available.',
     'Selection must be based on direct keyword overlap, domain overlap, tool overlap, metric strength, and business relevance.',
-    'For each selected experience, preserve source company, location, role, and duration. If your returned metadata differs, it must still be a truthful source value.',
-    'Write 2-3 bullets per selected experience. Prefer 3 bullets for the highest-relevance roles and 2 bullets for lower-relevance roles.',
+    'For each selected experience, preserve source company, role, and duration. Location may be returned for comments but the visual resume will not print work locations.',
+    'Write 2-4 bullets per selected experience. Use 4 bullets only for highly relevant technical/data roles, 3 bullets for strong matches, and 2 bullets for lower-relevance or internship roles.',
     'Every bullet must follow the X-Y-Z rule: accomplished X, measured by Y, by doing Z.',
     'Every bullet must start with a strong action verb, include method/tool/domain context, and include measurable impact when grounded.',
     'Use job keywords only when source evidence supports them. Do not copy job-description language mechanically.',
     'Rewrite for relevance and density. Do not copy old bullets blindly. Do not weaken strong source bullets.',
-    'Keep each bullet one sentence. Avoid weak openings: worked on, helped, assisted, responsible for, involved in, participated in, used, did, made.',
+    'Keep each bullet one sentence and 20-32 words. If a bullet needs more than 32 words, split the idea across another selected bullet or remove lower-value detail.',
+    'Avoid weak openings: worked on, helped, assisted, responsible for, involved in, participated in, used, did, made.',
     'Do not repeat the same opening action verb more than twice.',
     '',
     'PROJECT RULES:',
-    'Rank all project candidates. Select top 2-3 projects only.',
+    'Rank all project candidates. Select top 2-4 projects only, based on the selected format and job keyword gaps.',
     'Use projects to cover job keyword gaps not already covered by experience. Preserve project titles and real links.',
-    'Each project description must be one compact sentence within the provided word budget.',
+    'Each project description must be one compact sentence, 18-30 words when possible, within the provided word budget.',
     '',
     'SKILLS & CERTIFICATIONS RULES:',
     'This section is for ATS keyword matching. Select skills only from the source inventory.',
-    'Prioritize exact job-description tools and adjacent truthful tools. Keep the skills line dense and role-specific.',
-    'Keep certifications only if relevant or space allows. Do not invent certifications.',
+    'Prioritize exact job-description tools and adjacent truthful tools. Keep skill lines dense and role-specific.',
+    'Return categoryLines with 3-4 compact categories. Use labels that fit the role, such as DE, ML/AI, Cloud, Tools, Product and BA, Analytics, or Full-Stack.',
+    'Each category line should contain 8-14 comma-separated skills selected from the source inventory only.',
+    'Keep certifications only if relevant or space allows. Do not invent certifications. Prefer credential names with codes when source inventory provides them.',
     '',
     'COMMENTS RULES:',
     'Explain why each selected experience/project was selected and why each omitted experience/project was omitted.',
@@ -3706,7 +3740,7 @@ function buildResumeUserPrompt(session, resumeSource, formatProfile) {
     'Selected resume format: ' + formatProfile.label + '.',
     'Summary focus terms, only when truthful: ' + formatProfile.summaryFocus.join(', ') + '.',
     'Project selection hints for this profile: ' + formatProfile.projectHints.join(' | ') + '.',
-    'Select exactly the strongest 4 experiences when possible. Select 2-3 projects. Do not include leadership.',
+    'Select exactly the strongest 4 experiences when possible. Select up to ' + (Math.max(2, Math.min(4, Number(formatProfile.maxProjects) || 3))) + ' projects for this format. Do not include leadership.',
     'Respect every source word budget. Do not let a bullet exceed maxWordCount. Do not let a project exceed wordBudget.',
     'Use source bullets as evidence, not as mandatory final wording. Rewrite when relevance improves, but preserve metrics/tools/scope.',
     'If a candidate is not selected, list it under omitted with a clear reason.',
@@ -3760,6 +3794,7 @@ function buildResumeUserPrompt(session, resumeSource, formatProfile) {
         };
       }),
 	      skillsInventory: resumeSource.skillsList,
+      skillCategoryLabels: resumeSource.skillCategoryLabels,
       certificationsInventory: resumeSource.certifications,
 	      targetKeywords: resumeSource.keywords,
 	      roleFamily: formatProfile.label
@@ -3819,6 +3854,84 @@ function chooseResumeSkills(skillsList, keywords, maxCount, maxChars) {
   }
 
   return selected;
+}
+
+function resumeSkillCategoryLabel(skill, preferredLabels) {
+  var value = String(skill || '').toLowerCase();
+  var labels = preferredLabels || [];
+  if (/\b(requirements?|stakeholder|user stor|acceptance|uml|process|moscow|raci|roadmap|backlog|uat|agile|scrum|gap|kpi|product|analysis)\b/.test(value)) {
+    return labels.indexOf('Product and BA') !== -1 ? 'Product and BA' : 'Analytics';
+  }
+  if (/\b(python|sql|spark|airflow|dbt|snowflake|postgres|mysql|server|warehouse|etl|pipeline|schema|modeling|bash)\b/.test(value)) {
+    return labels.indexOf('DE') !== -1 ? 'DE' : 'Analytics';
+  }
+  if (/\b(scikit|prophet|arima|regression|classification|feature|hypothesis|nlp|llm|gemini|chromadb|machine|forecast)\b/.test(value)) {
+    return labels.indexOf('ML/AI') !== -1 ? 'ML/AI' : (labels.indexOf('AI/ML') !== -1 ? 'AI/ML' : 'AI/Data');
+  }
+  if (/\b(aws|gcp|azure|docker|kubernetes|github actions|fastapi|streamlit|power bi|tableau|excel|jira|confluence|next\.js|typescript|react|supabase|vercel)\b/.test(value)) {
+    if (labels.indexOf('Cloud') !== -1) return 'Cloud';
+    if (labels.indexOf('Tools') !== -1) return 'Tools';
+    if (labels.indexOf('Full-Stack') !== -1) return 'Full-Stack';
+  }
+  return labels[0] || 'Skills';
+}
+
+function buildResumeSkillCategories(selectedSkills, preferredLabels) {
+  var labels = (preferredLabels && preferredLabels.length ? preferredLabels : ['Analytics', 'AI/Data', 'Tools']).slice(0, 4);
+  var buckets = {};
+  labels.forEach(function(label) {
+    buckets[label] = [];
+  });
+  dedupeStrings(selectedSkills || []).forEach(function(skill) {
+    var label = resumeSkillCategoryLabel(skill, labels);
+    if (!buckets[label]) buckets[label] = [];
+    if (buckets[label].length < 14) buckets[label].push(skill);
+  });
+  var overflow = [];
+  Object.keys(buckets).forEach(function(label) {
+    if (labels.indexOf(label) === -1) overflow = overflow.concat(buckets[label]);
+  });
+  overflow.forEach(function(skill) {
+    var target = labels.slice().sort(function(a, b) {
+      return (buckets[a] || []).length - (buckets[b] || []).length;
+    }).pop();
+    if (target && buckets[target].length < 14) buckets[target].push(skill);
+  });
+  return labels.map(function(label) {
+    return {
+      label: label,
+      skills: buckets[label] || []
+    };
+  }).filter(function(line) {
+    return line.skills.length;
+  });
+}
+
+function normalizeDraftSkillCategories(categoryLines, allowedSkills, preferredLabels, fallbackSkills) {
+  var used = {};
+  var normalized = [];
+  if (Array.isArray(categoryLines)) {
+    categoryLines.forEach(function(line) {
+      line = line || {};
+      var label = normalizeResumeOutputText(line.label || '');
+      var skills = Array.isArray(line.skills) ? line.skills : String(line.skills || '').split(/[,\n]/);
+      var selected = [];
+      skills.forEach(function(skill) {
+        var key = String(skill || '').trim().toLowerCase();
+        if (!key || !allowedSkills[key] || used[key]) return;
+        used[key] = true;
+        selected.push(allowedSkills[key]);
+      });
+      if (label && selected.length) {
+        normalized.push({
+          label: label,
+          skills: selected.slice(0, 14)
+        });
+      }
+    });
+  }
+  if (normalized.length) return normalized.slice(0, 4);
+  return buildResumeSkillCategories(fallbackSkills, preferredLabels);
 }
 
 function enforceResumeVerbDiversity(items, originals) {
@@ -4022,7 +4135,7 @@ function coerceResumeDraft(aiDraft, resumeSource) {
       ? sourceExperience.rankedBullets.map(function(item) { return item.maxWordCount; })
       : sourceExperience.bulletBudgets || []);
     var bullets = Array.isArray(matched.bullets) ? matched.bullets.map(draftBulletText).filter(Boolean) : [];
-    var targetCount = Math.max(2, Math.min(3, bullets.length || sourceBullets.length || 2));
+    var targetCount = Math.max(2, Math.min(4, bullets.length || sourceBullets.length || 2));
     while (bullets.length < targetCount && sourceBullets[bullets.length]) bullets.push(sourceBullets[bullets.length]);
     bullets = bullets.slice(0, targetCount).map(function(bullet, index) {
       var sourceBullet = normalizeResumeOutputText(sourceBullets[index] || sourceBullets[0] || '');
@@ -4031,6 +4144,7 @@ function coerceResumeDraft(aiDraft, resumeSource) {
       if (sourceBullet && shouldPreserveResumeSourceText(sourceBullet, clipped, resumeSource.keywords)) {
         clipped = sourceBullet;
       }
+      clipped = clipWords(normalizeResumeOutputText(clipped), budget);
       var explicitComment = commentFor(sourceExperience.company, index);
       var changed = normalizeResumeComparisonText(sourceBullet) !== normalizeResumeComparisonText(clipped);
       comments.push({
@@ -4110,6 +4224,12 @@ function coerceResumeDraft(aiDraft, resumeSource) {
   if (!selectedSkills.length) {
     selectedSkills = chooseResumeSkills(resumeSource.skillsList, resumeSource.keywords, 20, 260);
   }
+  var skillCategories = normalizeDraftSkillCategories(
+    draftSkills.categoryLines,
+    allowedSkills,
+    resumeSource.skillCategoryLabels,
+    selectedSkills
+  );
 
   var summaryDraft = draft.summary && typeof draft.summary === 'object' ? draft.summary.text : draft.summary;
   var summary = normalizeResumeOutputText(summaryDraft || resumeSource.summary || '');
@@ -4138,6 +4258,7 @@ function coerceResumeDraft(aiDraft, resumeSource) {
     experiences: normalizedExperiences,
     projects: normalizedProjects,
     certifications: selectedCertifications.slice(0, 4),
+    skillCategories: skillCategories,
     skills: normalizeResumeSkillString(selectedSkills.slice(0, 20).join(', '), 50),
     comments: comments,
     jobAnalysis: draft.jobAnalysis || {},
@@ -4210,12 +4331,6 @@ function buildResumePreviewText(resumeData) {
     lines.push(normalizeResumeOutputText(resumeData.summary));
   }
   lines.push('');
-  lines.push('EDUCATION');
-  (resumeData.education || []).forEach(function(entry) {
-    var line = [entry.institution, entry.degree, entry.duration].filter(Boolean).join(' | ');
-    lines.push(line);
-  });
-  lines.push('');
   lines.push('WORK EXPERIENCE');
   (resumeData.experiences || []).forEach(function(entry) {
     lines.push([entry.company, entry.role, entry.duration].filter(Boolean).join(' | '));
@@ -4229,14 +4344,22 @@ function buildResumePreviewText(resumeData) {
     lines.push(project.title + ': ' + normalizeResumeOutputText(project.description));
   });
   lines.push('');
-  lines.push('TECHNICAL SKILLS');
-  lines.push(resumeData.skills || '');
-  if ((resumeData.certifications || []).length) {
-    lines.push('');
-    lines.push('CERTIFICATIONS');
-    (resumeData.certifications || []).forEach(function(item) {
-      lines.push('- ' + item);
+  lines.push('EDUCATION');
+  (resumeData.education || []).forEach(function(entry) {
+    var line = [entry.institution, entry.degree, entry.duration].filter(Boolean).join(' | ');
+    lines.push(line);
+  });
+  lines.push('');
+  lines.push('TECHNICAL SKILLS & CERTIFICATIONS');
+  if (Array.isArray(resumeData.skillCategories) && resumeData.skillCategories.length) {
+    resumeData.skillCategories.forEach(function(line) {
+      lines.push(line.label + ': ' + (line.skills || []).join(', '));
     });
+  } else {
+    lines.push(resumeData.skills || '');
+  }
+  if ((resumeData.certifications || []).length) {
+    lines.push('Certifications: ' + (resumeData.certifications || []).join(', '));
   }
   return lines.join('\n').trim();
 }
@@ -4249,16 +4372,15 @@ function buildResumeLatexSource(resumeData) {
     }).join('\n');
     return [
       entryIndex ? '    \\entrygap' : '',
-      '    \\resumeSubheading',
-      '      {' + escapeLatexText(entry.company || '') + '}{' + escapeLatexText(entry.location || '') + '}',
-      '      {' + escapeLatexText(entry.role || '') + '}{' + escapeLatexText(entry.duration || '') + '}',
+      '    \\resumeExperienceHeading',
+      '      {' + escapeLatexText(entry.company || '') + '}{' + escapeLatexText(entry.role || '') + '}{' + escapeLatexText(entry.duration || '') + '}',
       '      \\resumeItemListStart',
       bullets,
       '      \\resumeItemListEnd'
     ].filter(Boolean).join('\n');
   }).join('\n\n');
 
-  var projectBlock = (resumeData.projects || []).slice(0, 3).map(function(project) {
+  var projectBlock = (resumeData.projects || []).slice(0, 4).map(function(project) {
     return '    \\resumeProjectInline{' + latexProjectTitle(project) + '}{' + escapeLatexText(project.description || '') + '}';
   }).join('\n');
 
@@ -4278,21 +4400,26 @@ function buildResumeLatexSource(resumeData) {
 
   var educationBlock = (resumeData.education || []).slice(0, 2).map(function(entry, index) {
     var degree = escapeLatexText(String(entry.degree || '').trim());
-    if (entry.gpa) degree += (degree ? '\\enspace--\\enspace' : '') + '\\textbf{GPA: ' + escapeLatexText(entry.gpa) + '}';
     return [
       index ? '    \\eduentrygap' : '',
-      '    \\resumeSubheading',
-      '      {' + escapeLatexText(entry.institution || '') + '}{' + escapeLatexText(entry.location || '') + '}',
-      '      {' + degree + '}{' + escapeLatexText(entry.duration || '') + '}'
+      '    \\resumeEducationHeading',
+      '      {' + escapeLatexText(entry.institution || '') + '}{' + escapeLatexText(entry.duration || '') + '}',
+      '      {' + degree + '}{' + escapeLatexText(entry.location || '') + '}'
     ].filter(Boolean).join('\n');
   }).join('\n');
 
   var certificationText = (resumeData.certifications || []).map(escapeLatexText).join(' $|$ ');
+  var skillsLines = (Array.isArray(resumeData.skillCategories) && resumeData.skillCategories.length
+    ? resumeData.skillCategories
+    : buildResumeSkillCategories(String(resumeData.skills || '').split(/[,\n]/), ['Skills'])
+  ).map(function(line) {
+    return '  \\textbf{' + escapeLatexText(line.label || 'Skills') + '}: ' + escapeLatexText((line.skills || []).join(', ')) + '\\\\[1pt]%';
+  }).join('\n');
 
   return [
     '%-------------------------',
     '% Resume in LaTeX - ' + String(owner.name || 'Candidate'),
-    '% One-page | targeted resume | Times New Roman | flush left',
+    '% One-page | targeted resume | compact sans-serif | flush left',
     '% Compatible with Overleaf (pdflatex)',
     '%-------------------------',
     '',
@@ -4309,7 +4436,8 @@ function buildResumeLatexSource(resumeData) {
     '\\usepackage{fancyhdr}',
     '\\usepackage[english]{babel}',
     '\\usepackage{tabularx}',
-    '\\usepackage{mathptmx}',
+    '\\usepackage[scaled]{helvet}',
+    '\\renewcommand{\\familydefault}{\\sfdefault}',
     '\\IfFileExists{glyphtounicode.tex}{\\input{glyphtounicode}}{}',
     '',
     '%----------PAGE SETUP----------',
@@ -4333,13 +4461,13 @@ function buildResumeLatexSource(resumeData) {
     '\\setlength{\\parskip}{0pt}',
     '\\setlength{\\parindent}{0pt}',
     '\\pdfgentounicode=1',
-    '\\linespread{0.92}',
+    '\\linespread{0.96}',
     '',
     '%----------SECTION FORMATTING----------',
     '\\titleformat{\\section}{',
-    '  \\scshape\\raggedright\\large',
+    '  \\bfseries\\raggedright\\normalsize',
     '}{}{0em}{}[\\color{black}\\titlerule]',
-    '\\titlespacing*{\\section}{0pt}{0pt}{3pt}',
+    '\\titlespacing*{\\section}{0pt}{2pt}{4pt}',
     '',
     '%----------CUSTOM COMMANDS----------',
     '\\newcommand{\\resumeItem}[1]{%',
@@ -4349,11 +4477,18 @@ function buildResumeLatexSource(resumeData) {
     '\\newcommand{\\entrygap}{\\vspace{1.5pt}}',
     '\\newcommand{\\eduentrygap}{\\vspace{0.5pt}}',
     '',
-    '\\newcommand{\\resumeSubheading}[4]{%',
+    '\\newcommand{\\resumeExperienceHeading}[3]{%',
     '  \\item[]%',
     '    \\begin{tabular*}{\\linewidth}{@{}l@{\\extracolsep{\\fill}}r@{}}%',
-    '      \\textbf{#1} & \\normalsize #2 \\\\[0pt]%',
-    '      \\normalsize\\textit{#3} & \\normalsize\\textit{#4} \\\\[0pt]%',
+    '      \\textbf{#1} $|$ \\textit{#2} & \\textbf{#3} \\\\[0pt]%',
+    '    \\end{tabular*}%',
+    '}',
+    '',
+    '\\newcommand{\\resumeEducationHeading}[4]{%',
+    '  \\item[]%',
+    '    \\begin{tabular*}{\\linewidth}{@{}l@{\\extracolsep{\\fill}}r@{}}%',
+    '      \\textbf{#1} & \\textbf{#2} \\\\[0pt]%',
+    '      #3 & #4 \\\\[0pt]%',
     '    \\end{tabular*}%',
     '}',
     '',
@@ -4370,13 +4505,13 @@ function buildResumeLatexSource(resumeData) {
     '',
     '\\newcommand{\\resumeItemListStart}{%',
     '  \\begin{itemize}[',
-    '    leftmargin=14pt,',
+    '    leftmargin=13pt,',
     '    labelwidth=8pt,',
     '    labelsep=4pt,',
     '    itemindent=0pt,',
     '    listparindent=0pt,',
     '    label=\\textbullet,',
-    '    topsep=1.5pt,',
+    '    topsep=0pt,',
     '    itemsep=0pt,',
     '    parsep=0pt',
     '  ]%',
@@ -4388,48 +4523,48 @@ function buildResumeLatexSource(resumeData) {
     '}',
     '\\newcommand{\\resumeProjectListEnd}{\\end{itemize}}',
     '',
-    '\\newcommand{\\sectiongap}{\\vspace{1.5pt}}',
+    '\\newcommand{\\sectiongap}{\\vspace{1pt}}',
     '',
     '%==========BEGIN DOCUMENT==========',
     '\\begin{document}',
     '',
     '%----------HEADER----------',
     '\\begin{center}',
-    '    {\\Huge\\scshape ' + escapeLatexText(owner.name || 'Candidate') + '}\\\\[0pt]',
+    '    {\\LARGE\\textbf{' + escapeLatexText(owner.name || 'Candidate') + '}}\\\\[2pt]',
     contactBlock,
 	    '\\end{center}',
 	    '\\vspace{-6pt}',
 	    '',
 	    '%-----------SUMMARY-----------',
+    '\\section{SUMMARY}',
 	    summaryText ? '\\noindent\\normalsize{' + summaryText + '}' : '% No summary available',
-	    '\\vspace{2pt}',
 	    '',
-	    '%-----------EDUCATION-----------',
-    '\\section{Education}',
-    '  \\resumeSubHeadingListStart',
-    educationBlock || '    % No education entries available',
-    '  \\resumeSubHeadingListEnd',
-    '',
-    '%-----------WORK EXPERIENCE-----------',
+	    '%-----------WORK EXPERIENCE-----------',
     '\\sectiongap',
-    '\\section{Work Experience}',
+    '\\section{WORK EXPERIENCE}',
     '  \\resumeSubHeadingListStart',
     experienceBlock || '    % No experience entries available',
     '  \\resumeSubHeadingListEnd',
     '',
     '%-----------PROJECTS-----------',
     '\\sectiongap',
-    '\\section{Projects}',
+    '\\section{PROJECTS}',
     '  \\resumeProjectListStart',
     projectBlock || '    % No projects available',
     '  \\resumeProjectListEnd',
     '',
+	    '%-----------EDUCATION-----------',
+    '\\sectiongap',
+    '\\section{EDUCATION}',
+    '  \\resumeSubHeadingListStart',
+    educationBlock || '    % No education entries available',
+    '  \\resumeSubHeadingListEnd',
+    '',
     '%-----------TECHNICAL SKILLS & CERTIFICATIONS-----------',
     '\\sectiongap',
-    '\\section{Technical Skills \\& Certifications}',
-    '\\vspace{2pt}',
+    '\\section{TECHNICAL SKILLS \\& CERTIFICATIONS}',
     '\\noindent\\normalsize{%',
-    '  \\textbf{Skills}: ' + escapeLatexText(resumeData.skills || '') + '\\\\[2pt]%',
+    skillsLines,
     '  \\textbf{Certifications}: ' + certificationText + '%',
     '}',
     '\\end{document}'
