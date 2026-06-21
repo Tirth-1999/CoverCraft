@@ -116,6 +116,10 @@
             <div id="tavily-status" class="status"></div>
           </div>
         </div>
+        <div class="row" style="margin-top:12px">
+          <button class="btn btn-primary" id="save-api-keys-btn" type="button">Save API Keys</button>
+          <div id="api-keys-status" class="status"></div>
+        </div>
       </section>
 
       <section class="card">
@@ -165,7 +169,7 @@
                 <div class="model-health-title">Model Availability</div>
                 <button class="btn btn-secondary" id="refresh-model-health-btn" type="button">Refresh View</button>
               </div>
-              <div class="model-health-note">Shows last-known provider headers from real requests and API tests. Groq does not expose a live all-model remaining-token endpoint.</div>
+              <div class="model-health-note">Shows the selected model plus the most recent provider statuses. Use API tests or generation to refresh these values.</div>
               <div class="model-health-list" id="model-health-list"></div>
             </div>
           </div>

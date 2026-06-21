@@ -540,9 +540,17 @@ function renderModelHealth() {
   var selected = selectedModel();
   list.innerHTML = '';
   var models = KNOWN_MODELS.filter(function(model) {
-    return /^groq\//.test(model) || model === selected || Core.lookupModelHealth(currentModelHealth, model);
+    return model === selected || Core.lookupModelHealth(currentModelHealth, model);
   });
   if (models.indexOf(selected) === -1) models.unshift(selected);
+  models.sort(function(a, b) {
+    if (a === selected) return -1;
+    if (b === selected) return 1;
+    var aHealth = Core.lookupModelHealth(currentModelHealth, a) || {};
+    var bHealth = Core.lookupModelHealth(currentModelHealth, b) || {};
+    return Number(bHealth.checkedAt || 0) - Number(aHealth.checkedAt || 0);
+  });
+  models = models.slice(0, 5);
   models.forEach(function(model) {
     var health = Core.lookupModelHealth(currentModelHealth, model);
     var availability = Core.modelAvailability(health);
@@ -849,7 +857,10 @@ async function testOpenRouter() {
     });
     var data = await response.json();
     recordModelHealth(testedModel, 'openrouter', testedModel, response, data, 10);
-    if (data.choices && data.choices[0] && data.choices[0].message) setStatus('openrouter-status', 'ok', 'OpenRouter is working for ' + testedModel + '.');
+    if (data.choices && data.choices[0] && data.choices[0].message) {
+      saveApiKeys({ silent: true });
+      setStatus('openrouter-status', 'ok', 'OpenRouter is working for ' + testedModel + '. Key saved locally.');
+    }
     else throw new Error((data.error && data.error.message) || 'Unexpected response.');
   } catch (err) {
     setStatus('openrouter-status', 'error', err.message);
@@ -875,7 +886,10 @@ async function testGroq() {
     });
     var data = await response.json();
     recordModelHealth(isGroqModel(selectedModel()) ? selectedModel() : 'groq/' + testedModel, 'groq', testedModel, response, data, 10);
-    if (data.choices && data.choices[0] && data.choices[0].message) setStatus('groq-status', 'ok', 'Groq is working for ' + testedModel + '.');
+    if (data.choices && data.choices[0] && data.choices[0].message) {
+      saveApiKeys({ silent: true });
+      setStatus('groq-status', 'ok', 'Groq is working for ' + testedModel + '. Key saved locally.');
+    }
     else throw new Error((data.error && data.error.message) || 'Unexpected response.');
   } catch (err) {
     setStatus('groq-status', 'error', err.message);
@@ -906,7 +920,10 @@ async function testOpenAI() {
     });
     var data = await response.json();
     recordModelHealth('openai/' + testedModel, 'openai', testedModel, response, data, 16);
-    if (response.ok && (data.output_text || data.output)) setStatus('openai-status', 'ok', 'OpenAI is working for ' + testedModel + '.');
+    if (response.ok && (data.output_text || data.output)) {
+      saveApiKeys({ silent: true });
+      setStatus('openai-status', 'ok', 'OpenAI is working for ' + testedModel + '. Key saved locally.');
+    }
     else throw new Error((data.error && data.error.message) || 'Unexpected response.');
   } catch (err) {
     setStatus('openai-status', 'error', err.message);
@@ -930,19 +947,47 @@ async function testTavily() {
       var err = await response.json().catch(function() { return {}; });
       throw new Error(err.detail || err.message || ('HTTP ' + response.status));
     }
-    setStatus('tavily-status', 'ok', 'Tavily is working.');
+    saveApiKeys({ silent: true });
+    setStatus('tavily-status', 'ok', 'Tavily is working. Key saved locally.');
   } catch (err) {
     setStatus('tavily-status', 'error', err.message);
   }
 }
 
-function saveRuntimeSettings() {
+function providerKeysFromForm() {
 	  var providerKeys = {
 	    openrouterKey: document.getElementById('openrouter-key').value.trim(),
 	    openaiKey: document.getElementById('openai-key').value.trim(),
 	    groqKey: document.getElementById('groq-key').value.trim(),
 	    tavilyKey: document.getElementById('tavily-key').value.trim()
 	  };
+  return providerKeys;
+}
+
+function saveApiKeys(options) {
+  var opts = options || {};
+  chrome.storage.local.set(providerKeysFromForm(), function() {
+    if (chrome.runtime.lastError) {
+      if (!opts.silent) setStatus('api-keys-status', 'error', chrome.runtime.lastError.message || 'Could not save API keys.');
+      return;
+    }
+    chrome.storage.sync.remove(['openrouterKey', 'openaiKey', 'groqKey', 'tavilyKey'], function() {
+      if (chrome.runtime.lastError) {
+        if (!opts.silent) setStatus('api-keys-status', 'error', chrome.runtime.lastError.message || 'Could not remove legacy synced keys.');
+        return;
+      }
+      chrome.runtime.sendMessage({ type: 'RELOAD_CONFIG' }, function() {
+        if (!opts.silent) {
+          setStatus('api-keys-status', 'ok', 'API keys saved locally.');
+          setTimeout(function() { setStatus('api-keys-status', '', ''); }, 2200);
+        }
+      });
+    });
+  });
+}
+
+function saveRuntimeSettings() {
+  var providerKeys = providerKeysFromForm();
   var runtimeSettings = {
     model: document.getElementById('model-select').value === 'custom' ? 'custom' : document.getElementById('model-select').value,
 	    customModel: document.getElementById('custom-model-input').value.trim(),
@@ -1222,6 +1267,7 @@ document.addEventListener('DOMContentLoaded', function() {
 	  bindById('test-openai-btn', 'click', testOpenAI);
 	  bindById('test-groq-btn', 'click', testGroq);
   bindById('test-tavily-btn', 'click', testTavily);
+  bindById('save-api-keys-btn', 'click', saveApiKeys);
   bindById('save-btn', 'click', saveRuntimeSettings);
   bindById('refresh-model-health-btn', 'click', loadSettings);
   bindById('model-select', 'change', renderModelHealth);

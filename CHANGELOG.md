@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.9 - 2026-06-21
+
+### Settings
+
+- Added a dedicated API-key save action so local ZIP users can persist provider keys without scrolling to runtime defaults.
+- Successful provider tests now save the tested keys into extension-local storage.
+- Limited the model availability panel to a compact five-row snapshot.
+
 ## 3.0.8 - 2026-06-21
 
 ### Providers

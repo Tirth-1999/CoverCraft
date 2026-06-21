@@ -1472,6 +1472,10 @@
             <div class="hint">Required for company research and cache building.</div>
             <div id="tavily-status" class="status"></div>
           </div>
+          <div class="row" style="margin-top:14px">
+            <button class="btn btn-green" id="save-api-keys-btn" type="button">Save API Keys</button>
+            <div id="api-keys-status" class="status"></div>
+          </div>
         </article>
 
         <article class="panel">
@@ -1520,7 +1524,7 @@
                 <div class="model-health-title">Model Availability</div>
                 <button class="btn" id="refresh-model-health-btn" type="button">Refresh View</button>
               </div>
-              <div class="model-health-note">Last-known request headers from generation and API tests. Limited models are marked with retry timing when the provider gives it.</div>
+              <div class="model-health-note">Shows the selected model plus the most recent provider statuses. Use API tests or generation to refresh these values.</div>
               <div class="model-health-list" id="model-health-list"></div>
             </div>
           </div>
