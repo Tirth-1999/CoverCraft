@@ -35,7 +35,7 @@ With CoverCraft, you can:
 - Model availability: provider request headers, rate limits, cooldowns, and token usage are captured from generation and API tests.
 - Dashboard auditability: saved drafts show token usage, ranked evidence, prompt context, cached research, editable letter text, and exportable metrics.
 - Cloud sync hardening: sign-in and sync now report local Chrome storage state, Firestore quota details, background sync progress, and model usage sync.
-- Site polish: mobile navigation, docked header behavior, carousel arrows, responsive product screenshots, and third-party analytics script removal.
+- Site polish: mobile navigation, docked header behavior, carousel arrows, responsive product screenshots, and hosted-site Umami analytics.
 - Firebase cleanup: hosted auth helper pages were removed from the repo; extension sign-in stays on the `chrome.identity` flow.
 
 ## Core Product Flow
@@ -171,7 +171,7 @@ The landing page shows:
 - real product screens
 - reusable dashboard and account surfaces
 
-The site intentionally avoids third-party analytics scripts in the checked-in pages.
+The hosted site uses Umami analytics. The extension runtime pages do not include the hosted-site analytics script.
 
 ## Local Verification
 
