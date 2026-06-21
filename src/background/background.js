@@ -4186,6 +4186,73 @@ function scoreResumeTextAgainstKeywords(text, keywords) {
   return score;
 }
 
+function resumeKeywordCoverage(text, keywords) {
+  var uniqueKeywords = dedupeStrings((keywords || []).map(sanitizeResumeVisibleText)).filter(Boolean).slice(0, 40);
+  var matched = keywordMatchesForText(text || '', uniqueKeywords, uniqueKeywords.length);
+  var matchedMap = {};
+  matched.forEach(function(keyword) {
+    matchedMap[String(keyword || '').toLowerCase()] = true;
+  });
+  var missing = uniqueKeywords.filter(function(keyword) {
+    return !matchedMap[String(keyword || '').toLowerCase()];
+  });
+  return {
+    total: uniqueKeywords.length,
+    matchedCount: matched.length,
+    matchRate: uniqueKeywords.length ? Math.round((matched.length / uniqueKeywords.length) * 1000) / 10 : 0,
+    matched: matched,
+    missing: missing
+  };
+}
+
+function flattenResumeSkillCategories(skillCategories) {
+  return dedupeStrings((skillCategories || []).reduce(function(all, line) {
+    return all.concat(line && line.skills || []);
+  }, []));
+}
+
+function resumeDataCoverageText(resumeData) {
+  resumeData = resumeData || {};
+  return [
+    resumeData.summary || '',
+    (resumeData.experiences || []).map(function(entry) {
+      return [entry.company, entry.role].concat(entry.bullets || []).join(' ');
+    }).join(' '),
+    (resumeData.projects || []).map(function(project) {
+      return [project.title, project.description, (project.technologies || []).join(' ')].join(' ');
+    }).join(' '),
+    (resumeData.education || []).map(function(entry) {
+      return [entry.institution, entry.degree, entry.location].join(' ');
+    }).join(' '),
+    flattenResumeSkillCategories(resumeData.skillCategories).join(' '),
+    resumeData.skills || '',
+    (resumeData.certifications || []).join(' ')
+  ].join(' ');
+}
+
+function sourceCoverageTextForFinalSelection(resumeSource, resumeData) {
+  resumeSource = resumeSource || {};
+  resumeData = resumeData || {};
+  var selectedExperienceText = (resumeData.experiences || []).map(function(entry) {
+    var source = findResumeSourceExperience(resumeSource, entry.company, entry.role, entry.duration) || entry;
+    var bullets = (source.rankedBullets && source.rankedBullets.length
+      ? source.rankedBullets.map(function(item) { return item.sourceText; })
+      : source.bullets || entry.bullets || []);
+    return [source.company, source.role].concat(bullets).join(' ');
+  }).join(' ');
+  var selectedProjectText = (resumeData.projects || []).map(function(project) {
+    var source = findResumeSourceProject(resumeSource, project.title) || project;
+    return [source.title, source.description, (source.technologies || []).join(' ')].join(' ');
+  }).join(' ');
+  return [
+    resumeSource.summary || '',
+    selectedExperienceText,
+    selectedProjectText,
+    resumeSource.skills || '',
+    (resumeSource.certifications || []).join(' ')
+  ].join(' ');
+}
+
 function hasResumeImpactSignal(text) {
   return /(\d|%|\$|hrs?\.?|hours?|days?|months?|years?|x\b|mape|roi|latency|revenue|precision|accuracy)/i.test(String(text || ''));
 }
@@ -4233,7 +4300,7 @@ function shouldPreserveResumeSourceText(sourceText, candidateText, keywords) {
 
 function buildResumeModificationSummary(resumeSource, resumeData) {
   var baseSkills = splitSkillList(resumeSource && resumeSource.skills || '');
-  var finalSkills = splitSkillList(resumeData && resumeData.skills || '');
+  var finalSkills = dedupeStrings(flattenResumeSkillCategories(resumeData && resumeData.skillCategories || []).concat(splitSkillList(resumeData && resumeData.skills || '')));
   var baseSkillMap = {};
   var finalSkillMap = {};
   baseSkills.forEach(function(skill) {
@@ -4243,11 +4310,72 @@ function buildResumeModificationSummary(resumeSource, resumeData) {
     finalSkillMap[String(skill || '').trim().toLowerCase()] = String(skill || '').trim();
   });
 
+  var targetKeywords = dedupeStrings(resumeSource && resumeSource.keywords || []).slice(0, 40);
+  var baselineCoverage = resumeKeywordCoverage(sourceCoverageTextForFinalSelection(resumeSource, resumeData), targetKeywords);
+  var finalCoverage = resumeKeywordCoverage(resumeDataCoverageText(resumeData), targetKeywords);
+  var selectedExperienceKeys = {};
+  (resumeData && resumeData.experiences || []).forEach(function(entry) {
+    selectedExperienceKeys[resumeExperienceKey(entry)] = true;
+  });
+  var selectedProjectTitles = {};
+  (resumeData && resumeData.projects || []).forEach(function(project) {
+    selectedProjectTitles[String(project.title || '').trim().toLowerCase()] = true;
+  });
+
   var summary = {
     modifiedExperienceTitles: [],
     modifiedExperienceCompanies: [],
     modifiedBulletCount: 0,
     experienceChanges: [],
+    targetKeywords: targetKeywords,
+    keywordCoverage: {
+      before: baselineCoverage,
+      after: finalCoverage,
+      deltaMatched: finalCoverage.matchedCount - baselineCoverage.matchedCount,
+      deltaRate: Math.round((finalCoverage.matchRate - baselineCoverage.matchRate) * 10) / 10
+    },
+    selectedExperiences: (resumeData && resumeData.experiences || []).map(function(entry) {
+      var source = findResumeSourceExperience(resumeSource, entry.company, entry.role, entry.duration) || entry;
+      return {
+        company: sanitizeResumeVisibleText(entry.company || ''),
+        role: sanitizeResumeVisibleText(entry.role || ''),
+        duration: sanitizeResumeVisibleText(entry.duration || ''),
+        relevanceScore: Number(source.relevanceScore || entry.relevanceScore || 0) || 0,
+        matchedKeywords: Array.isArray(entry.matchedKeywords) ? entry.matchedKeywords : (source.matchedKeywords || []),
+        justification: sanitizeResumeVisibleText(entry.whySelected || source.whyCandidate || 'Selected for relevance to the target role and available source evidence')
+      };
+    }),
+    omittedExperiences: (resumeSource && resumeSource.experiences || []).filter(function(entry) {
+      return !selectedExperienceKeys[resumeExperienceKey(entry)];
+    }).map(function(entry) {
+      return {
+        company: sanitizeResumeVisibleText(entry.company || ''),
+        role: sanitizeResumeVisibleText(entry.role || ''),
+        duration: sanitizeResumeVisibleText(entry.duration || ''),
+        relevanceScore: Number(entry.relevanceScore || 0) || 0,
+        matchedKeywords: entry.matchedKeywords || [],
+        reason: sanitizeResumeVisibleText('Lower fit or lower space priority than selected roles for this target job')
+      };
+    }).slice(0, 8),
+    selectedProjects: (resumeData && resumeData.projects || []).map(function(project) {
+      var source = findResumeSourceProject(resumeSource, project.title) || project;
+      return {
+        title: sanitizeResumeVisibleText(project.title || ''),
+        relevanceScore: Number(source.relevanceScore || project.relevanceScore || 0) || 0,
+        matchedKeywords: Array.isArray(project.matchedKeywords) ? project.matchedKeywords : (source.matchedKeywords || []),
+        justification: sanitizeResumeVisibleText(project.whySelected || source.whyCandidate || 'Selected to cover job keyword gaps not fully covered by experience')
+      };
+    }),
+    omittedProjects: (resumeSource && resumeSource.projects || []).filter(function(project) {
+      return !selectedProjectTitles[String(project.title || '').trim().toLowerCase()];
+    }).map(function(project) {
+      return {
+        title: sanitizeResumeVisibleText(project.title || ''),
+        relevanceScore: Number(project.relevanceScore || 0) || 0,
+        matchedKeywords: project.matchedKeywords || [],
+        reason: sanitizeResumeVisibleText('Lower keyword coverage or lower space priority than selected projects')
+      };
+    }).slice(0, 8),
     baseSkillsCount: baseSkills.length,
     finalSkillsCount: finalSkills.length,
     skillsCount: finalSkills.length,
@@ -4440,7 +4568,7 @@ function coerceResumeDraft(aiDraft, resumeSource) {
   (resumeSource.skillsList || []).forEach(function(skill) {
     allowedSkills[String(skill || '').trim().toLowerCase()] = String(skill || '').trim();
   });
-  var selectedSkills = [];
+  var selectedSkills = chooseResumeSkills(resumeSource.skillsList, resumeSource.keywords, 24, 360);
   requestedSkills.forEach(function(skill) {
     var key = String(skill || '').trim().toLowerCase();
     if (!key || !allowedSkills[key]) return;

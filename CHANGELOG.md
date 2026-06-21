@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.18 - 2026-06-21
+
+### Resume Automation
+
+- Added before/after job-keyword coverage scoring for tailored resumes.
+- Added selected and omitted experience/project rationale to resume session details.
+- Updated resume exports to include keyword match lift, matched/missing keywords, and evidence-selection decisions.
+
 ## 3.0.17 - 2026-06-21
 
 ### Resume Automation

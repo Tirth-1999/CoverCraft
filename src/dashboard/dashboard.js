@@ -1534,6 +1534,12 @@ function buildResumeCard(entry) {
   var modifications = artifact.modifications || {};
   var changeGrid = mk('div', 'mini-grid');
   changeGrid.appendChild(buildMetric('Modified bullets', String(modifications.modifiedBulletCount || 0)));
+  var coverage = modifications.keywordCoverage || {};
+  if (coverage.before || coverage.after) {
+    changeGrid.appendChild(buildMetric('Keyword match before', coverage.before ? (coverage.before.matchRate || 0) + '% (' + (coverage.before.matchedCount || 0) + '/' + (coverage.before.total || 0) + ')' : '—'));
+    changeGrid.appendChild(buildMetric('Keyword match after', coverage.after ? (coverage.after.matchRate || 0) + '% (' + (coverage.after.matchedCount || 0) + '/' + (coverage.after.total || 0) + ')' : '—'));
+    changeGrid.appendChild(buildMetric('Keyword lift', ((coverage.deltaRate || 0) >= 0 ? '+' : '') + (coverage.deltaRate || 0) + '%'));
+  }
 	  changeGrid.appendChild(buildMetric('Skills included', String(modifications.finalSkillsCount || modifications.skillsCount || 0)));
 	  changeGrid.appendChild(buildMetric('Skills added', String(Array.isArray(modifications.addedSkills) ? modifications.addedSkills.length : 0)));
 	  changeGrid.appendChild(buildMetric('Base skills', String(modifications.baseSkillsCount || 0)));
@@ -1552,6 +1558,29 @@ function buildResumeCard(entry) {
 	  if (Array.isArray(modifications.addedSkills) && modifications.addedSkills.length) {
 	    summaryLines.push('Added skills: ' + modifications.addedSkills.join(', '));
 	  }
+  if (coverage.after) {
+    var matched = Array.isArray(coverage.after.matched) ? coverage.after.matched.slice(0, 30) : [];
+    var missing = Array.isArray(coverage.after.missing) ? coverage.after.missing.slice(0, 20) : [];
+    summaryLines.push('Keyword coverage:\nMatched: ' + (matched.length ? matched.join(', ') : 'None') + '\nMissing or not safely supported: ' + (missing.length ? missing.join(', ') : 'None'));
+  }
+  if (Array.isArray(modifications.selectedExperiences) && modifications.selectedExperiences.length) {
+    summaryLines.push('Selected experience rationale:\n' + modifications.selectedExperiences.map(function(item) {
+      var keywords = Array.isArray(item.matchedKeywords) && item.matchedKeywords.length ? ' Keywords: ' + item.matchedKeywords.join(', ') : '';
+      return [item.company, item.role, item.duration].filter(Boolean).join(' | ') + ' | Score ' + (item.relevanceScore || 0) + ' | ' + (item.justification || 'Selected for target-role relevance') + keywords;
+    }).join('\n'));
+  }
+  if (Array.isArray(modifications.omittedExperiences) && modifications.omittedExperiences.length) {
+    summaryLines.push('Omitted experience rationale:\n' + modifications.omittedExperiences.slice(0, 6).map(function(item) {
+      var keywords = Array.isArray(item.matchedKeywords) && item.matchedKeywords.length ? ' Keywords: ' + item.matchedKeywords.join(', ') : '';
+      return [item.company, item.role, item.duration].filter(Boolean).join(' | ') + ' | Score ' + (item.relevanceScore || 0) + ' | ' + (item.reason || 'Lower priority for this target role') + keywords;
+    }).join('\n'));
+  }
+  if (Array.isArray(modifications.selectedProjects) && modifications.selectedProjects.length) {
+    summaryLines.push('Selected project rationale:\n' + modifications.selectedProjects.map(function(item) {
+      var keywords = Array.isArray(item.matchedKeywords) && item.matchedKeywords.length ? ' Keywords: ' + item.matchedKeywords.join(', ') : '';
+      return (item.title || 'Project') + ' | Score ' + (item.relevanceScore || 0) + ' | ' + (item.justification || 'Selected for keyword coverage') + keywords;
+    }).join('\n'));
+  }
 	  var bulletComments = Array.isArray(modifications.bulletComments) ? modifications.bulletComments : [];
 	  if (bulletComments.length) {
 	    summaryLines.push('Bullet comments:\n' + bulletComments.slice(0, 20).map(function(item) {
@@ -2242,9 +2271,12 @@ function exportExcel() {
   });
   sheets.push({ name: 'Q&A', rows: chatRows });
 
-  var resumeRows = [['Session', 'Created At', 'Name', 'Email', 'Phone', 'Website', 'Company', 'Job Title', 'Resume Format', 'Modified Bullets', 'Modified Roles', 'Per-Role Changes', 'Base Skills', 'Skills Included', 'Skills Added', 'Quality Flags', 'Bullet Comments']];
+  var resumeRows = [['Session', 'Created At', 'Name', 'Email', 'Phone', 'Website', 'Company', 'Job Title', 'Resume Format', 'Keyword Match Before', 'Keyword Match After', 'Keyword Lift', 'Matched Keywords', 'Missing Keywords', 'Selected Experiences', 'Omitted Experiences', 'Selected Projects', 'Modified Bullets', 'Modified Roles', 'Per-Role Changes', 'Base Skills', 'Skills Included', 'Skills Added', 'Quality Flags', 'Bullet Comments']];
   buildResumeEntries().forEach(function(entry) {
     var modifications = entry.artifact.modifications || {};
+    var coverage = modifications.keywordCoverage || {};
+    var coverageBefore = coverage.before ? (coverage.before.matchRate || 0) + '% (' + (coverage.before.matchedCount || 0) + '/' + (coverage.before.total || 0) + ')' : '';
+    var coverageAfter = coverage.after ? (coverage.after.matchRate || 0) + '% (' + (coverage.after.matchedCount || 0) + '/' + (coverage.after.total || 0) + ')' : '';
     resumeRows.push([
       entry.session.title || '',
       fmtDate(entry.artifact.createdAt || entry.session.updatedAt),
@@ -2255,6 +2287,14 @@ function exportExcel() {
 	      entry.session.job && entry.session.job.companyName || '',
 	      entry.session.job && entry.session.job.jobTitle || '',
 	      entry.artifact.resumeFormatLabel || entry.artifact.resumeFormat || '',
+      coverageBefore,
+      coverageAfter,
+      coverage.deltaRate == null ? '' : coverage.deltaRate + '%',
+      coverage.after && Array.isArray(coverage.after.matched) ? coverage.after.matched.join(', ') : '',
+      coverage.after && Array.isArray(coverage.after.missing) ? coverage.after.missing.join(', ') : '',
+      Array.isArray(modifications.selectedExperiences) ? modifications.selectedExperiences.map(function(item) { return [item.company, item.role, item.duration, item.justification].filter(Boolean).join(' - '); }).join(' | ') : '',
+      Array.isArray(modifications.omittedExperiences) ? modifications.omittedExperiences.map(function(item) { return [item.company, item.role, item.duration, item.reason].filter(Boolean).join(' - '); }).join(' | ') : '',
+      Array.isArray(modifications.selectedProjects) ? modifications.selectedProjects.map(function(item) { return [item.title, item.justification].filter(Boolean).join(' - '); }).join(' | ') : '',
 	      modifications.modifiedBulletCount || 0,
       Array.isArray(modifications.modifiedExperienceTitles) ? modifications.modifiedExperienceTitles.join(', ') : '',
       Array.isArray(modifications.experienceChanges) ? modifications.experienceChanges.map(function(item) { return (item.role || item.company || 'Experience') + ': ' + (item.changedBulletCount || 0); }).join(' | ') : '',
