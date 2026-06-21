@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.14 - 2026-06-21
+
+### Resume Automation
+
+- Tightened the resume prompt and final guardrails after reviewing the regenerated PDF output.
+- Improved summary fallback quality, education institution/location/date cleanup, project link extraction, project description limits, and certification name cleanup.
+- Added stricter final text normalization to avoid dash-style clauses and fragile metric formatting in rendered resumes.
+
 ## 3.0.13 - 2026-06-21
 
 ### Resume Automation

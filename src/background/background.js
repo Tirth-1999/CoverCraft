@@ -2726,7 +2726,15 @@ function dedupeStrings(values) {
 function clipWords(text, maxWords) {
   var words = String(text || '').trim().split(/\s+/).filter(Boolean);
   if (!maxWords || words.length <= maxWords) return String(text || '').trim();
-  var clipped = words.slice(0, maxWords).join(' ').replace(/[,:;/-]+$/, '');
+  var selected = words.slice(0, maxWords);
+  var next = words[maxWords] || '';
+  if (/^\d+(\.\d+)?[%x]?$/.test(selected[selected.length - 1] || '') && /^[a-zA-Z]{2,}$/.test(next)) {
+    selected.push(next);
+  }
+  while (selected.length > 8 && /^(a|an|and|as|at|by|for|from|in|into|of|on|or|the|to|using|with|vs\.?)$/i.test(selected[selected.length - 1] || '')) {
+    selected.pop();
+  }
+  var clipped = selected.join(' ').replace(/[,:;/-]+$/, '');
   return clipped + '.';
 }
 
@@ -2776,7 +2784,8 @@ function inferResumeProjectLinks(project) {
   pushLink(project.videoUrl || project.video, 'Video');
   pushLink(project.articleUrl || project.article, 'Article');
   pushLink(project.demoUrl || project.demo, 'Demo');
-  pushLink(project.websiteUrl || project.website, 'Website');
+  pushLink(project.websiteUrl || project.website || project.liveUrl || project.appUrl || project.deploymentUrl, 'Website');
+  pushLink(project.linkedinUrl || project.linkedInUrl, 'Demo');
 
   if (!links.length) {
     var rawUrl = String(project.url || '').trim();
@@ -2807,7 +2816,7 @@ function normalizeResumeProjects(rawPortfolio) {
       technologies: dedupeStrings(project.technologies || []),
       url: String(project.url || '').trim(),
       links: inferResumeProjectLinks(project),
-      wordBudget: Math.max(18, Core.wordCount(description))
+      wordBudget: Math.max(18, Math.min(26, Core.wordCount(description)))
     };
   }).filter(function(project) {
     return project.title || project.description;
@@ -2820,6 +2829,33 @@ function splitSkillList(skillsText) {
 
 function normalizeResumeSkillString(value, maxWords) {
   return clipWords(String(value || '').replace(/\s+/g, ' ').trim(), maxWords || 85);
+}
+
+function cleanResumeCertification(cert) {
+  var value = '';
+  if (cert && typeof cert === 'object') value = cert.name || cert.title || '';
+  else value = cert || '';
+  value = normalizeResumeOutputText(value)
+    .replace(/™/g, '')
+    .replace(/\s*-\s*(Microsoft|Scrum\.org|Amazon Web Services|AWS|LangChain Academy)\b.*$/i, '')
+    .replace(/\s*,?\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}\b.*$/i, '')
+    .replace(/\s*,?\s*Earned\b.*$/i, '')
+    .trim();
+  if (/Azure Data Engineer Associate/i.test(value) && !/\(DP-203\)/i.test(value)) return 'Azure Data Engineer Associate (DP-203)';
+  if (/Azure Administrator Associate/i.test(value) && !/\(AZ-104\)/i.test(value)) return 'Azure Administrator Associate (AZ-104)';
+  if (/Azure Data Fundamentals/i.test(value) && !/\(DP-900\)/i.test(value)) return 'Azure Data Fundamentals (DP-900)';
+  if (/Azure AI Fundamentals/i.test(value) && !/\(AI-900\)/i.test(value)) return 'Azure AI Fundamentals (AI-900)';
+  if (/Azure Fundamentals/i.test(value) && !/\(AZ-900\)/i.test(value)) return 'Azure Fundamentals (AZ-900)';
+  if (/Professional Scrum Master/i.test(value)) return 'Professional Scrum Master I (PSM)';
+  if (/AWS Certified Cloud Practitioner/i.test(value)) return 'AWS Certified Cloud Practitioner';
+  return value;
+}
+
+function normalizeResumeCertifications(rawPortfolio, normalizedPortfolio) {
+  var source = Array.isArray(rawPortfolio && rawPortfolio.certifications) && rawPortfolio.certifications.length
+    ? rawPortfolio.certifications
+    : normalizedPortfolio && normalizedPortfolio.certifications || [];
+  return dedupeStrings(source.map(cleanResumeCertification)).filter(Boolean);
 }
 
 function buildResumeKeywords(session) {
@@ -3214,9 +3250,9 @@ function rankResumeExperienceCandidates(experiences, rankProfile, limit) {
           sourceText: bullet.text,
           sourceIndex: bullet.index,
           sourceWordCount: Core.wordCount(bullet.text),
-          targetWordCount: Math.min(30, Math.max(20, Core.wordCount(bullet.text))),
+          targetWordCount: Math.min(32, Math.max(24, Core.wordCount(bullet.text))),
           minWordCount: Math.max(10, Core.wordCount(bullet.text) - 5),
-          maxWordCount: Math.min(32, Math.max(20, experience.bulletBudgets && experience.bulletBudgets[bullet.index] || 30)),
+          maxWordCount: Math.min(34, Math.max(24, experience.bulletBudgets && experience.bulletBudgets[bullet.index] || 32)),
           score: bullet.score,
           matchedKeywords: (bullet.matchedTerms || []).map(function(match) { return match.term; }).slice(0, 6),
           hasImpact: bullet.hasImpact
@@ -3369,12 +3405,30 @@ function normalizeResumeEducation(rawPortfolio, normalizedPortfolio) {
   if (Array.isArray(rawPortfolio && rawPortfolio.education)) {
     return rawPortfolio.education.map(function(entry) {
       entry = entry || {};
-      var degree = [entry.degree, entry.field].filter(Boolean).join(' - ');
+      var institution = String(entry.institution || '').trim();
+      var location = String(entry.location || '').trim();
+      var duration = normalizeResumeOutputText(entry.duration || '').replace(/\s*\(Graduated\)\s*/i, '');
+      var degreeName = normalizeResumeOutputText(entry.degree || '').replace(/\s*-\s*(MS|BE)\b/i, '').trim();
+      var degree = [degreeName, entry.field].filter(Boolean).join(' in ');
+      degree = degree.replace(/Master of Science\s*-\s*/i, 'Master of Science in ')
+        .replace(/Bachelor of Engineering\s*-\s*/i, 'Bachelor of Engineering in ');
+      if (/^Texas A&M University,\s*College Station/i.test(institution)) {
+        institution = 'Texas A&M University';
+        location = location || 'College Station, Texas';
+      }
+      if (/^svit\b/i.test(institution)) {
+        institution = 'Sardar Vallabhbhai Patel Institute of Technology';
+        location = location || 'Vasad, Gujarat, India';
+        if (/^2017\s*-\s*2021$/.test(duration)) duration = 'May 2017 - May 2021';
+      }
+      if (/texas a&m/i.test(institution)) {
+        location = location || 'Texas, USA';
+      }
       return {
-        institution: String(entry.institution || '').trim(),
-        location: String(entry.location || '').trim(),
+        institution: institution,
+        location: location,
         degree: degree.trim(),
-        duration: String(entry.duration || '').trim(),
+        duration: duration,
         gpa: String(entry.gpa || '').trim()
       };
     }).filter(function(entry) {
@@ -3419,11 +3473,13 @@ function buildResumeSource(portfolioBundle, session, formatProfile) {
 	    education: normalizeResumeEducation(rawPortfolio, normalizedPortfolio),
     experiences: rankResumeExperienceCandidates(allExperiences, rankProfile, 7),
 	    projects: rankResumeProjectCandidates(allProjects, rankProfile, 6),
-    certifications: dedupeStrings(normalizedPortfolio.certifications || rawPortfolio.certifications || []),
+    certifications: normalizeResumeCertifications(rawPortfolio, normalizedPortfolio),
     skillsList: skillsList,
     skills: normalizeResumeSkillString(chooseResumeSkills(skillsList, keywords, 20, 260).join(', '), 50),
     keywords: keywords,
     rankProfile: rankProfile,
+    summaryIdentity: formatProfile && formatProfile.summaryIdentity || '',
+    summaryFocus: formatProfile && formatProfile.summaryFocus || [],
     skillCategoryLabels: Array.isArray(formatProfile && formatProfile.skillCategoryLabels)
       ? formatProfile.skillCategoryLabels
       : ['Analytics', 'AI/Data', 'Tools'],
@@ -3507,6 +3563,11 @@ function normalizeResumeOutputText(text) {
     .replace(/[“”]/g, '"')
     .replace(/[‘’]/g, "'")
     .replace(/[–—−]/g, '-')
+    .replace(/\s+-\s+([A-Za-z][A-Za-z.]*)/g, function(match, nextWord) {
+      return /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\.?$/i.test(nextWord)
+        ? ' - ' + nextWord
+        : ', ' + nextWord;
+    })
     .replace(/<\s*(\d)/g, 'under $1')
     .replace(/>\s*(\d)/g, 'over $1')
     .replace(/~\s*(\d)/g, 'approximately $1')
@@ -3685,7 +3746,7 @@ function buildResumeSystemPrompt(formatProfile) {
     'Do not include markdown or commentary.',
     'Optimize for ATS keyword match, truthful evidence-backed relevance, one-page density, FAANG-style bullet quality, and clean LaTeX rendering.',
     'Do not invent employers, titles, dates, locations, tools, metrics, certifications, projects, links, domains, or outcomes.',
-    'Never use em dashes or en dashes. Use commas, semicolons, parentheses, ASCII hyphens, or plain words.',
+    'Never use em dashes or en dashes. Avoid dash-separated clauses entirely. Use commas, semicolons, parentheses, or plain words. ASCII hyphens are allowed only inside compound terms such as full-stack, role-based, multi-model, or dates.',
     'Avoid fragile math symbols in final resume wording. Write "under 15%", "over 90%", "approximately 90%", and "3x" instead of <15%, >90%, ~90%, or special symbols.',
     'Do not include Leadership & Achievements. The one-page resume must end after Technical Skills & Certifications.',
     'Follow this exact resume order: SUMMARY, WORK EXPERIENCE, PROJECTS, EDUCATION, TECHNICAL SKILLS & CERTIFICATIONS.',
@@ -3694,9 +3755,9 @@ function buildResumeSystemPrompt(formatProfile) {
     'First analyze the job description. Identify exact target job title, role family, top ATS keywords, required tools, domain keywords, business outcome keywords, seniority expectation, must-have skills, and nice-to-have skills.',
     '',
     'SUMMARY RULES:',
-    'Write exactly 1 compact paragraph, maximum 2 rendered lines and 35-48 words.',
+    'Write exactly 1 compact paragraph, 42-52 words, designed to render as 2 full lines.',
     'The first phrase must align with the target job title or closest truthful identity. Preferred identity for this selected format: ' + formatProfile.summaryIdentity + '.',
-    'Use 4-6 relevant strengths grounded in evidence. Include role/domain keywords naturally. No generic phrases, unsupported seniority claims, passion language, or self-rating.',
+    'Use 5-7 relevant strengths grounded in evidence. Include role/domain keywords naturally. No generic phrases, unsupported seniority claims, passion language, or self-rating.',
     '',
     'EDUCATION RULES:',
     'Education is fixed outside your output. Do not rewrite education. The renderer will keep institution left, location right, degree/GPA left, and date right.',
@@ -3710,21 +3771,22 @@ function buildResumeSystemPrompt(formatProfile) {
     'Every bullet must start with a strong action verb, include method/tool/domain context, and include measurable impact when grounded.',
     'Use job keywords only when source evidence supports them. Do not copy job-description language mechanically.',
     'Rewrite for relevance and density. Do not copy old bullets blindly. Do not weaken strong source bullets.',
-    'Keep each bullet one sentence and 20-32 words. If a bullet needs more than 32 words, split the idea across another selected bullet or remove lower-value detail.',
+    'Keep each bullet one sentence and 24-34 words. Avoid tiny one-line bullets unless the section is already crowded. If a bullet needs more than 34 words, remove lower-value detail.',
     'Avoid weak openings: worked on, helped, assisted, responsible for, involved in, participated in, used, did, made.',
     'Do not repeat the same opening action verb more than twice.',
     '',
     'PROJECT RULES:',
     'Rank all project candidates. Select top 2-4 projects only, based on the selected format and job keyword gaps.',
     'Use projects to cover job keyword gaps not already covered by experience. Preserve project titles and real links.',
-    'Each project description must be one compact sentence, 18-30 words when possible, within the provided word budget.',
+    'Each project description must be one compact sentence, 16-24 words when possible, and must not exceed two rendered lines.',
+    'Use available project links. Preserve GitHub, Demo, Website, Article, or Video labels from source links.',
     '',
     'SKILLS & CERTIFICATIONS RULES:',
     'This section is for ATS keyword matching. Select skills only from the source inventory.',
     'Prioritize exact job-description tools and adjacent truthful tools. Keep skill lines dense and role-specific.',
     'Return categoryLines with 3-4 compact categories. Use labels that fit the role, such as DE, ML/AI, Cloud, Tools, Product and BA, Analytics, or Full-Stack.',
     'Each category line should contain 8-14 comma-separated skills selected from the source inventory only.',
-    'Keep certifications only if relevant or space allows. Do not invent certifications. Prefer credential names with codes when source inventory provides them.',
+    'Keep certifications only if relevant or space allows. Do not invent certifications. Do not include issuer names or dates in certifications. Prefer credential names with codes when source inventory provides them.',
     '',
     'COMMENTS RULES:',
     'Explain why each selected experience/project was selected and why each omitted experience/project was omitted.',
@@ -3932,6 +3994,35 @@ function normalizeDraftSkillCategories(categoryLines, allowedSkills, preferredLa
   }
   if (normalized.length) return normalized.slice(0, 4);
   return buildResumeSkillCategories(fallbackSkills, preferredLabels);
+}
+
+function isWeakResumeSummary(summary, resumeSource) {
+  var text = normalizeResumeOutputText(summary || '');
+  var words = Core.wordCount(text);
+  if (words < 30 || words > 55) return true;
+  if (/^technical professional with experience across analytics platforms/i.test(text)) return true;
+  var keywords = keywordMatchesForText(text, resumeSource.keywords || [], 4);
+  return keywords.length < 2 && words < 42;
+}
+
+function buildFallbackResumeSummary(resumeSource) {
+  var identity = resumeSource.summaryIdentity || resumeSource.owner.title || 'Technical professional';
+  var focus = (resumeSource.summaryFocus || []).slice(0, 5);
+  var tools = chooseResumeSkills(resumeSource.skillsList || [], resumeSource.keywords || [], 8, 120).slice(0, 5);
+  var domains = (resumeSource.experiences || []).slice(0, 4).map(function(entry) {
+    return entry.company || '';
+  }).join(' ').toLowerCase();
+  var domainText = /hcl|telecom|verizon/.test(domains)
+    ? 'telecom, education, energy, and enterprise data domains'
+    : 'education, energy, transportation, and enterprise data domains';
+  return clipWords([
+    identity,
+    'with 5+ years translating business and technical requirements into',
+    focus.length ? focus.join(', ') : 'analytics platforms, AI-enabled workflows, data systems, and stakeholder-facing delivery',
+    'across ' + domainText + '. Skilled in',
+    tools.length ? tools.join(', ') : 'Python, SQL, analytics, automation, and stakeholder management',
+    'with measurable impact in reporting automation, forecasting, and product delivery.'
+  ].join(' '), 48);
 }
 
 function enforceResumeVerbDiversity(items, originals) {
@@ -4224,8 +4315,13 @@ function coerceResumeDraft(aiDraft, resumeSource) {
   if (!selectedSkills.length) {
     selectedSkills = chooseResumeSkills(resumeSource.skillsList, resumeSource.keywords, 20, 260);
   }
+  if (selectedSkills.length < 18) {
+    chooseResumeSkills(resumeSource.skillsList, resumeSource.keywords, 24, 360).forEach(function(skill) {
+      if (selectedSkills.indexOf(skill) === -1) selectedSkills.push(skill);
+    });
+  }
   var skillCategories = normalizeDraftSkillCategories(
-    draftSkills.categoryLines,
+    selectedSkills.length >= 18 ? null : draftSkills.categoryLines,
     allowedSkills,
     resumeSource.skillCategoryLabels,
     selectedSkills
@@ -4233,11 +4329,8 @@ function coerceResumeDraft(aiDraft, resumeSource) {
 
   var summaryDraft = draft.summary && typeof draft.summary === 'object' ? draft.summary.text : draft.summary;
   var summary = normalizeResumeOutputText(summaryDraft || resumeSource.summary || '');
-  if (!summary) {
-    summary = clipWords([
-      resumeSource.owner.title || 'Technical professional',
-      'with experience across analytics platforms, AI-enabled workflows, data systems, and stakeholder-facing delivery.'
-    ].join(' '), 38);
+  if (!summary || isWeakResumeSummary(summary, resumeSource)) {
+    summary = buildFallbackResumeSummary(resumeSource);
   }
   var certMap = {};
   (resumeSource.certifications || []).forEach(function(cert) {
