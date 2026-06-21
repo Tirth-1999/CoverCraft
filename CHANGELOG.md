@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.17 - 2026-06-21
+
+### Resume Automation
+
+- Tightened resume output budgets so experience bullets and project descriptions fit the one-page layout more reliably.
+- Removed terminal periods from generated resume content and added stronger final caps for bullets and projects.
+- Added GitHub to the resume header, recovered known project links by title, and rendered compact linked certifications with grouped Azure credentials.
+
 ## 3.0.16 - 2026-06-21
 
 ### Resume Automation

@@ -2738,6 +2738,14 @@ function clipWords(text, maxWords) {
   return clipped + '.';
 }
 
+function stripResumeTerminalPunctuation(text) {
+  return String(text || '').trim().replace(/[.。]+$/g, '').trim();
+}
+
+function compactResumeSentence(text, maxWords) {
+  return stripResumeTerminalPunctuation(clipWords(sanitizeResumeVisibleText(text), maxWords));
+}
+
 function firstVerb(text) {
   return String(text || '').trim().split(/\s+/)[0].replace(/[^a-z]/gi, '').toLowerCase();
 }
@@ -2826,6 +2834,24 @@ function inferResumeProjectLinks(project) {
   pushLink(project.websiteUrl || project.website || project.liveUrl || project.appUrl || project.deploymentUrl, 'Website');
   pushLink(project.linkedinUrl || project.linkedInUrl, 'Demo');
 
+  var title = String(project.title || '').toLowerCase();
+  if (/landmark lens/.test(title)) {
+    pushLink('https://www.linkedin.com/posts/tirth-chirayu-shah_aiproductengineering-aipoweredproducts-generativeai-ugcPost-7406896854753456128-bnrB', 'Demo');
+  }
+  if (/inventory management|sales analytics|market basket/.test(title)) {
+    pushLink('https://medium.com/@tirthshah1999/market-basket-analysis-1c38613fdd6b', 'Article');
+  }
+  if (/regulatory document|document classifier|datathon/.test(title)) {
+    pushLink('https://github.com/Tirth-1999/TAMU-Datathon-2025', 'GitHub');
+  }
+  if (/jst ai|smart ai data companion|json.*toon/.test(title)) {
+    pushLink('https://github.com/Tirth-1999/JSONtoTOON', 'GitHub');
+  }
+  if (/trade surveillance/.test(title)) {
+    pushLink('https://github.com/Tirth-1999/trade-surveillance-platform', 'GitHub');
+    pushLink('https://trade-surveillance-platform.vercel.app', 'Demo');
+  }
+
   if (!links.length) {
     var rawUrl = String(project.url || '').trim();
     var lowered = rawUrl.toLowerCase();
@@ -2855,7 +2881,7 @@ function normalizeResumeProjects(rawPortfolio) {
       technologies: dedupeStrings(project.technologies || []),
       url: String(project.url || '').trim(),
       links: inferResumeProjectLinks(project),
-      wordBudget: Math.max(18, Math.min(26, Core.wordCount(description)))
+      wordBudget: Math.max(14, Math.min(18, Core.wordCount(description)))
     };
   }).filter(function(project) {
     return project.title || project.description;
@@ -2888,6 +2914,16 @@ function cleanResumeCertification(cert) {
   if (/Professional Scrum Master/i.test(value)) return 'Professional Scrum Master I (PSM)';
   if (/AWS Certified Cloud Practitioner/i.test(value)) return 'AWS Certified Cloud Practitioner';
   return value;
+}
+
+function resumeCertificationHref(cert) {
+  var value = String(cert || '').toLowerCase();
+  if (/professional scrum master/.test(value)) return 'https://www.credly.com/badges/80b81c09-19d7-4a64-a527-ff399d930018/linked_in_profile';
+  if (/azure data fundamentals|dp-900/.test(value)) return 'https://www.credly.com/badges/47f79f38-44a5-4a48-91f8-eae86bec7636?source=linked_in_profile';
+  if (/azure ai fundamentals|ai-900/.test(value)) return 'https://www.credly.com/badges/24338dde-dae7-4638-becb-17d4cb7142d1?source=linked_in_profile';
+  if (/azure fundamentals|az-900/.test(value)) return 'https://www.credly.com/badges/f91077eb-4b4f-4cc8-921b-1333b8a68f94?source=linked_in_profile';
+  if (/langchain/.test(value)) return 'https://academy.langchain.com/certificates/u36ujwnqmd';
+  return '';
 }
 
 function normalizeResumeCertifications(rawPortfolio, normalizedPortfolio) {
@@ -3289,9 +3325,9 @@ function rankResumeExperienceCandidates(experiences, rankProfile, limit) {
           sourceText: bullet.text,
           sourceIndex: bullet.index,
           sourceWordCount: Core.wordCount(bullet.text),
-          targetWordCount: Math.min(32, Math.max(24, Core.wordCount(bullet.text))),
+          targetWordCount: Math.min(28, Math.max(22, Core.wordCount(bullet.text))),
           minWordCount: Math.max(10, Core.wordCount(bullet.text) - 5),
-          maxWordCount: Math.min(34, Math.max(24, experience.bulletBudgets && experience.bulletBudgets[bullet.index] || 32)),
+          maxWordCount: Math.min(28, Math.max(22, experience.bulletBudgets && experience.bulletBudgets[bullet.index] || 28)),
           score: bullet.score,
           matchedKeywords: (bullet.matchedTerms || []).map(function(match) { return match.term; }).slice(0, 6),
           hasImpact: bullet.hasImpact
@@ -3495,6 +3531,7 @@ function buildResumeOwner(rawPortfolio, normalizedPortfolio) {
     phone: String(normalizedPortfolio.phone || '').trim(),
     email: String(normalizedPortfolio.email || '').trim(),
     linkedin: String(social.linkedin || '').trim(),
+    github: String(social.github || rawPortfolio.github || '').trim(),
     website: String(normalizedPortfolio.website || social.portfolio || social.github || '').trim(),
     title: String(normalizedPortfolio.title || '').trim(),
     location: String(normalizedPortfolio.location || '').trim()
@@ -3618,7 +3655,7 @@ function normalizeResumeOutputText(text) {
 }
 
 function sanitizeResumeVisibleText(text) {
-  return normalizeResumeOutputText(text)
+  return stripResumeTerminalPunctuation(normalizeResumeOutputText(text)
     .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]/g, '-')
     .replace(/\s+-\s+([A-Za-z][A-Za-z.]*)/g, function(match, nextWord) {
       return /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\.?$/i.test(nextWord)
@@ -3634,7 +3671,7 @@ function sanitizeResumeVisibleText(text) {
     .replace(/[\u200B-\u200D\uFEFF]/g, '')
     .replace(/[^\x20-\x7E]/g, ' ')
     .replace(/\s+/g, ' ')
-    .trim();
+    .trim());
 }
 
 function resumeVisibleTextIssues(text) {
@@ -3819,6 +3856,7 @@ function buildResumeSystemPrompt(formatProfile) {
     'Optimize for ATS keyword match, truthful evidence-backed relevance, one-page density, FAANG-style bullet quality, and clean LaTeX rendering.',
     'Do not invent employers, titles, dates, locations, tools, metrics, certifications, projects, links, domains, or outcomes.',
     'Never use em dashes or en dashes. Avoid dash-separated clauses entirely. Use commas, semicolons, parentheses, or plain words. ASCII hyphens are allowed only inside compound terms such as full-stack, role-based, multi-model, or dates.',
+    'Do not end summary, bullets, projects, education, skills, or certifications with periods.',
     'Avoid fragile math symbols in final resume wording. Write "under 15%", "over 90%", "approximately 90%", and "3x" instead of <15%, >90%, ~90%, or special symbols.',
     'Do not include Leadership & Achievements. The one-page resume must end after Technical Skills & Certifications.',
     'Follow this exact resume order: SUMMARY, WORK EXPERIENCE, PROJECTS, EDUCATION, TECHNICAL SKILLS & CERTIFICATIONS.',
@@ -3846,14 +3884,14 @@ function buildResumeSystemPrompt(formatProfile) {
     'Every bullet must start with a strong action verb, include method/tool/domain context, and include measurable impact when grounded.',
     'Use job keywords only when source evidence supports them. Do not copy job-description language mechanically.',
     'Rewrite for relevance and density. Do not copy old bullets blindly. Do not weaken strong source bullets.',
-    'Keep each bullet one sentence and 24-34 words. Avoid tiny one-line bullets unless the section is already crowded. If a bullet needs more than 34 words, remove lower-value detail.',
+    'Keep each bullet one sentence and 22-28 words. Avoid tiny one-line bullets unless the section is already crowded. If a bullet needs more than 28 words, remove lower-value detail.',
     'Avoid weak openings: worked on, helped, assisted, responsible for, involved in, participated in, used, did, made.',
     'Do not repeat the same opening action verb more than twice.',
     '',
     'PROJECT RULES:',
     'Rank all project candidates. Select top 2-4 projects only, based on the selected format and job keyword gaps.',
     'Use projects to cover job keyword gaps not already covered by experience. Preserve project titles and real links.',
-    'Each project description must be one compact sentence, 16-24 words when possible, and must not exceed two rendered lines.',
+    'Each project description must be one compact sentence, 14-18 words when possible, and must not exceed two rendered lines.',
     'Use available project links. Preserve GitHub, Demo, Website, Article, or Video labels from source links.',
     '',
     'SKILLS & CERTIFICATIONS RULES:',
@@ -3861,7 +3899,7 @@ function buildResumeSystemPrompt(formatProfile) {
     'Prioritize exact job-description tools and adjacent truthful tools. Keep skill lines dense and role-specific.',
     'Return categoryLines with 3-4 compact categories. Use labels that fit the role, such as DE, ML/AI, Cloud, Tools, Product and BA, Analytics, or Full-Stack.',
     'Each category line should contain 8-14 comma-separated skills selected from the source inventory only.',
-    'Keep certifications only if relevant or space allows. Do not invent certifications. Do not include issuer names or dates in certifications. Prefer credential names with codes when source inventory provides them.',
+    'Keep certifications only if relevant or space allows. Do not invent certifications. Do not include issuer names or dates in certifications. Prefer credential names with codes when source inventory provides them. Avoid repeating Azure more than once when grouping Azure certifications.',
     '',
     'COMMENTS RULES:',
     'Explain why each selected experience/project was selected and why each omitted experience/project was omitted.',
@@ -4460,7 +4498,7 @@ function sanitizeResumeDataForOutput(resumeData) {
   resumeData = resumeData || {};
   var clean = Object.assign({}, resumeData);
   clean.owner = Object.assign({}, resumeData.owner || {});
-  ['name', 'phone', 'email', 'linkedin', 'website', 'title', 'location'].forEach(function(key) {
+  ['name', 'phone', 'email', 'linkedin', 'github', 'website', 'title', 'location'].forEach(function(key) {
     clean.owner[key] = sanitizeResumeVisibleText(clean.owner[key] || '');
   });
   clean.summary = sanitizeResumeVisibleText(resumeData.summary || '');
@@ -4480,16 +4518,17 @@ function sanitizeResumeDataForOutput(resumeData) {
       duration: sanitizeResumeVisibleText(entry.duration || ''),
       location: sanitizeResumeVisibleText(entry.location || ''),
       whySelected: sanitizeResumeVisibleText(entry.whySelected || ''),
-      bullets: (entry.bullets || []).map(sanitizeResumeVisibleText).filter(Boolean),
+      bullets: (entry.bullets || []).map(function(bullet) { return compactResumeSentence(bullet, 28); }).filter(Boolean),
       matchedKeywords: (entry.matchedKeywords || []).map(sanitizeResumeVisibleText).filter(Boolean)
     });
   });
   clean.projects = (resumeData.projects || []).map(function(project) {
+    var projectLinks = Array.isArray(project.links) && project.links.length ? project.links : inferResumeProjectLinks(project);
     return Object.assign({}, project, {
       title: sanitizeResumeVisibleText(project.title || ''),
-      description: sanitizeResumeVisibleText(project.description || ''),
+      description: compactResumeSentence(project.description || '', 18),
       technologies: (project.technologies || []).map(sanitizeResumeVisibleText).filter(Boolean),
-      links: (project.links || []).map(function(link) {
+      links: projectLinks.map(function(link) {
         return {
           url: String(link.url || '').trim(),
           label: sanitizeResumeVisibleText(link.label || 'Link')
@@ -4584,6 +4623,34 @@ function latexProjectTitle(project) {
   return suffix ? base + ' $|$ ' + suffix : base;
 }
 
+function latexBlackHref(url, label) {
+  var href = resumeWebsiteHref(url || '');
+  var text = escapeLatexText(label || '');
+  if (!href || !text) return text;
+  return '\\href{' + escapeLatexHrefTarget(href) + '}{\\textcolor{black}{' + text + '}}';
+}
+
+function latexCertificationText(certifications) {
+  var certs = certifications || [];
+  var parts = [];
+  var azureParts = [];
+  certs.forEach(function(cert) {
+    var clean = sanitizeResumeVisibleText(cert || '');
+    if (!clean) return;
+    if (/Azure Data Fundamentals/i.test(clean)) {
+      azureParts.push(latexBlackHref(resumeCertificationHref(clean), 'Data Fundamentals (DP-900)'));
+    } else if (/Azure AI Fundamentals/i.test(clean)) {
+      azureParts.push(latexBlackHref(resumeCertificationHref(clean), 'AI Fundamentals (AI-900)'));
+    } else if (/Azure Fundamentals/i.test(clean)) {
+      azureParts.push(latexBlackHref(resumeCertificationHref(clean), 'Fundamentals (AZ-900)'));
+    } else {
+      parts.push(latexBlackHref(resumeCertificationHref(clean), clean));
+    }
+  });
+  if (azureParts.length) parts.push('\\textbf{Azure}: ' + azureParts.join(', '));
+  return parts.join(' $|$ ');
+}
+
 function buildResumePreviewText(resumeData) {
   var lines = [];
   var owner = resumeData.owner || {};
@@ -4656,6 +4723,9 @@ function buildResumeLatexSource(resumeData) {
   if (owner.linkedin) {
     contactItems.push('\\mbox{\\fontsize{10}{12}\\selectfont \\href{' + escapeLatexHrefTarget(resumeWebsiteHref(owner.linkedin)) + '}{' + escapeLatexText(owner.linkedin.replace(/^https?:\/\/(www\.)?/i, '').replace(/\/$/, '')) + '}}');
   }
+  if (owner.github) {
+    contactItems.push('\\mbox{\\fontsize{10}{12}\\selectfont \\href{' + escapeLatexHrefTarget(resumeWebsiteHref(owner.github)) + '}{' + escapeLatexText(owner.github.replace(/^https?:\/\/(www\.)?/i, '').replace(/\/$/, '')) + '}}');
+  }
   if (owner.website) {
     contactItems.push('\\mbox{\\fontsize{10}{12}\\selectfont \\href{' + escapeLatexHrefTarget(resumeWebsiteHref(owner.website)) + '}{' + escapeLatexText(owner.website.replace(/^https?:\/\/(www\.)?/i, '').replace(/\/$/, '')) + '}}');
   }
@@ -4672,7 +4742,7 @@ function buildResumeLatexSource(resumeData) {
     ].filter(Boolean).join('\n');
   }).join('\n');
 
-  var certificationText = (resumeData.certifications || []).map(escapeLatexText).join(' $|$ ');
+  var certificationText = latexCertificationText(resumeData.certifications || []);
   var skillsLines = (Array.isArray(resumeData.skillCategories) && resumeData.skillCategories.length
     ? resumeData.skillCategories
     : buildResumeSkillCategories(String(resumeData.skills || '').split(/[,\n]/), ['Skills'])
