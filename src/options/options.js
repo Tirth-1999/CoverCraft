@@ -900,12 +900,12 @@ async function testOpenAI() {
       body: JSON.stringify({
         model: testedModel,
         input: 'Reply with exactly OK',
-        max_output_tokens: 10,
+        max_output_tokens: 16,
         reasoning: /^gpt-5/i.test(testedModel) ? { effort: 'low' } : undefined
       })
     });
     var data = await response.json();
-    recordModelHealth('openai/' + testedModel, 'openai', testedModel, response, data, 10);
+    recordModelHealth('openai/' + testedModel, 'openai', testedModel, response, data, 16);
     if (response.ok && (data.output_text || data.output)) setStatus('openai-status', 'ok', 'OpenAI is working for ' + testedModel + '.');
     else throw new Error((data.error && data.error.message) || 'Unexpected response.');
   } catch (err) {

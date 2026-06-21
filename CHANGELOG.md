@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.0.7 - 2026-06-21
+
+### Fixes
+
+- Fixed OpenAI API-key tests by using the Responses API minimum `max_output_tokens` value.
+- Added a background safeguard so OpenAI generation requests never send fewer than 16 output tokens.
+
 ## 3.0.6 - 2026-06-21
 
 ### Resume Automation

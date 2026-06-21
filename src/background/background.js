@@ -1930,9 +1930,10 @@ async function aiChatMessages(messages, options) {
   }
 
   function clampOpenAIMaxTokens(modelId, requested) {
-    if (/nano/i.test(modelId)) return Math.min(requested, 900);
-    if (/mini|4o-mini/i.test(modelId)) return Math.min(requested, 1800);
-    return Math.min(requested, 2600);
+    var safeRequested = Math.max(16, Number(requested) || 1200);
+    if (/nano/i.test(modelId)) return Math.min(safeRequested, 900);
+    if (/mini|4o-mini/i.test(modelId)) return Math.min(safeRequested, 1800);
+    return Math.min(safeRequested, 2600);
   }
 
   var estimatedInputTokens = estimateTokensFromMessages(messages);
