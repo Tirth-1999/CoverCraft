@@ -901,7 +901,7 @@ async function testOpenAI() {
         model: testedModel,
         input: 'Reply with exactly OK',
         max_output_tokens: 16,
-        reasoning: /^gpt-5/i.test(testedModel) ? { effort: 'low' } : undefined
+        reasoning: /^(gpt-5|o3)/i.test(testedModel) ? { effort: 'low' } : undefined
       })
     });
     var data = await response.json();

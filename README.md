@@ -2,7 +2,7 @@
 
 CoverCraft is a Chrome extension for faster job applications.
 
-Current release: `3.0.7`
+Current release: `3.0.8`
 
 It turns a live job page into a reusable workspace where you can generate a tailored cover letter, ask focused follow-up questions, keep profile context ready, and move into a reusable control center without breaking flow.
 
@@ -150,7 +150,7 @@ CoverCraft supports OpenRouter, OpenAI, Groq, and Tavily as user-supplied keys. 
 - `openai/gpt-4.1-mini`
 - `openai/gpt-4o-mini`
 
-Higher-cost OpenAI models can still be entered through the custom model field when intentionally needed. Runtime output caps are lower for nano and mini models to reduce accidental spend.
+Higher-cost OpenAI models are available in a separate advanced group in the normal model dropdown, including GPT-5.3 Codex, GPT-5.2, GPT-5.2 Pro, GPT-5.1, GPT-5, GPT-5 Pro, o3-pro, o3, and GPT-4.1. Runtime output caps are lower for nano and mini models to reduce accidental spend.
 
 ### Optional Firebase setup
 

@@ -2427,7 +2427,7 @@ async function testOpenAI() {
       input: 'Reply with exactly OK',
       max_output_tokens: 16
     };
-    if (/^gpt-5/i.test(testedModel)) body.reasoning = { effort: 'low' };
+    if (/^(gpt-5|o3)/i.test(testedModel)) body.reasoning = { effort: 'low' };
     var response = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: {

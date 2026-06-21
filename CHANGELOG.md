@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.0.8 - 2026-06-21
+
+### Providers
+
+- Added the broader OpenAI model list to the normal model selector while keeping lower-cost and advanced models separated.
+- Added reasoning-effort handling for OpenAI `o3` and `o3-pro` test and generation calls.
+
 ## 3.0.7 - 2026-06-21
 
 ### Fixes

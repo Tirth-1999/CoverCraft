@@ -1898,7 +1898,7 @@ async function aiChatMessages(messages, options) {
       input: input,
       max_output_tokens: maxTokens
     };
-    if (/^gpt-5/i.test(apiModelId)) request.reasoning = { effort: options && options.reasoningEffort || 'low' };
+    if (/^(gpt-5|o3)/i.test(apiModelId)) request.reasoning = { effort: options && options.reasoningEffort || 'low' };
     if (options && options.responseSchema) {
       request.text = {
         format: {
