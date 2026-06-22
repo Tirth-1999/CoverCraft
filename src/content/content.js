@@ -109,6 +109,78 @@
     return false;
   }
 
+  function cleanIdentityText(text) {
+    return String(text || '')
+      .replace(/\s+/g, ' ')
+      .replace(/^[\s:|@-]+/, '')
+      .replace(/[\s|·•]+$/, '')
+      .trim();
+  }
+
+  function firstSelectorText(selectors, root) {
+    var scope = root || document;
+    for (var i = 0; i < selectors.length; i++) {
+      var el = scope.querySelector(selectors[i]);
+      var text = el ? cleanIdentityText(el.innerText || el.textContent || '') : '';
+      if (text) return text;
+    }
+    return '';
+  }
+
+  function cleanCompanyHint(text) {
+    var value = String(text || '')
+      .replace(/\r/g, '\n')
+      .split('\n')
+      .map(cleanIdentityText)
+      .filter(Boolean)[0] || '';
+    value = cleanIdentityText(value)
+      .split(/\s+[·•]\s+/)[0]
+      .replace(/\b\d[\d,]*\s+followers?\b.*$/i, '')
+      .replace(/\bpromoted\b.*$/i, '')
+      .replace(/\bfollow\b.*$/i, '')
+      .replace(/\s+hiring\s+.*$/i, '')
+      .trim();
+    return cleanIdentityText(value);
+  }
+
+  function structuredJobIdentityHints() {
+    var hostname = String(window.location.hostname || '').toLowerCase();
+    var titleHint = firstSelectorText([
+      '.job-details-jobs-unified-top-card__job-title h1',
+      '.job-details-jobs-unified-top-card__job-title',
+      '.jobs-unified-top-card__job-title h1',
+      '.jobs-unified-top-card__job-title',
+      '.top-card-layout__title',
+      '[data-testid="job-title"]',
+      'h1'
+    ]);
+    var companyHint = firstSelectorText([
+      '.job-details-jobs-unified-top-card__company-name a',
+      '.job-details-jobs-unified-top-card__company-name',
+      '.jobs-unified-top-card__company-name a',
+      '.jobs-unified-top-card__company-name',
+      '.jobs-company__name',
+      '.topcard__org-name-link',
+      '.top-card-layout__card .topcard__flavor-row a',
+      '[data-testid="company-name"]'
+    ]);
+
+    if (!companyHint && hostname.indexOf('linkedin.com') !== -1) {
+      var primary = firstSelectorText([
+        '.job-details-jobs-unified-top-card__primary-description-container',
+        '.jobs-unified-top-card__primary-description-container',
+        '.jobs-unified-top-card__subtitle-primary-grouping',
+        '.topcard__flavor-row'
+      ]);
+      companyHint = cleanCompanyHint(primary);
+    }
+
+    return {
+      titleHint: cleanIdentityText(titleHint),
+      companyHint: cleanCompanyHint(companyHint)
+    };
+  }
+
   function scrapePage() {
     var body = document.body;
     if (!body) return '';
@@ -131,6 +203,9 @@
     var h1 = document.querySelector('h1');
     var h1Text = h1 ? String(h1.textContent || '').trim() : '';
     if (h1Text && lead.indexOf(h1Text) === -1) lead.push(h1Text);
+    var structured = structuredJobIdentityHints();
+    if (structured.titleHint && lead.indexOf(structured.titleHint) === -1) lead.push(structured.titleHint);
+    if (structured.companyHint && lead.indexOf(structured.companyHint) === -1) lead.push('Company: ' + structured.companyHint);
     var leadText = lead.filter(Boolean).join('\n');
     if (leadText) text = leadText + '\n\n' + text;
 
@@ -155,24 +230,25 @@
     var h1 = document.querySelector('h1');
     var headingText = h1 ? String(h1.textContent || '').replace(/\s+/g, ' ').trim() : '';
     var source = headingText || titleText;
-    var titleHint = '';
-    var companyHint = '';
+    var structured = structuredJobIdentityHints();
+    var titleHint = structured.titleHint || '';
+    var companyHint = structured.companyHint || '';
     var rolePattern = /(analyst|engineer|scientist|manager|developer|intern|specialist|associate|consultant|coordinator|architect|administrator|strategist|researcher|lead|director|officer|writer|designer)/i;
     var platformPattern = /\b(jobright(?:\.ai)?|linkedin|indeed|glassdoor|greenhouse|lever|workday|ashby|simplify|ziprecruiter|monster|wellfound|dice)\b/i;
 
     function cleanEntity(text) {
-      return String(text || '').replace(/\s+/g, ' ').replace(/^[\s:|@-]+/, '').replace(/[\s|·•]+$/, '').trim();
+      return cleanIdentityText(text);
     }
 
     function looksLikePlatform(text) {
       return platformPattern.test(cleanEntity(text));
     }
 
-    if (source) {
+    if (source && (!titleHint || !companyHint)) {
       var direct = source.match(/^(.*?)\s+(?:at|@)\s+(.+?)(?:\s*[|–—-].*)?$/i);
       if (direct) {
-        titleHint = cleanEntity(direct[1]);
-        companyHint = cleanEntity(direct[2]);
+        titleHint = titleHint || cleanEntity(direct[1]);
+        companyHint = companyHint || cleanCompanyHint(direct[2]);
         if (looksLikePlatform(companyHint)) companyHint = '';
       } else {
         var segments = source.split(/\s*[|–—-]\s*/).map(function(segment) {
@@ -182,8 +258,8 @@
         });
         for (var i = 0; i < segments.length; i++) {
           if (!rolePattern.test(segments[i])) continue;
-          titleHint = segments[i];
-          companyHint = cleanEntity(segments[i + 1] || segments[i - 1] || '');
+          titleHint = titleHint || segments[i];
+          companyHint = companyHint || cleanCompanyHint(segments[i + 1] || segments[i - 1] || '');
           if (looksLikePlatform(companyHint)) companyHint = '';
           break;
         }
@@ -194,6 +270,14 @@
       pageTitle: titleText,
       titleHint: titleHint,
       companyHint: companyHint
+    };
+  }
+
+  function requestIdentityHints(inferred) {
+    var manualHints = currentManualHints();
+    return {
+      titleHint: manualHints.titleHint || (inferred && inferred.titleHint) || '',
+      companyHint: manualHints.companyHint || (inferred && inferred.companyHint) || ''
     };
   }
 
@@ -1337,7 +1421,7 @@
   function refreshContext(callback, feedbackButtonId, includeResearch, forceNewSession) {
     var rawText = ensureScrape();
     var inferred = inferIdentityHints();
-    var manualHints = currentManualHints();
+    var hints = requestIdentityHints(inferred);
     var feedbackId = feedbackButtonId || 'cc-scrape-btn';
     var feedbackButton = $id(feedbackId);
     if (!rawText) {
@@ -1360,8 +1444,8 @@
         pageUrl: window.location.href,
         rawPageText: rawText,
         pageTitle: inferred.pageTitle,
-        titleHint: manualHints.titleHint,
-        companyHint: manualHints.companyHint,
+        titleHint: hints.titleHint,
+        companyHint: hints.companyHint,
         coverLetterType: $id('cc-style-select').value,
         model: $id('cc-model-select').value,
         includeResearch: !!includeResearch,
@@ -1408,7 +1492,7 @@
   function runGenerate() {
     var rawText = ensureScrape();
     var inferred = inferIdentityHints();
-    var manualHints = currentManualHints();
+    var hints = requestIdentityHints(inferred);
     if (!rawText) {
       completeGenerateProgress(false, 'No Job Text', 'CoverCraft could not find usable job text on this page. Open a job posting, wait for it to finish loading, then click Scrape and try again.');
       return;
@@ -1421,8 +1505,8 @@
           pageUrl: window.location.href,
           rawPageText: rawText,
           pageTitle: inferred.pageTitle,
-          titleHint: manualHints.titleHint,
-          companyHint: manualHints.companyHint,
+          titleHint: hints.titleHint,
+          companyHint: hints.companyHint,
           coverLetterType: $id('cc-style-select').value,
           model: $id('cc-model-select').value,
           sessionId: currentSession && currentSession.id || ''
@@ -1463,8 +1547,8 @@
           pageUrl: window.location.href,
           rawPageText: rawText,
           pageTitle: inferred.pageTitle,
-          titleHint: manualHints.titleHint,
-          companyHint: manualHints.companyHint,
+          titleHint: hints.titleHint,
+          companyHint: hints.companyHint,
           coverLetterType: $id('cc-style-select').value,
           model: $id('cc-model-select').value,
           sessionId: currentSession && currentSession.id || ''
@@ -1599,7 +1683,7 @@
   function runResume() {
     var rawText = ensureScrape();
     var inferred = inferIdentityHints();
-    var manualHints = currentManualHints();
+    var hints = requestIdentityHints(inferred);
     if (!rawText) {
       setResumeStatus('error', 'CoverCraft could not find usable job text on this page yet.');
       completeResumeProgress(false, 'No Job Text');
@@ -1619,8 +1703,8 @@
           pageUrl: window.location.href,
           rawPageText: rawText,
           pageTitle: inferred.pageTitle,
-	          titleHint: manualHints.titleHint,
-	          companyHint: manualHints.companyHint,
+	          titleHint: hints.titleHint,
+	          companyHint: hints.companyHint,
 	          model: $id('cc-model-select').value,
 	          resumeFormat: ($id('cc-resume-format') && $id('cc-resume-format').value) || 'auto'
 	        }

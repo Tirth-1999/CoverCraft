@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.20 - 2026-06-21
+
+### Job Extraction
+
+- Added structured LinkedIn job top-card selectors for title and company extraction before AI parsing runs.
+- Passed inferred page title/company hints into scrape, generate, and resume requests when manual fields are blank.
+- Prepended detected title and company to scraped text so the background parser can recover employer names even when LinkedIn separates them from the job description body.
+
 ## 3.0.19 - 2026-06-21
 
 ### Resume Automation
