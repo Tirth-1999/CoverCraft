@@ -2787,6 +2787,79 @@ function compactResumeSentence(text, maxWords) {
   return trimIncompleteResumeEnding(clipWords(sanitizeResumeVisibleText(text), maxWords));
 }
 
+function fallbackResumeProjectDescription(project) {
+  var title = String(project && project.title || '').toLowerCase();
+  var tech = (project && project.technologies || []).slice(0, 6).join(', ');
+  if (/trade surveillance/.test(title)) {
+    return 'Architected surveillance platform with rule detectors, scikit-learn models, LLM labeling, FastAPI services, and Next.js review workflows';
+  }
+  if (/regulatory document|document classifier|datathon/.test(title)) {
+    return 'Built multimodal document classifier with PII detection, NLP, dual-LLM verification, human review, and audit citations across sensitivity levels';
+  }
+  if (/inventory management|sales analytics/.test(title)) {
+    return 'Deployed AWS data platform with MariaDB, MongoDB, SQL views, triggers, stored procedures, and analytics workflows for sales decisions';
+  }
+  if (/market basket/.test(title)) {
+    return 'Applied Apriori association rules and clustering to identify purchase patterns, cross-sell opportunities, and shelf-placement decisions';
+  }
+  if (/landmark lens/.test(title)) {
+    return 'Built AI travel companion using Google Gemini, camera input, and location context to explain landmarks in real time';
+  }
+  if (/exploratory data analytics/.test(title)) {
+    return 'Created dashboards forecasting product sales and surfacing product pairings that translated complex data into business decisions';
+  }
+  if (/covercraft/.test(title)) {
+    return 'Built Chrome extension that scrapes job descriptions, researches companies, and generates tailored letters and resumes with LLM APIs';
+  }
+  return trimIncompleteResumeEnding([
+    'Built project using',
+    tech || 'data and AI tooling',
+    'to deliver measurable analytics, automation, or decision-support outcomes'
+  ].join(' '));
+}
+
+function compactResumeProjectDescription(project, candidate, maxWords) {
+  var source = sanitizeResumeVisibleText(candidate || project && project.description || '');
+  var sentences = source.split(/(?<=[.!?])\s+/).map(function(sentence) {
+    return trimIncompleteResumeEnding(sentence);
+  }).filter(function(sentence) {
+    return sentence && !hasIncompleteResumeEnding(sentence) && Core.wordCount(sentence) >= 12;
+  });
+  var value = sentences[0] || fallbackResumeProjectDescription(project);
+  value = trimIncompleteResumeEnding(clipWords(value, maxWords || project && project.wordBudget || 28));
+  if (!value || hasIncompleteResumeEnding(value) || Core.wordCount(value) < 12) {
+    value = trimIncompleteResumeEnding(clipWords(fallbackResumeProjectDescription(project), maxWords || 28));
+  }
+  return value;
+}
+
+function compactResumeBullet(text, maxWords) {
+  var value = trimIncompleteResumeEnding(sanitizeResumeVisibleText(text));
+  if (Core.wordCount(value) <= (maxWords || 32) && !hasIncompleteResumeEnding(value)) return value;
+  var clauses = value.split(/\s*(?:;|,\s+(?:and|while|by|using|with|via|including|enabling|delivering|supporting|cutting|reducing|boosting|improving))\s+/i)
+    .map(function(part) { return trimIncompleteResumeEnding(part); })
+    .filter(Boolean);
+  var rebuilt = '';
+  clauses.some(function(part) {
+    var next = rebuilt ? rebuilt + ', ' + part : part;
+    if (Core.wordCount(next) > (maxWords || 32)) return true;
+    rebuilt = next;
+    return false;
+  });
+  value = rebuilt || value;
+  value = trimIncompleteResumeEnding(clipWords(value, maxWords || 32));
+  return value || trimIncompleteResumeEnding(sanitizeResumeVisibleText(text));
+}
+
+function sanitizeResumeDegree(text) {
+  return sanitizeResumeVisibleText(text)
+    .replace(/^((?:Master|Bachelor)[^,]*?\bin)\s*,\s*/i, '$1 ')
+    .replace(/,\s*(Computer|Data|Business|Management|Information|Industrial|Electrical|Mechanical|Civil|Software)/i, ' in $1')
+    .replace(/\bin\s+in\s+/gi, 'in ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function firstVerb(text) {
   return String(text || '').trim().split(/\s+/)[0].replace(/[^a-z]/gi, '').toLowerCase();
 }
@@ -2922,7 +2995,7 @@ function normalizeResumeProjects(rawPortfolio) {
       technologies: dedupeStrings(project.technologies || []),
       url: String(project.url || '').trim(),
       links: inferResumeProjectLinks(project),
-      wordBudget: Math.max(12, Math.min(16, Core.wordCount(description)))
+      wordBudget: Math.max(24, Math.min(30, Core.wordCount(description) || 28))
     };
   }).filter(function(project) {
     return project.title || project.description;
@@ -2986,8 +3059,10 @@ function normalizeResumeSkillString(value, maxWords) {
 
 function cleanResumeCertification(cert) {
   var value = '';
+  var issueDate = '';
   if (cert && typeof cert === 'object') value = cert.name || cert.title || '';
   else value = cert || '';
+  if (cert && typeof cert === 'object') issueDate = cert.issueDate || cert.date || '';
   value = normalizeResumeOutputText(value)
     .replace(/™/g, '')
     .replace(/\s*-\s*(Microsoft|Scrum\.org|Amazon Web Services|AWS|LangChain Academy)\b.*$/i, '')
@@ -2999,14 +3074,18 @@ function cleanResumeCertification(cert) {
   if (/Azure Data Fundamentals/i.test(value) && !/\(DP-900\)/i.test(value)) return 'Azure Data Fundamentals (DP-900)';
   if (/Azure AI Fundamentals/i.test(value) && !/\(AI-900\)/i.test(value)) return 'Azure AI Fundamentals (AI-900)';
   if (/Azure Fundamentals/i.test(value) && !/\(AZ-900\)/i.test(value)) return 'Azure Fundamentals (AZ-900)';
-  if (/Professional Scrum Master/i.test(value)) return 'Professional Scrum Master I';
-  if (/AWS Certified Cloud Practitioner/i.test(value)) return 'AWS Certified Cloud Practitioner';
+  if (/Professional Scrum Master/i.test(value)) return 'Professional Scrum Master I (PSM)';
+  if (/AWS Certified Cloud Practitioner/i.test(value)) {
+    return /scheduled/i.test(issueDate) ? 'AWS Certified Cloud Practitioner (Scheduled Jun 2026)' : 'AWS Certified Cloud Practitioner';
+  }
   return value;
 }
 
 function resumeCertificationHref(cert) {
   var value = String(cert || '').toLowerCase();
   if (/professional scrum master/.test(value)) return 'https://www.credly.com/badges/80b81c09-19d7-4a64-a527-ff399d930018/linked_in_profile';
+  if (/data engineer associate|dp-203/.test(value)) return '';
+  if (/administrator associate|az-104/.test(value)) return '';
   if (/azure data fundamentals|dp-900/.test(value)) return 'https://www.credly.com/badges/47f79f38-44a5-4a48-91f8-eae86bec7636?source=linked_in_profile';
   if (/azure ai fundamentals|ai-900/.test(value)) return 'https://www.credly.com/badges/24338dde-dae7-4638-becb-17d4cb7142d1?source=linked_in_profile';
   if (/azure fundamentals|az-900/.test(value)) return 'https://www.credly.com/badges/f91077eb-4b4f-4cc8-921b-1333b8a68f94?source=linked_in_profile';
@@ -3019,6 +3098,28 @@ function normalizeResumeCertifications(rawPortfolio, normalizedPortfolio) {
     ? rawPortfolio.certifications
     : normalizedPortfolio && normalizedPortfolio.certifications || [];
   return dedupeStrings(source.map(cleanResumeCertification)).filter(Boolean);
+}
+
+function resumeCertificationPriority(cert) {
+  var value = String(cert || '').toLowerCase();
+  if (/data engineer associate|dp-203/.test(value)) return 100;
+  if (/administrator associate|az-104/.test(value)) return 95;
+  if (/professional scrum master|psm/.test(value)) return 90;
+  if (/aws certified cloud practitioner/.test(value)) return 85;
+  if (/data fundamentals|dp-900/.test(value)) return 80;
+  if (/ai fundamentals|ai-900/.test(value)) return 75;
+  if (/azure fundamentals|az-900/.test(value)) return 70;
+  if (/langchain/.test(value)) return 60;
+  return 10;
+}
+
+function chooseResumeCertifications(sourceCerts, requestedCerts, limit) {
+  var merged = dedupeStrings([].concat(requestedCerts || [], sourceCerts || []).map(cleanResumeCertification)).filter(Boolean);
+  return merged.sort(function(a, b) {
+    var priorityDiff = resumeCertificationPriority(b) - resumeCertificationPriority(a);
+    if (priorityDiff) return priorityDiff;
+    return a.localeCompare(b);
+  }).slice(0, limit || 6);
 }
 
 function buildResumeKeywords(session) {
@@ -3583,6 +3684,7 @@ function normalizeResumeEducation(rawPortfolio, normalizedPortfolio) {
         .replace(/,\s*(Computer|Data|Business|Management|Information|Industrial|Electrical|Mechanical|Civil|Software)/i, ' in $1')
         .replace(/\s+/g, ' ')
         .trim();
+      degree = sanitizeResumeDegree(degree);
       if (/^Texas A&M University,\s*College Station/i.test(institution)) {
         institution = 'Texas A&M University';
         location = location || 'College Station, Texas';
@@ -3657,8 +3759,8 @@ function buildResumeSource(portfolioBundle, session, formatProfile) {
       : ['Analytics', 'AI/Data', 'Tools'],
     selectionPolicy: {
       maxExperiences: 4,
-      minProjects: 3,
-      maxProjects: Math.max(3, Math.min(4, Number(formatProfile && formatProfile.maxProjects) || 4)),
+      minProjects: 4,
+      maxProjects: 4,
       leadershipIncluded: false
     }
 	  };
@@ -3711,7 +3813,7 @@ function resumeFormatProfile(format) {
     full_stack_ai: {
       label: 'AI Full-Stack Engineer',
       summaryIdentity: 'AI Full-Stack Engineer',
-      maxProjects: 3,
+      maxProjects: 4,
       skillCategoryLabels: ['Full-Stack', 'AI/ML', 'Cloud'],
       projectHints: ['Black Tie', 'CoverCraft', 'Trade Surveillance Platform', 'Landmark Lens'],
       summaryFocus: ['Next.js', 'TypeScript', 'FastAPI', 'LLM APIs', 'full-stack delivery']
@@ -3719,7 +3821,7 @@ function resumeFormatProfile(format) {
     balanced: {
       label: 'Balanced Technical Resume',
       summaryIdentity: 'Technical AI/Data Professional',
-      maxProjects: 3,
+      maxProjects: 4,
       skillCategoryLabels: ['Analytics', 'AI/Data', 'Tools'],
       projectHints: ['Mays AI Analytics Assistant', 'Trade Surveillance Platform', 'Black Tie', 'CoverCraft'],
       summaryFocus: ['analytics platforms', 'AI workflows', 'SQL', 'Python', 'stakeholder execution']
@@ -3826,6 +3928,8 @@ function buildResumeDraftSchema() {
             matchedKeywords: { type: 'array', items: { type: 'string' } },
             bullets: {
               type: 'array',
+              minItems: 3,
+              maxItems: 3,
               items: {
                 type: 'object',
                 additionalProperties: false,
@@ -3965,20 +4069,20 @@ function buildResumeSystemPrompt(formatProfile) {
     'Older full-time experience with strong scale, production ownership, enterprise stakeholders, or quantified impact is more valuable than a less relevant recent internship.',
     'After selecting the strongest experiences, order selected experiences by reverse chronology using the role end date. Do not place an older internship above a newer selected role.',
     'For each selected experience, preserve source company, role, and duration. Location may be returned for comments but the visual resume will not print work locations.',
-    'Write 2-4 bullets per selected experience. Use 4 bullets only for highly relevant technical/data roles, 3 bullets for strong matches, and 2 bullets for lower-relevance or internship roles.',
+    'Write exactly 3 bullets per selected experience. No selected experience may have 2 bullets or 4 bullets.',
     'Every bullet must follow the X-Y-Z rule: accomplished X, measured by Y, by doing Z.',
     'Every bullet must start with a strong action verb, include method/tool/domain context, and include measurable impact when grounded.',
     'Use job keywords only when source evidence supports them. Do not copy job-description language mechanically.',
     'Rewrite for relevance and density. Do not copy old bullets blindly. Do not weaken strong source bullets.',
-    'Keep each bullet one sentence and 22-28 words. Avoid tiny one-line bullets unless the section is already crowded. If a bullet needs more than 28 words, remove lower-value detail.',
+    'Keep each bullet one sentence and 24-32 words so it can wrap naturally into about two lines when needed.',
     'Do not end bullets with a dangling verb, partial list, unfinished metric, or unfinished clause. Rewrite shorter instead of clipping.',
     'Avoid weak openings: worked on, helped, assisted, responsible for, involved in, participated in, used, did, made.',
     'Do not repeat the same opening action verb more than twice.',
     '',
     'PROJECT RULES:',
-    'Rank all project candidates. Select 3-4 projects whenever at least 3 source projects exist. Never select only 1-2 projects unless the source inventory has fewer than 3 valid projects.',
+    'Rank all project candidates. Select exactly 4 projects whenever at least 4 source projects exist. Never select only 2-3 projects when 4 valid projects are available.',
     'Use projects to cover job keyword gaps not already covered by experience. Preserve project titles and real links.',
-    'Each project description must be one compact sentence, 12-16 words when possible, and must not exceed two rendered lines.',
+    'Each project description must be one compact sentence, 24-30 words when possible, designed to render as about two lines.',
     'Each project description must explain the product/function and outcome in a complete phrase. Do not end with "Uses", "&", "to expose", "featuring", or any unfinished technology list.',
     'Use available project links. Preserve GitHub, Demo, Website, Article, or Video labels from source links.',
     '',
@@ -4004,7 +4108,7 @@ function buildResumeUserPrompt(session, resumeSource, formatProfile) {
     'Selected resume format: ' + formatProfile.label + '.',
     'Summary focus terms, only when truthful: ' + formatProfile.summaryFocus.join(', ') + '.',
     'Project selection hints for this profile: ' + formatProfile.projectHints.join(' | ') + '.',
-    'Select exactly the strongest 4 experiences when possible. Select 3-4 projects for this format when the source inventory allows it. Do not include leadership.',
+    'Select exactly the strongest 4 experiences when possible. Select exactly 4 projects when the source inventory allows it. Do not include leadership.',
     'Respect every source word budget. Do not let a bullet exceed maxWordCount. Do not let a project exceed wordBudget.',
     'If a sentence would exceed a word budget, rewrite it into a shorter complete sentence. Never truncate a sentence.',
     'Use source bullets as evidence, not as mandatory final wording. Rewrite when relevance improves, but preserve metrics/tools/scope.',
@@ -4605,16 +4709,16 @@ function coerceResumeDraft(aiDraft, resumeSource) {
       ? sourceExperience.rankedBullets.map(function(item) { return item.maxWordCount; })
       : sourceExperience.bulletBudgets || []);
     var bullets = Array.isArray(matched.bullets) ? matched.bullets.map(draftBulletText).filter(Boolean) : [];
-    var targetCount = Math.max(2, Math.min(4, bullets.length || sourceBullets.length || 2));
+    var targetCount = Math.min(3, Math.max(1, sourceBullets.length || bullets.length || 1));
     while (bullets.length < targetCount && sourceBullets[bullets.length]) bullets.push(sourceBullets[bullets.length]);
     bullets = bullets.slice(0, targetCount).map(function(bullet, index) {
       var sourceBullet = normalizeResumeOutputText(sourceBullets[index] || sourceBullets[0] || '');
-      var budget = Math.min(24, budgets[index] || 24);
-      var clipped = trimIncompleteResumeEnding(clipWords(normalizeResumeOutputText(bullet), budget));
+      var budget = Math.min(32, Math.max(24, budgets[index] || 28));
+      var clipped = compactResumeBullet(normalizeResumeOutputText(bullet), budget);
       if (sourceBullet && shouldPreserveResumeSourceText(sourceBullet, clipped, resumeSource.keywords)) {
-        clipped = trimIncompleteResumeEnding(sourceBullet);
+        clipped = compactResumeBullet(sourceBullet, budget);
       }
-      clipped = trimIncompleteResumeEnding(clipWords(normalizeResumeOutputText(clipped), budget));
+      clipped = compactResumeBullet(normalizeResumeOutputText(clipped), budget);
       var explicitComment = commentFor(sourceExperience.company, index);
       var changed = normalizeResumeComparisonText(sourceBullet) !== normalizeResumeComparisonText(clipped);
       comments.push({
@@ -4651,7 +4755,7 @@ function coerceResumeDraft(aiDraft, resumeSource) {
   var projectLimit = resumeSource.selectionPolicy && resumeSource.selectionPolicy.maxProjects || 4;
   var projectMinimum = Math.min(
     resumeSource.projects && resumeSource.projects.length || 0,
-    resumeSource.selectionPolicy && resumeSource.selectionPolicy.minProjects || 3
+    resumeSource.selectionPolicy && resumeSource.selectionPolicy.minProjects || 4
   );
   var selectedDraftProjects = draftProjects.map(function(entry) {
     var source = findResumeSourceProject(resumeSource, entry && entry.title);
@@ -4679,13 +4783,13 @@ function coerceResumeDraft(aiDraft, resumeSource) {
   var normalizedProjects = selectedDraftProjects.map(function(pair) {
     var matched = pair.draft || {};
     var project = pair.source;
-    var description = trimIncompleteResumeEnding(normalizeResumeOutputText(matched && matched.description || project.description || '')) || project.description;
+    var description = compactResumeProjectDescription(project, matched && matched.description || project.description || '', project.wordBudget);
     if (shouldPreserveResumeSourceText(project.description, description, resumeSource.keywords)) {
-      description = trimIncompleteResumeEnding(project.description);
+      description = compactResumeProjectDescription(project, project.description, project.wordBudget);
     }
     return {
       title: project.title,
-      description: trimIncompleteResumeEnding(clipWords(normalizeResumeOutputText(description), project.wordBudget)),
+      description: compactResumeProjectDescription(project, description, project.wordBudget),
       technologies: project.technologies,
       url: project.url,
       links: project.links,
@@ -4708,6 +4812,7 @@ function coerceResumeDraft(aiDraft, resumeSource) {
     var key = String(skill || '').trim().toLowerCase();
     if (!key || !allowedSkills[key]) return;
     if (selectedSkills.indexOf(allowedSkills[key]) !== -1) return;
+    if (scoreResumeSkill(allowedSkills[key], resumeSource.keywords) <= 0 && selectedSkills.length >= 24) return;
     selectedSkills.push(allowedSkills[key]);
   });
   if (!selectedSkills.length) {
@@ -4719,7 +4824,7 @@ function coerceResumeDraft(aiDraft, resumeSource) {
     });
   }
   var skillCategories = normalizeDraftSkillCategories(
-    selectedSkills.length >= 18 ? null : draftSkills.categoryLines,
+    draftSkills.categoryLines,
     allowedSkills,
     resumeSource.skillCategoryLabels,
     selectedSkills
@@ -4730,17 +4835,12 @@ function coerceResumeDraft(aiDraft, resumeSource) {
   if (!summary || isWeakResumeSummary(summary, resumeSource) || hasIncompleteResumeEnding(summary)) {
     summary = buildFallbackResumeSummary(resumeSource);
   }
-  var certMap = {};
-  (resumeSource.certifications || []).forEach(function(cert) {
-    certMap[String(cert || '').trim().toLowerCase()] = String(cert || '').trim();
-  });
   var selectedCertifications = [];
-  (Array.isArray(draftSkills.certifications) && draftSkills.certifications.length ? draftSkills.certifications : resumeSource.certifications).forEach(function(cert) {
-    var key = String(cert || '').trim().toLowerCase();
-    if (!key || !certMap[key] || selectedCertifications.indexOf(certMap[key]) !== -1) return;
-    selectedCertifications.push(certMap[key]);
-  });
-  if (!selectedCertifications.length) selectedCertifications = (resumeSource.certifications || []).slice(0, 4);
+  selectedCertifications = chooseResumeCertifications(
+    resumeSource.certifications || [],
+    Array.isArray(draftSkills.certifications) ? draftSkills.certifications : [],
+    6
+  );
 
   return {
     owner: resumeSource.owner,
@@ -4748,7 +4848,7 @@ function coerceResumeDraft(aiDraft, resumeSource) {
     education: resumeSource.education,
     experiences: normalizedExperiences,
     projects: normalizedProjects,
-    certifications: selectedCertifications.slice(0, 4),
+    certifications: selectedCertifications.slice(0, 6),
     skillCategories: skillCategories,
     skills: normalizeResumeSkillString(selectedSkills.slice(0, 20).join(', '), 50),
     comments: comments,
@@ -4769,7 +4869,7 @@ function sanitizeResumeDataForOutput(resumeData) {
     return {
       institution: sanitizeResumeVisibleText(entry.institution || ''),
       location: sanitizeResumeVisibleText(entry.location || ''),
-      degree: sanitizeResumeVisibleText(entry.degree || ''),
+      degree: sanitizeResumeDegree(entry.degree || ''),
       duration: sanitizeResumeVisibleText(entry.duration || ''),
       gpa: sanitizeResumeVisibleText(entry.gpa || '')
     };
@@ -4781,7 +4881,7 @@ function sanitizeResumeDataForOutput(resumeData) {
       duration: sanitizeResumeVisibleText(entry.duration || ''),
       location: sanitizeResumeVisibleText(entry.location || ''),
       whySelected: sanitizeResumeVisibleText(entry.whySelected || ''),
-      bullets: (entry.bullets || []).map(function(bullet) { return compactResumeSentence(bullet, 24); }).filter(Boolean),
+      bullets: (entry.bullets || []).map(function(bullet) { return compactResumeBullet(bullet, 32); }).filter(Boolean).slice(0, 3),
       matchedKeywords: (entry.matchedKeywords || []).map(sanitizeResumeVisibleText).filter(Boolean)
     });
   });
@@ -4789,7 +4889,7 @@ function sanitizeResumeDataForOutput(resumeData) {
     var projectLinks = Array.isArray(project.links) && project.links.length ? project.links : inferResumeProjectLinks(project);
     return Object.assign({}, project, {
       title: sanitizeResumeVisibleText(project.title || ''),
-      description: compactResumeSentence(project.description || '', 16),
+      description: compactResumeProjectDescription(project, project.description || '', 30),
       technologies: (project.technologies || []).map(sanitizeResumeVisibleText).filter(Boolean),
       links: projectLinks.map(function(link) {
         return {
@@ -4901,12 +5001,20 @@ function latexCertificationText(certifications) {
   certs.forEach(function(cert) {
     var clean = sanitizeResumeVisibleText(cert || '');
     if (!clean) return;
-    if (/Azure Data Fundamentals/i.test(clean)) {
+    if (/Azure Data Engineer Associate/i.test(clean)) {
+      parts.push(latexBlackHref(resumeCertificationHref(clean), 'Azure Data Engineer Associate (DP-203)'));
+    } else if (/Azure Administrator Associate/i.test(clean)) {
+      parts.push(latexBlackHref(resumeCertificationHref(clean), 'Azure Administrator Associate (AZ-104)'));
+    } else if (/Azure Data Fundamentals/i.test(clean)) {
       parts.push(latexBlackHref(resumeCertificationHref(clean), 'Azure Data Fundamentals (DP-900)'));
     } else if (/Azure AI Fundamentals/i.test(clean)) {
       parts.push(latexBlackHref(resumeCertificationHref(clean), 'Azure AI Fundamentals (AI-900)'));
     } else if (/Azure Fundamentals/i.test(clean)) {
       parts.push(latexBlackHref(resumeCertificationHref(clean), 'Azure Fundamentals (AZ-900)'));
+    } else if (/Professional Scrum Master/i.test(clean)) {
+      parts.push(latexBlackHref(resumeCertificationHref(clean), 'Professional Scrum Master I (PSM)'));
+    } else if (/AWS Certified Cloud Practitioner/i.test(clean)) {
+      parts.push(latexBlackHref(resumeCertificationHref(clean), 'AWS Certified Cloud Practitioner'));
     } else {
       parts.push(latexBlackHref(resumeCertificationHref(clean), clean));
     }

@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.0.23 - 2026-06-21
+
+### Resume Automation
+
+- Reworked resume layout policy to require exactly 3 bullets per selected experience and exactly 4 projects when source inventory allows it.
+- Replaced prefix-clipping for project descriptions with complete two-line project summaries and project-specific fallbacks for known portfolio projects.
+- Raised project and bullet budgets to match the reference DS resume instead of forcing one-line fragments.
+- Strengthened education cleanup at structured and final output layers so `in,` degree commas cannot survive.
+- Prioritized DS-relevant certifications, including Azure Data Engineer Associate, Azure Administrator Associate, Professional Scrum Master I (PSM), AWS Cloud Practitioner, and Azure fundamentals.
+- Preserved model-provided JD-relevant skill categories when valid, while filtering certification names out of technical skills.
+- Rebuilt the unpacked `build/extension` output and release ZIP so local extension testing uses the current runtime code.
+
 ## 3.0.22 - 2026-06-21
 
 ### Resume Automation
