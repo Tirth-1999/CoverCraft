@@ -2758,8 +2758,30 @@ function stripResumeTerminalPunctuation(text) {
   return String(text || '').trim().replace(/[.。]+$/g, '').trim();
 }
 
+function trimIncompleteResumeEnding(text) {
+  var value = stripResumeTerminalPunctuation(sanitizeResumeVisibleText(text));
+  value = value
+    .replace(/\s*\([^)]*$/g, '')
+    .replace(/\s*,\s*$/g, '')
+    .replace(/\s*;\s*$/g, '')
+    .trim();
+  var weakTail = /(\b(?:and|or|with|using|via|by|for|from|into|across|plus|including|featuring|generating|expose|predictive|product|tripling|boosting|cutting|reducing|increasing|supporting|eliminating)\b)$/i;
+  while (weakTail.test(value) && Core.wordCount(value) > 8) {
+    value = value.replace(/\s+\S+$/g, '').replace(/\s*[,;:]\s*$/g, '').trim();
+  }
+  value = value
+    .replace(/\s+\b(?:and|or|with|using|via|by|for|from|into|across|plus|including)\s+\S+$/i, '')
+    .replace(/\s*[,;:]\s*$/g, '')
+    .trim();
+  return stripResumeTerminalPunctuation(value);
+}
+
+function hasIncompleteResumeEnding(text) {
+  return /(\b(?:and|or|with|using|via|by|for|from|into|across|plus|including|featuring|generating|expose|predictive|product|tripling|boosting|cutting|reducing|increasing|supporting|eliminating)\b)$/i.test(stripResumeTerminalPunctuation(text));
+}
+
 function compactResumeSentence(text, maxWords) {
-  return stripResumeTerminalPunctuation(clipWords(sanitizeResumeVisibleText(text), maxWords));
+  return trimIncompleteResumeEnding(clipWords(sanitizeResumeVisibleText(text), maxWords));
 }
 
 function firstVerb(text) {
@@ -2943,10 +2965,6 @@ function buildResumeSkillInventory(rawPortfolio, normalizedPortfolio) {
   (rawPortfolio && rawPortfolio.currentFocus || []).forEach(function(item) {
     if (item && typeof item === 'object') skills = skills.concat(item.skills || [], item.technologies || [], item.title || '');
     else skills.push(item);
-  });
-  (rawPortfolio && rawPortfolio.certifications || []).forEach(function(cert) {
-    var clean = cleanResumeCertification(cert);
-    if (clean) skills.push(clean);
   });
   return dedupeStrings(skills.map(function(skill) {
     return sanitizeResumeVisibleText(skill);
@@ -3747,6 +3765,7 @@ function resumeBulletQualityIssues(text) {
   var issues = [];
   if (/[–—]/.test(value)) issues.push('contains non-ASCII dash');
   if (/\s+-\s+/.test(value) && !/\b(19|20)\d{2}\s+-\s+((19|20)\d{2}|Present|Current|Now)\b/i.test(value)) issues.push('contains dash clause');
+  if (hasIncompleteResumeEnding(value)) issues.push('incomplete clipped ending');
   if (/^(worked on|helped|assisted|responsible for|involved in|participated in|used|did|made)\b/i.test(value)) issues.push('weak opening verb');
   if (value.split(/[.!?]\s+/).filter(Boolean).length > 1) issues.push('more than one sentence');
   if (!resumeBulletHasMetric(value)) issues.push('missing visible impact metric');
@@ -3912,6 +3931,7 @@ function buildResumeSystemPrompt(formatProfile) {
     'Do not invent employers, titles, dates, locations, tools, metrics, certifications, projects, links, domains, or outcomes.',
     'Never use em dashes or en dashes. Avoid dash-separated clauses entirely. Use commas, semicolons, parentheses, or plain words. ASCII hyphens are allowed only inside compound terms such as full-stack, role-based, multi-model, or dates.',
     'Do not end summary, bullets, projects, education, skills, or certifications with periods.',
+    'Never return clipped fragments. Every summary, bullet, and project description must end with a complete noun phrase or complete impact phrase. Forbidden endings include: and, with, using, via, for, from, into, featuring, generating, expose, Predictive, product, tripling, cutting, reducing, increasing, boosting, supporting, eliminating.',
     'Avoid fragile math symbols in final resume wording. Write "under 15%", "over 90%", "approximately 90%", and "3x" instead of <15%, >90%, ~90%, or special symbols.',
     'Do not include Leadership & Achievements. The one-page resume must end after Technical Skills & Certifications.',
     'Follow this exact resume order: SUMMARY, WORK EXPERIENCE, PROJECTS, EDUCATION, TECHNICAL SKILLS & CERTIFICATIONS.',
@@ -3921,6 +3941,7 @@ function buildResumeSystemPrompt(formatProfile) {
     '',
     'SUMMARY RULES:',
     'Write exactly 1 compact paragraph, 42-52 words, designed to render as 2 full lines.',
+    'The summary must end with a complete role-relevant outcome phrase such as "product delivery", "forecasting automation", or "stakeholder reporting", never a lone noun such as "product".',
     'The first phrase must align with the target job title or closest truthful identity. Preferred identity for this selected format: ' + formatProfile.summaryIdentity + '.',
     'Use 5-7 relevant strengths grounded in evidence. Include role/domain keywords naturally. No generic phrases, unsupported seniority claims, passion language, or self-rating.',
     '',
@@ -3940,6 +3961,7 @@ function buildResumeSystemPrompt(formatProfile) {
     'Use job keywords only when source evidence supports them. Do not copy job-description language mechanically.',
     'Rewrite for relevance and density. Do not copy old bullets blindly. Do not weaken strong source bullets.',
     'Keep each bullet one sentence and 22-28 words. Avoid tiny one-line bullets unless the section is already crowded. If a bullet needs more than 28 words, remove lower-value detail.',
+    'Do not end bullets with a dangling verb, partial list, unfinished metric, or unfinished clause. Rewrite shorter instead of clipping.',
     'Avoid weak openings: worked on, helped, assisted, responsible for, involved in, participated in, used, did, made.',
     'Do not repeat the same opening action verb more than twice.',
     '',
@@ -3947,11 +3969,13 @@ function buildResumeSystemPrompt(formatProfile) {
     'Rank all project candidates. Select 3-4 projects whenever at least 3 source projects exist. Never select only 1-2 projects unless the source inventory has fewer than 3 valid projects.',
     'Use projects to cover job keyword gaps not already covered by experience. Preserve project titles and real links.',
     'Each project description must be one compact sentence, 12-16 words when possible, and must not exceed two rendered lines.',
+    'Each project description must explain the product/function and outcome in a complete phrase. Do not end with "Uses", "&", "to expose", "featuring", or any unfinished technology list.',
     'Use available project links. Preserve GitHub, Demo, Website, Article, or Video labels from source links.',
     '',
     'SKILLS & CERTIFICATIONS RULES:',
     'This section is for ATS keyword matching. Select skills only from the source inventory.',
     'Prioritize exact job-description tools and adjacent truthful tools. Keep skill lines dense and role-specific.',
+    'Do not place certification names in skill category lines. Certifications belong only in the Certifications line.',
     'Return categoryLines with 3-4 compact categories. Use labels that fit the role, such as DE, ML/AI, Cloud, Tools, Product and BA, Analytics, or Full-Stack.',
     'Each category line should contain 8-14 comma-separated skills selected from the source inventory only.',
     'Keep certifications only if relevant or space allows. Do not invent certifications. Do not include issuer names or dates in certifications. Prefer credential names with codes when source inventory provides them. Avoid repeating Azure more than once when grouping Azure certifications.',
@@ -3972,6 +3996,7 @@ function buildResumeUserPrompt(session, resumeSource, formatProfile) {
     'Project selection hints for this profile: ' + formatProfile.projectHints.join(' | ') + '.',
     'Select exactly the strongest 4 experiences when possible. Select 3-4 projects for this format when the source inventory allows it. Do not include leadership.',
     'Respect every source word budget. Do not let a bullet exceed maxWordCount. Do not let a project exceed wordBudget.',
+    'If a sentence would exceed a word budget, rewrite it into a shorter complete sentence. Never truncate a sentence.',
     'Use source bullets as evidence, not as mandatory final wording. Rewrite when relevance improves, but preserve metrics/tools/scope.',
     'If a candidate is not selected, list it under omitted with a clear reason.',
     'Skills must be selected from skillsInventory only and should maximize truthful job-keyword coverage.',
@@ -4183,14 +4208,14 @@ function buildFallbackResumeSummary(resumeSource) {
   var domainText = /hcl|telecom|verizon/.test(domains)
     ? 'telecom, education, energy, and enterprise data domains'
     : 'education, energy, transportation, and enterprise data domains';
-  return clipWords([
+  return trimIncompleteResumeEnding(clipWords([
     identity,
     'with 5+ years translating business and technical requirements into',
     focus.length ? focus.join(', ') : 'analytics platforms, AI-enabled workflows, data systems, and stakeholder-facing delivery',
     'across ' + domainText + '. Skilled in',
     tools.length ? tools.join(', ') : 'Python, SQL, analytics, automation, and stakeholder management',
     'with measurable impact in reporting automation, forecasting, and product delivery.'
-  ].join(' '), 48);
+  ].join(' '), 52));
 }
 
 function enforceResumeVerbDiversity(items, originals) {
@@ -4575,11 +4600,11 @@ function coerceResumeDraft(aiDraft, resumeSource) {
     bullets = bullets.slice(0, targetCount).map(function(bullet, index) {
       var sourceBullet = normalizeResumeOutputText(sourceBullets[index] || sourceBullets[0] || '');
       var budget = Math.min(24, budgets[index] || 24);
-      var clipped = clipWords(normalizeResumeOutputText(bullet), budget);
+      var clipped = trimIncompleteResumeEnding(clipWords(normalizeResumeOutputText(bullet), budget));
       if (sourceBullet && shouldPreserveResumeSourceText(sourceBullet, clipped, resumeSource.keywords)) {
-        clipped = sourceBullet;
+        clipped = trimIncompleteResumeEnding(sourceBullet);
       }
-      clipped = clipWords(normalizeResumeOutputText(clipped), budget);
+      clipped = trimIncompleteResumeEnding(clipWords(normalizeResumeOutputText(clipped), budget));
       var explicitComment = commentFor(sourceExperience.company, index);
       var changed = normalizeResumeComparisonText(sourceBullet) !== normalizeResumeComparisonText(clipped);
       comments.push({
@@ -4644,13 +4669,13 @@ function coerceResumeDraft(aiDraft, resumeSource) {
   var normalizedProjects = selectedDraftProjects.map(function(pair) {
     var matched = pair.draft || {};
     var project = pair.source;
-    var description = normalizeResumeOutputText(matched && matched.description || project.description || '') || project.description;
+    var description = trimIncompleteResumeEnding(normalizeResumeOutputText(matched && matched.description || project.description || '')) || project.description;
     if (shouldPreserveResumeSourceText(project.description, description, resumeSource.keywords)) {
-      description = project.description;
+      description = trimIncompleteResumeEnding(project.description);
     }
     return {
       title: project.title,
-      description: clipWords(normalizeResumeOutputText(description), project.wordBudget),
+      description: trimIncompleteResumeEnding(clipWords(normalizeResumeOutputText(description), project.wordBudget)),
       technologies: project.technologies,
       url: project.url,
       links: project.links,
@@ -4691,8 +4716,8 @@ function coerceResumeDraft(aiDraft, resumeSource) {
   );
 
   var summaryDraft = draft.summary && typeof draft.summary === 'object' ? draft.summary.text : draft.summary;
-  var summary = normalizeResumeOutputText(summaryDraft || resumeSource.summary || '');
-  if (!summary || isWeakResumeSummary(summary, resumeSource)) {
+  var summary = trimIncompleteResumeEnding(normalizeResumeOutputText(summaryDraft || resumeSource.summary || ''));
+  if (!summary || isWeakResumeSummary(summary, resumeSource) || hasIncompleteResumeEnding(summary)) {
     summary = buildFallbackResumeSummary(resumeSource);
   }
   var certMap = {};

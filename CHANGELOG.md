@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.0.21 - 2026-06-21
+
+### Resume Automation
+
+- Added final fragment cleanup for resume summaries, experience bullets, and project descriptions so shortened text cannot end on dangling words such as "generating", "Predictive", "product", or "to expose".
+- Tightened resume prompt rules to require complete clauses when fitting one-page word budgets instead of truncating sentences.
+- Kept certification names out of technical skill category lines so credentials render only in the Certifications line.
+- Added incomplete clipped endings to resume bullet quality flags for easier review in session audit details.
+
 ## 3.0.20 - 2026-06-21
 
 ### Job Extraction
