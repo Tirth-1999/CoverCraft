@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.22 - 2026-06-21
+
+### Resume Automation
+
+- Added exact final guards for repeated clipped endings: trailing ampersands, `to expose`, `and product`, `generating`, `tripling`, and `Predictive`.
+- Expanded education cleanup so `Master of Science in, Management Information Systems` and `Bachelor of Engineering in, Computer Engineering` render without the comma.
+- Added a hard certification-name filter to technical skill category output so Azure and Scrum credentials cannot leak into skills.
+
 ## 3.0.21 - 2026-06-21
 
 ### Resume Automation

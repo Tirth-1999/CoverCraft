@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "CoverCraft",
-  "version": "3.0.21",
-  "version_name": "3.0.21",
+  "version": "3.0.22",
+  "version_name": "3.0.22",
   "description": "AI-powered Chrome extension for cover letters, tailored resumes, and follow-up questions",
   "icons": {
     "16":  "icons/icon16.png",

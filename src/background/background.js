@@ -2762,22 +2762,25 @@ function trimIncompleteResumeEnding(text) {
   var value = stripResumeTerminalPunctuation(sanitizeResumeVisibleText(text));
   value = value
     .replace(/\s*\([^)]*$/g, '')
+    .replace(/\s*(?:&|\+)\s*$/g, '')
     .replace(/\s*,\s*$/g, '')
     .replace(/\s*;\s*$/g, '')
     .trim();
-  var weakTail = /(\b(?:and|or|with|using|via|by|for|from|into|across|plus|including|featuring|generating|expose|predictive|product|tripling|boosting|cutting|reducing|increasing|supporting|eliminating)\b)$/i;
+  var weakTail = /(\b(?:and|or|to|with|using|via|by|for|from|into|across|plus|including|featuring|generating|expose|predictive|product|tripling|boosting|cutting|reducing|increasing|supporting|eliminating)\b)$/i;
   while (weakTail.test(value) && Core.wordCount(value) > 8) {
     value = value.replace(/\s+\S+$/g, '').replace(/\s*[,;:]\s*$/g, '').trim();
   }
   value = value
-    .replace(/\s+\b(?:and|or|with|using|via|by|for|from|into|across|plus|including)\s+\S+$/i, '')
+    .replace(/\s+\b(?:and|or|to|with|using|via|by|for|from|into|across|plus|including)\s+\S+$/i, '')
+    .replace(/\s*(?:&|\+)\s*$/g, '')
     .replace(/\s*[,;:]\s*$/g, '')
     .trim();
   return stripResumeTerminalPunctuation(value);
 }
 
 function hasIncompleteResumeEnding(text) {
-  return /(\b(?:and|or|with|using|via|by|for|from|into|across|plus|including|featuring|generating|expose|predictive|product|tripling|boosting|cutting|reducing|increasing|supporting|eliminating)\b)$/i.test(stripResumeTerminalPunctuation(text));
+  return /(?:&|\+)\s*$/.test(stripResumeTerminalPunctuation(text)) ||
+    /(\b(?:and|or|to|with|using|via|by|for|from|into|across|plus|including|featuring|generating|expose|predictive|product|tripling|boosting|cutting|reducing|increasing|supporting|eliminating)\b)$/i.test(stripResumeTerminalPunctuation(text));
 }
 
 function compactResumeSentence(text, maxWords) {
@@ -2969,8 +2972,12 @@ function buildResumeSkillInventory(rawPortfolio, normalizedPortfolio) {
   return dedupeStrings(skills.map(function(skill) {
     return sanitizeResumeVisibleText(skill);
   }).filter(function(skill) {
-    return skill && skill.length <= 48 && !/^\d+$/.test(skill);
+    return skill && skill.length <= 48 && !/^\d+$/.test(skill) && !looksLikeResumeCertification(skill);
   }));
+}
+
+function looksLikeResumeCertification(value) {
+  return /\b(certified|certification|fundamentals|associate|professional scrum master|dp-\d+|az-\d+|ai-\d+|psm|aws certified|credly|certificate)\b/i.test(String(value || ''));
 }
 
 function normalizeResumeSkillString(value, maxWords) {
@@ -3572,7 +3579,10 @@ function normalizeResumeEducation(rawPortfolio, normalizedPortfolio) {
         .replace(/^Bachelor of Engineering,\s*/i, 'Bachelor of Engineering in ')
         .replace(/\bin,\s*/gi, 'in ')
         .replace(/\bin\s+in\s+/gi, 'in ')
-        .replace(/,\s*(Computer|Data|Business|Industrial|Electrical|Mechanical|Civil|Software)/i, ' in $1');
+        .replace(/^((?:Master|Bachelor)[^,]*?\bin)\s*,\s*/i, '$1 ')
+        .replace(/,\s*(Computer|Data|Business|Management|Information|Industrial|Electrical|Mechanical|Civil|Software)/i, ' in $1')
+        .replace(/\s+/g, ' ')
+        .trim();
       if (/^Texas A&M University,\s*College Station/i.test(institution)) {
         institution = 'Texas A&M University';
         location = location || 'College Station, Texas';
@@ -4795,7 +4805,9 @@ function sanitizeResumeDataForOutput(resumeData) {
   clean.skillCategories = (resumeData.skillCategories || []).map(function(line) {
     return {
       label: sanitizeResumeVisibleText(line.label || ''),
-      skills: (line.skills || []).map(sanitizeResumeVisibleText).filter(Boolean)
+      skills: (line.skills || []).map(sanitizeResumeVisibleText).filter(function(skill) {
+        return skill && !looksLikeResumeCertification(skill);
+      })
     };
   }).filter(function(line) {
     return line.label && line.skills.length;
