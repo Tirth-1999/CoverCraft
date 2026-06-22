@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.0.24 - 2026-06-21
+
+### Resume Automation
+
+- Added focused job-description scraping for LinkedIn and common ATS pages so resume generation uses the actual JD body instead of page chrome or a short preview.
+- Expanded stored resume job context from a 500-character preview to a larger cleaned JD snapshot for keyword ranking, prompt input, and session audit review.
+- Tightened the resume prompt with the attached FAANG/ATS rules: keyword mapping first, truthful JD keyword use, stronger X-Y-Z bullet structures, shorter summaries, and explicit rejection of dash clauses.
+- Updated the resume session information to show the fuller job description used, making scraper failures visible before regenerating a resume.
+- Rendered project links as compact bracketed labels such as `[GitHub]` and `[Demo]` for cleaner resume output.
+
 ## 3.0.23 - 2026-06-21
 
 ### Resume Automation

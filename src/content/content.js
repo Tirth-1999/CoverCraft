@@ -143,6 +143,73 @@
     return cleanIdentityText(value);
   }
 
+  function cleanScrapedJobText(text) {
+    return String(text || '')
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n')
+      .split('\n')
+      .map(function(line) {
+        return line.replace(/[ \t]{2,}/g, ' ').trim();
+      })
+      .filter(function(line) {
+        if (!line) return false;
+        if (line.length > 900 && /"\$type"|"\w+"\s*:|\{"data":|\{"included":/.test(line)) return false;
+        if (/^\{.+\}$/.test(line) && line.length > 120) return false;
+        return true;
+      })
+      .join('\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
+  function visibleElementText(el) {
+    if (!el) return '';
+    var style = window.getComputedStyle ? window.getComputedStyle(el) : null;
+    if (style && (style.display === 'none' || style.visibility === 'hidden')) return '';
+    return cleanScrapedJobText(el.innerText || el.textContent || '');
+  }
+
+  function focusedJobDescriptionText() {
+    var selectors = [
+      '.jobs-description__content',
+      '.jobs-description-content__text',
+      '.jobs-box__html-content',
+      '.jobs-description__container',
+      '.jobs-description',
+      '.jobs-unified-description',
+      '#job-details',
+      '[data-test-job-description]',
+      '[data-testid="job-description"]',
+      '[data-automation-id="jobPostingDescription"]',
+      '.description__text',
+      '.show-more-less-html__markup',
+      '.job__description',
+      '.job-description',
+      '.posting',
+      '.posting-page',
+      '.section-wrapper',
+      '.content',
+      '#content'
+    ];
+    var candidates = [];
+    selectors.forEach(function(selector) {
+      document.querySelectorAll(selector).forEach(function(el) {
+        var text = visibleElementText(el);
+        var words = text ? text.split(/\s+/).filter(Boolean).length : 0;
+        if (words >= 60) {
+          candidates.push({
+            text: text,
+            words: words
+          });
+        }
+      });
+    });
+    candidates.sort(function(a, b) {
+      return b.words - a.words;
+    });
+    return candidates.length ? candidates[0].text : '';
+  }
+
   function structuredJobIdentityHints() {
     var hostname = String(window.location.hostname || '').toLowerCase();
     var titleHint = firstSelectorText([
@@ -184,18 +251,17 @@
   function scrapePage() {
     var body = document.body;
     if (!body) return '';
+    var focusedText = focusedJobDescriptionText();
     var clone = body.cloneNode(true);
     ['script', 'style', 'noscript', 'nav', 'footer', 'header', 'aside', 'iframe', 'form'].forEach(function(tag) {
       clone.querySelectorAll(tag).forEach(function(el) { el.remove(); });
     });
     clone.querySelectorAll('[aria-hidden="true"],[hidden]').forEach(function(el) { el.remove(); });
 
-    var text = (clone.innerText || clone.textContent || '')
-      .replace(/\r\n/g, '\n')
-      .replace(/\r/g, '\n')
-      .replace(/\n{3,}/g, '\n\n')
-      .replace(/[ \t]{2,}/g, ' ')
-      .trim();
+    var text = cleanScrapedJobText(clone.innerText || clone.textContent || '');
+    if (focusedText && Core.wordCount(focusedText) >= 80) {
+      text = focusedText;
+    }
 
     var lead = [];
     var title = String(document.title || '').trim();

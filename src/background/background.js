@@ -1406,7 +1406,7 @@ function ensureSessionBase(state, payload, portfolioVersion) {
   session.page.lastSeenAt = Core.nowIso();
   session.scrape.hash = scrapeHash;
   session.scrape.rawText = rawText;
-  session.scrape.preview = rawText.slice(0, 500);
+  session.scrape.preview = rawText.slice(0, 4000);
   session.scrape.wordCount = Core.wordCount(rawText);
   session.scrape.charCount = rawText.length;
   session.latestStyle = payload.coverLetterType || session.latestStyle || 'formal';
@@ -2591,6 +2591,7 @@ function buildCoverLetterUserPrompt(session, style, portfolio, promptContext) {
       research: {
         summary: clipWords(session.research && session.research.summary || '', 90)
       },
+      jobDescription: resumeJobContextText(session, 7000),
       scrapePreview: clipWords(session.scrape && session.scrape.preview || '', 70)
     })
   ].join('\n');
@@ -2686,6 +2687,7 @@ function buildAskUserPrompt(session, question, portfolio) {
       page: session.page,
       job: session.job,
       research: session.research,
+      jobDescription: resumeJobContextText(session, 7000),
       scrapePreview: session.scrape.preview
     })
   ].join('\n');
@@ -3122,6 +3124,17 @@ function chooseResumeCertifications(sourceCerts, requestedCerts, limit) {
   }).slice(0, limit || 6);
 }
 
+function resumeJobContextText(session, maxChars) {
+  var scrape = session && session.scrape || {};
+  var text = String(scrape.rawText || scrape.preview || '');
+  text = sanitizeResumeVisibleText(text)
+    .replace(/\s*\n\s*/g, '\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  return text.slice(0, maxChars || 12000);
+}
+
 function buildResumeKeywords(session) {
   var job = session && session.job || {};
   var text = [
@@ -3130,7 +3143,7 @@ function buildResumeKeywords(session) {
     (job.keywords || []).join(' '),
     (job.requirements || []).join(' '),
     (job.responsibilities || []).join(' '),
-    session && session.scrape ? session.scrape.preview || '' : '',
+    resumeJobContextText(session, 12000),
     session && session.research ? session.research.summary || '' : ''
   ].join(' ').toLowerCase();
   var words = text.match(/[a-z][a-z0-9.+#/-]{2,}/g) || [];
@@ -3288,7 +3301,7 @@ function buildJobRankProfile(session) {
   (job.responsibilities || []).slice(0, 8).forEach(function(item) {
     extractRankTermsFromText(item, map, 'responsibility', 4, 'responsibility');
   });
-  extractRankTermsFromText(session && session.scrape ? clipWords(session.scrape.preview || '', 120) : '', map, 'page_preview', 1, 'keyword');
+  extractRankTermsFromText(clipWords(resumeJobContextText(session, 12000), 900), map, 'job_description', 2, 'keyword');
 
   var terms = Object.keys(map).map(function(key) {
     var entry = map[key];
@@ -3626,6 +3639,7 @@ function buildJobApplicationPromptContext(session, portfolio) {
         };
       }) : []
     },
+    jobDescription: resumeJobContextText(session, 7000),
     scrapePreview: clipWords(session && session.scrape ? session.scrape.preview || '' : '', 70)
   };
 }
@@ -4044,6 +4058,7 @@ function buildResumeSystemPrompt(formatProfile) {
     'Optimize for ATS keyword match, truthful evidence-backed relevance, one-page density, FAANG-style bullet quality, and clean LaTeX rendering.',
     'Do not invent employers, titles, dates, locations, tools, metrics, certifications, projects, links, domains, or outcomes.',
     'Never use em dashes or en dashes. Avoid dash-separated clauses entirely. Use commas, semicolons, parentheses, or plain words. ASCII hyphens are allowed only inside compound terms such as full-stack, role-based, multi-model, or dates.',
+    'Never use a spaced dash clause such as " - ", " – ", or " — ". If you need contrast or impact, rewrite with "by", "while", "which", "resulting in", or a comma.',
     'Do not end summary, bullets, projects, education, skills, or certifications with periods.',
     'Never return clipped fragments. Every summary, bullet, and project description must end with a complete noun phrase or complete impact phrase. Forbidden endings include: and, with, using, via, for, from, into, featuring, generating, expose, Predictive, product, tripling, cutting, reducing, increasing, boosting, supporting, eliminating.',
     'Avoid fragile math symbols in final resume wording. Write "under 15%", "over 90%", "approximately 90%", and "3x" instead of <15%, >90%, ~90%, or special symbols.',
@@ -4051,11 +4066,15 @@ function buildResumeSystemPrompt(formatProfile) {
     'Follow this exact resume order: SUMMARY, WORK EXPERIENCE, PROJECTS, EDUCATION, TECHNICAL SKILLS & CERTIFICATIONS.',
     'Match the uploaded ideal resume family: compact sans-serif style, bold uppercase section headings, horizontal rule under each heading, single-row experience headers with company | role on the left and dates on the right, education near the bottom, and categorized skills.',
     '',
-    'First analyze the job description. Identify exact target job title, role family, top ATS keywords, required tools, domain keywords, business outcome keywords, seniority expectation, must-have skills, and nice-to-have skills.',
+    'First analyze the full job description, not only the page title or preview. Identify exact target job title, role family, top ATS keywords, required technical skills, preferred technical skills, domain keywords, tools/platforms, business outcome keywords, seniority expectation, must-have skills, and nice-to-have skills.',
+    'Build a keyword map before writing: required technical, preferred technical, domain, tools/platforms, business outcomes, and soft/leadership signals. Compare those keywords to the source evidence and use only truthful matches.',
+    'Use JD keywords naturally in Summary, Skills, Experience, and Projects. Prioritize exact JD keywords over adjacent keywords when both are truthful. Do not keyword-stuff or copy job-description language mechanically.',
+    'The top third of the resume must communicate role fit in a 6-10 second scan. Evidence is more important than adjectives.',
     '',
     'SUMMARY RULES:',
-    'Write exactly 1 compact paragraph, 42-52 words, designed to render as 2 full lines.',
+    'Write exactly 1 compact paragraph, 34-44 words, designed to render as 2-3 full lines, not 4 lines.',
     'The summary must end with a complete role-relevant outcome phrase such as "product delivery", "forecasting automation", or "stakeholder reporting", never a lone noun such as "product".',
+    'Do not repeat nouns awkwardly, such as "requirements into requirements".',
     'The first phrase must align with the target job title or closest truthful identity. Preferred identity for this selected format: ' + formatProfile.summaryIdentity + '.',
     'Use 5-7 relevant strengths grounded in evidence. Include role/domain keywords naturally. No generic phrases, unsupported seniority claims, passion language, or self-rating.',
     '',
@@ -4071,7 +4090,9 @@ function buildResumeSystemPrompt(formatProfile) {
     'For each selected experience, preserve source company, role, and duration. Location may be returned for comments but the visual resume will not print work locations.',
     'Write exactly 3 bullets per selected experience. No selected experience may have 2 bullets or 4 bullets.',
     'Every bullet must follow the X-Y-Z rule: accomplished X, measured by Y, by doing Z.',
+    'Preferred bullet structures: Reduced X from A to B by doing Z; Built a system processing scale that improved metric by method; Automated workflow saving time or cost through implementation; Migrated or modernized system improving performance, cost, or reliability; Implemented AI, ML, or data feature achieving accuracy, speed, or adoption; Partnered with stakeholders to deliver outcome resulting impact.',
     'Every bullet must start with a strong action verb, include method/tool/domain context, and include measurable impact when grounded.',
+    'Place metrics early when possible, then explain method and impact. Each bullet must answer what was built, improved, migrated, automated, analyzed, or shipped.',
     'Use job keywords only when source evidence supports them. Do not copy job-description language mechanically.',
     'Rewrite for relevance and density. Do not copy old bullets blindly. Do not weaken strong source bullets.',
     'Keep each bullet one sentence and 24-32 words so it can wrap naturally into about two lines when needed.',
@@ -4119,6 +4140,7 @@ function buildResumeUserPrompt(session, resumeSource, formatProfile) {
     JSON.stringify({
       job: session.job || {},
       research: session.research || {},
+      jobDescription: resumeJobContextText(session, 12000),
       scrapePreview: session.scrape && session.scrape.preview || ''
     }),
     '',
@@ -4306,8 +4328,9 @@ function normalizeDraftSkillCategories(categoryLines, allowedSkills, preferredLa
 function isWeakResumeSummary(summary, resumeSource) {
   var text = normalizeResumeOutputText(summary || '');
   var words = Core.wordCount(text);
-  if (words < 30 || words > 55) return true;
+  if (words < 30 || words > 46) return true;
   if (/^technical professional with experience across analytics platforms/i.test(text)) return true;
+  if (/requirements\s+into\s+requirements/i.test(text)) return true;
   var keywords = keywordMatchesForText(text, resumeSource.keywords || [], 4);
   return keywords.length < 2 && words < 42;
 }
@@ -4324,12 +4347,12 @@ function buildFallbackResumeSummary(resumeSource) {
     : 'education, energy, transportation, and enterprise data domains';
   return trimIncompleteResumeEnding(clipWords([
     identity,
-    'with 5+ years translating business and technical requirements into',
+    'with 5+ years delivering',
     focus.length ? focus.join(', ') : 'analytics platforms, AI-enabled workflows, data systems, and stakeholder-facing delivery',
-    'across ' + domainText + '. Skilled in',
+    'across ' + domainText + '. Applies',
     tools.length ? tools.join(', ') : 'Python, SQL, analytics, automation, and stakeholder management',
-    'with measurable impact in reporting automation, forecasting, and product delivery.'
-  ].join(' '), 52));
+    'to improve reporting automation, forecasting, stakeholder dashboards, and product delivery'
+  ].join(' '), 44));
 }
 
 function enforceResumeVerbDiversity(items, originals) {
@@ -4466,8 +4489,9 @@ function buildResumeJobDescriptionSnapshot(session) {
       return sanitizeResumeVisibleText(item);
     }).filter(Boolean).join(' | '));
   }
-  if (session && session.scrape && session.scrape.preview) {
-    lines.push('Page text preview: ' + sanitizeResumeVisibleText(session.scrape.preview));
+  var jobContext = resumeJobContextText(session, 4000);
+  if (jobContext) {
+    lines.push('Job description used: ' + sanitizeResumeVisibleText(jobContext));
   }
   return lines.join('\n');
 }
@@ -4983,7 +5007,7 @@ function latexProjectTitle(project) {
   var suffix = links.map(function(link) {
     var href = resumeWebsiteHref(link.url || '');
     if (!href) return '';
-    return '\\href{' + escapeLatexHrefTarget(href) + '}{\\underline{' + escapeLatexText(link.label || 'Link') + '}}';
+    return '\\href{' + escapeLatexHrefTarget(href) + '}{\\underline{' + escapeLatexText('[' + (link.label || 'Link') + ']') + '}}';
   }).filter(Boolean).join(' $|$ ');
   return suffix ? base + ' $|$ ' + suffix : base;
 }
@@ -5431,7 +5455,7 @@ async function migrateLegacyLogsIfNeeded() {
       session.page.normalizedUrl = normalizedUrl;
       session.page.lastSeenAt = log.timestamp || Core.nowIso();
       session.scrape.rawText = rawText;
-      session.scrape.preview = rawText.slice(0, 500);
+      session.scrape.preview = rawText.slice(0, 4000);
       session.scrape.hash = Core.shortHash(rawText);
       session.scrape.wordCount = Core.wordCount(rawText);
       session.scrape.charCount = rawText.length;
