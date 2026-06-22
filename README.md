@@ -2,7 +2,7 @@
 
 CoverCraft is a Chrome extension for faster job applications.
 
-Current release: `3.0.18`
+Current release: `3.0.19`
 
 It turns a live job page into a reusable workspace where you can generate a tailored cover letter, ask focused follow-up questions, keep profile context ready, and move into a reusable control center without breaking flow.
 

@@ -1527,11 +1527,18 @@ function buildResumeCard(entry) {
   sessionGrid.appendChild(buildMetric('Last updated', fmtDate(session.updatedAt)));
   sessionGrid.appendChild(buildMetric('Source', session.page && session.page.hostname || 'Saved session'));
   sessionSection.appendChild(sessionGrid);
+  var modifications = artifact.modifications || {};
+  if (modifications.jobDescriptionUsed) {
+    sessionSection.appendChild(mk('div', 'section-note', 'Job description context used for this resume'));
+    var jdBox = document.createElement('textarea');
+    jdBox.readOnly = true;
+    jdBox.value = modifications.jobDescriptionUsed;
+    sessionSection.appendChild(jdBox);
+  }
   stack.appendChild(sessionSection);
 
   var changeSection = mk('section', 'section');
   changeSection.appendChild(mk('h3', '', 'Tailoring Summary'));
-  var modifications = artifact.modifications || {};
   var changeGrid = mk('div', 'mini-grid');
   changeGrid.appendChild(buildMetric('Modified bullets', String(modifications.modifiedBulletCount || 0)));
   var coverage = modifications.keywordCoverage || {};
@@ -2271,7 +2278,7 @@ function exportExcel() {
   });
   sheets.push({ name: 'Q&A', rows: chatRows });
 
-  var resumeRows = [['Session', 'Created At', 'Name', 'Email', 'Phone', 'Website', 'Company', 'Job Title', 'Resume Format', 'Keyword Match Before', 'Keyword Match After', 'Keyword Lift', 'Matched Keywords', 'Missing Keywords', 'Selected Experiences', 'Omitted Experiences', 'Selected Projects', 'Modified Bullets', 'Modified Roles', 'Per-Role Changes', 'Base Skills', 'Skills Included', 'Skills Added', 'Quality Flags', 'Bullet Comments']];
+  var resumeRows = [['Session', 'Created At', 'Name', 'Email', 'Phone', 'Website', 'Company', 'Job Title', 'Job Description Used', 'Resume Format', 'Keyword Match Before', 'Keyword Match After', 'Keyword Lift', 'Matched Keywords', 'Missing Keywords', 'Selected Experiences', 'Omitted Experiences', 'Selected Projects', 'Modified Bullets', 'Modified Roles', 'Per-Role Changes', 'Base Skills', 'Skills Included', 'Skills Added', 'Quality Flags', 'Bullet Comments']];
   buildResumeEntries().forEach(function(entry) {
     var modifications = entry.artifact.modifications || {};
     var coverage = modifications.keywordCoverage || {};
@@ -2283,9 +2290,10 @@ function exportExcel() {
       entry.owner.name || '',
       entry.owner.email || '',
       entry.owner.phone || '',
-      entry.owner.website || '',
+	      entry.owner.website || '',
 	      entry.session.job && entry.session.job.companyName || '',
 	      entry.session.job && entry.session.job.jobTitle || '',
+	      modifications.jobDescriptionUsed || '',
 	      entry.artifact.resumeFormatLabel || entry.artifact.resumeFormat || '',
       coverageBefore,
       coverageAfter,

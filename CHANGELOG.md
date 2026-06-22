@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.0.19 - 2026-06-21
+
+### Resume Automation
+
+- Expanded resume keyword matching to use the full structured portfolio skill corpus, including nested skill categories, project technologies, experience technologies, current focus items, and certifications.
+- Added the job-description context used for each tailored resume to the resume review panel and spreadsheet export.
+- Enforced 3-4 selected projects when source projects are available, tightened final bullet/project word caps, and hardened dash-clause cleanup so em dash style phrasing is converted before preview and LaTeX export.
+- Cleaned education degree comma formatting, added location to the resume header, and rendered certifications as plain comma-separated linked credentials without bold Azure grouping or PSM abbreviation.
+
 ## 3.0.18 - 2026-06-21
 
 ### Resume Automation
